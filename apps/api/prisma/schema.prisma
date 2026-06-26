@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+}
+
+enum AccountType {
+  bankCard
+  cash
+  alipay
+  wechat
+  fund
+  stock
+  other
+}
+
+enum TransactionKind {
+  expense
+  income
+  transfer
+  adjustment
+}
+
+enum InvestmentHoldingType {
+  fund
+  stock
+  etf
+}
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  displayName  String
+  role         UserRole       @default(OWNER)
+  memberships  FamilyMember[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Family {
+  id          String         @id @default(uuid())
+  name        String
+  members     FamilyMember[]
+  accounts    Account[]
+  categories  Category[]
+  transactions FinanceTransaction[]
+  budgets     Budget[]
+  holdings    InvestmentHolding[]
+  snapshots   AccountSnapshot[]
+  auditLogs   AuditLog[]
+  importJobs  ImportJob[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model FamilyMember {
+  id          String   @id @default(uuid())
+  familyId    String
+  userId      String?
+  name        String
+  role        UserRole @default(OWNER)
+  family      Family   @relation(fields: [familyId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([familyId, name])
+}
+
+model Account {
+  id           String               @id @default(uuid())
+  familyId     String
+  name         String
+  type         AccountType
+  ownerName    String
+  currentValue Decimal              @db.Decimal(18, 2)
+  note         String?
+  deletedAt    DateTime?
+  family       Family               @relation(fields: [familyId], references: [id])
+  transactions FinanceTransaction[]
+  holdings     InvestmentHolding[]
+  snapshots    AccountSnapshot[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+}
+
+model Category {
+  id          String               @id @default(uuid())
+  familyId    String
+  name        String
+  kind        TransactionKind
+  isDefault   Boolean              @default(false)
+  isActive    Boolean              @default(true)
+  family      Family               @relation(fields: [familyId], references: [id])
+  transactions FinanceTransaction[]
+  budgets     Budget[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@unique([familyId, name, kind])
+}
+
+model FinanceTransaction {
+  id           String          @id @default(uuid())
+  familyId     String
+  accountId    String
+  categoryId   String?
+  date         DateTime
+  kind         TransactionKind
+  categoryName String
+  memberName   String
+  amount       Decimal         @db.Decimal(18, 2)
+  note         String?
+  deletedAt    DateTime?
+  family       Family          @relation(fields: [familyId], references: [id])
+  account      Account         @relation(fields: [accountId], references: [id])
+  category     Category?       @relation(fields: [categoryId], references: [id])
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+model Budget {
+  id          String   @id @default(uuid())
+  familyId    String
+  categoryId  String?
+  month       String
+  categoryName String
+  limitAmount Decimal  @db.Decimal(18, 2)
+  family      Family   @relation(fields: [familyId], references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([familyId, month, categoryName])
+}
+
+model InvestmentHolding {
+  id          String                @id @default(uuid())
+  familyId    String
+  accountId   String
+  name        String
+  code        String
+  type        InvestmentHoldingType
+  marketValue Decimal               @db.Decimal(18, 2)
+  cost        Decimal               @db.Decimal(18, 2)
+  quantity    Decimal               @db.Decimal(24, 6)
+  note        String?
+  deletedAt   DateTime?
+  family      Family                @relation(fields: [familyId], references: [id])
+  account     Account               @relation(fields: [accountId], references: [id])
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model AccountSnapshot {
+  id        String   @id @default(uuid())
+  familyId  String
+  accountId String
+  date      DateTime
+  value     Decimal  @db.Decimal(18, 2)
+  family    Family   @relation(fields: [familyId], references: [id])
+  account   Account  @relation(fields: [accountId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, date])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  familyId   String
+  actorName  String
+  action     String
+  entityType String
+  entityId   String
+  detail     Json?
+  family     Family   @relation(fields: [familyId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model ImportJob {
+  id         String   @id @default(uuid())
+  familyId   String
+  fileName   String
+  status     String
+  totalRows  Int      @default(0)
+  successRows Int     @default(0)
+  failedRows Int      @default(0)
+  message    String?
+  family     Family   @relation(fields: [familyId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

@@ -1,0 +1,171 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: #2c2c2c;
+  background:
+    radial-gradient(circle at 18px 18px, rgba(77, 171, 247, 0.16) 0 5px, transparent 6px),
+    linear-gradient(135deg, #fff9f0 0%, #fff9f0 58%, #e6f4ff 58%, #e6f4ff 100%);
+  background-size: 42px 42px, auto;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sider {
+  border-right: 3px solid #2c2c2c;
+  box-shadow: 4px 0 0 #2c2c2c;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 72px;
+  padding: 16px 20px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  color: #2c2c2c;
+  background: #52c41a;
+  border: 3px solid #2c2c2c;
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 #2c2c2c;
+  font-size: 20px;
+}
+
+.brand-subtitle {
+  margin-top: 2px;
+  color: #2c2c2c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: auto;
+  min-height: 76px;
+  padding: 14px 24px;
+  border-bottom: 3px solid #2c2c2c;
+  box-shadow: 0 4px 0 #2c2c2c;
+}
+
+.page-title {
+  margin: 0 0 2px;
+}
+
+.app-content {
+  padding: 20px;
+}
+
+.content-alert {
+  margin-bottom: 16px;
+}
+
+.page-stack {
+  width: 100%;
+}
+
+.metric-card,
+.chart-card,
+.list-card {
+  overflow: hidden;
+  border: 3px solid #2c2c2c;
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 #2c2c2c;
+}
+
+.metric-card .ant-statistic-content {
+  color: #2c2c2c;
+  font-weight: 650;
+}
+
+.ant-card {
+  border: 3px solid #2c2c2c;
+  box-shadow: 4px 4px 0 #2c2c2c;
+}
+
+.ant-card-head {
+  border-bottom: 3px solid #2c2c2c;
+  background: #e6f4ff;
+}
+
+.ant-layout,
+.ant-layout-content {
+  background: transparent;
+}
+
+.ant-menu-item {
+  border: 3px solid transparent;
+  font-weight: 600;
+}
+
+.ant-menu-item-selected {
+  border-color: #2c2c2c;
+  box-shadow: 3px 3px 0 #2c2c2c;
+}
+
+.ant-table-wrapper .ant-table {
+  border: 3px solid #2c2c2c;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  border-bottom: 3px solid #2c2c2c;
+  font-weight: 700;
+}
+
+.ant-tag {
+  border: 2px solid #2c2c2c;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.ant-segmented {
+  border: 3px solid #2c2c2c;
+  box-shadow: 3px 3px 0 #2c2c2c;
+}
+
+.ant-drawer-content {
+  border-left: 3px solid #2c2c2c;
+  box-shadow: -4px 0 0 #2c2c2c;
+}
+
+.ant-drawer-header {
+  border-bottom: 3px solid #2c2c2c;
+  background: #fff0f6;
+}
+
+.ant-picker {
+  border: 3px solid #2c2c2c;
+  box-shadow: 4px 4px 0 #2c2c2c;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 16px;
+  }
+
+  .app-content {
+    padding: 14px;
+  }
+}
