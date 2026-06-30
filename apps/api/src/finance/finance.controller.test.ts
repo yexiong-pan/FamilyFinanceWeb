@@ -36,14 +36,50 @@ function createEmptyRepository(): FinanceRepository {
     async listMembers() {
       return ["丈夫", "妻子", "家庭共同"];
     },
+    async listFamilyMembers() {
+      return [{ id: "member-1", name: "丈夫" }];
+    },
+    async createMember(input) {
+      return { id: "member-1", name: input.name };
+    },
+    async updateMember(id, input) {
+      return { id, name: input.name };
+    },
+    async deleteMember() {
+      return undefined;
+    },
     async listCategories() {
       return [];
+    },
+    async createCategory(input) {
+      return { id: "category-1", isDefault: false, isActive: true, ...input };
+    },
+    async updateCategory(id, input) {
+      return { id, isDefault: false, isActive: true, ...input };
+    },
+    async deleteCategory() {
+      return undefined;
     },
     async listAccounts() {
       return [];
     },
+    async listAssetTrend() {
+      return [];
+    },
     async createAccount(input) {
       return { id: "account-1", ...input };
+    },
+    async updateAccount(id, input) {
+      return { id, currentValue: "0.00", ...input };
+    },
+    async adjustAccount(_id, _value) {
+      return { id: "account-1", name: "test", type: "bankCard" as const, ownerName: "test", currentValue: "0.00" };
+    },
+    async listAccountSnapshots(_accountId) {
+      return [];
+    },
+    async deleteAccount() {
+      return undefined;
     },
     async listTransactions() {
       return [];
@@ -51,17 +87,60 @@ function createEmptyRepository(): FinanceRepository {
     async createTransaction(input) {
       return { id: "transaction-1", ...input };
     },
+    async updateTransaction(id, input) {
+      return { id, ...input };
+    },
+    async deleteTransaction() {
+      return undefined;
+    },
+    async importTransactions() {
+      return { imported: 0 };
+    },
     async listBudgets() {
       return [];
     },
     async createBudget(input) {
       return { id: "budget-1", ...input };
     },
+    async updateBudget(id, input) {
+      return { id, ...input };
+    },
+    async deleteBudget() {
+      return undefined;
+    },
     async listHoldings() {
       return [];
     },
     async createHolding(input) {
       return { id: "holding-1", ...input };
+    },
+    async updateHolding(id, input) {
+      return { id, ...input };
+    },
+    async deleteHolding() {
+      return undefined;
+    },
+    async listLiabilities() {
+      return [];
+    },
+    async createLiability(input) {
+      return { id: "liability-1", ...input, status: input.status ?? "active" };
+    },
+    async updateLiability(id, input) {
+      return { id, ...input, status: input.status ?? "active" };
+    },
+    async repayLiability(id) {
+      return {
+        id,
+        name: "stub",
+        type: "mortgage",
+        ownerName: "家庭共同",
+        currentBalance: "0.00",
+        status: "paidOff"
+      };
+    },
+    async deleteLiability() {
+      return undefined;
     }
   };
 }

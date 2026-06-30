@@ -34,6 +34,21 @@ enum InvestmentHoldingType {
   etf
 }
 
+enum LiabilityType {
+  mortgage
+  carLoan
+  consumerInstallment
+  creditCard
+  privateLoan
+  other
+}
+
+enum LiabilityStatus {
+  active
+  paidOff
+  closed
+}
+
 model User {
   id           String         @id @default(uuid())
   email        String         @unique
@@ -53,6 +68,7 @@ model Family {
   transactions FinanceTransaction[]
   budgets     Budget[]
   holdings    InvestmentHolding[]
+  liabilities Liability[]
   snapshots   AccountSnapshot[]
   auditLogs   AuditLog[]
   importJobs  ImportJob[]
@@ -65,6 +81,7 @@ model FamilyMember {
   familyId    String
   userId      String?
   name        String
+  icon        String?
   role        UserRole @default(OWNER)
   family      Family   @relation(fields: [familyId], references: [id])
   user        User?    @relation(fields: [userId], references: [id])
@@ -110,7 +127,7 @@ model Category {
 model FinanceTransaction {
   id           String          @id @default(uuid())
   familyId     String
-  accountId    String
+  accountId    String?
   categoryId   String?
   date         DateTime
   kind         TransactionKind
@@ -120,7 +137,7 @@ model FinanceTransaction {
   note         String?
   deletedAt    DateTime?
   family       Family          @relation(fields: [familyId], references: [id])
-  account      Account         @relation(fields: [accountId], references: [id])
+  account      Account?        @relation(fields: [accountId], references: [id])
   category     Category?       @relation(fields: [categoryId], references: [id])
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
@@ -149,14 +166,32 @@ model InvestmentHolding {
   code        String
   type        InvestmentHoldingType
   marketValue Decimal               @db.Decimal(18, 2)
-  cost        Decimal               @db.Decimal(18, 2)
-  quantity    Decimal               @db.Decimal(24, 6)
+  profit      Decimal               @db.Decimal(18, 2)
   note        String?
   deletedAt   DateTime?
   family      Family                @relation(fields: [familyId], references: [id])
   account     Account               @relation(fields: [accountId], references: [id])
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
+}
+
+model Liability {
+  id             String          @id @default(uuid())
+  familyId       String
+  name           String
+  type           LiabilityType
+  ownerName      String
+  currentBalance Decimal         @db.Decimal(18, 2)
+  monthlyPayment Decimal?        @db.Decimal(18, 2)
+  paymentDay     Int?
+  remainingPeriods Int?
+  lender         String?
+  status         LiabilityStatus @default(active)
+  note           String?
+  deletedAt      DateTime?
+  family         Family          @relation(fields: [familyId], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model AccountSnapshot {

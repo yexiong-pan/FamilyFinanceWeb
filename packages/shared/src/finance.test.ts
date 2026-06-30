@@ -6,7 +6,8 @@ import {
   type Account,
   type Budget,
   type FinanceTransaction,
-  type InvestmentHolding
+  type InvestmentHolding,
+  type Liability
 } from "./index";
 
 const accounts: Account[] = [
@@ -94,8 +95,7 @@ const holdings: InvestmentHolding[] = [
     type: "etf",
     accountId: "acc-fund",
     marketValue: "43000",
-    cost: "40000",
-    quantity: "10000",
+    profit: "3000",
     note: "核心指数"
   },
   {
@@ -105,9 +105,38 @@ const holdings: InvestmentHolding[] = [
     type: "fund",
     accountId: "acc-fund",
     marketValue: "23000",
-    cost: "25000",
-    quantity: "18000",
+    profit: "-2000",
     note: "主动基金"
+  }
+];
+
+const liabilities: Liability[] = [
+  {
+    id: "liability-mortgage",
+    name: "招行首套房贷",
+    type: "mortgage",
+    ownerName: "家庭共同",
+    currentBalance: "880000",
+    monthlyPayment: "6200",
+    lender: "招商银行",
+    status: "active"
+  },
+  {
+    id: "liability-car",
+    name: "车贷",
+    type: "carLoan",
+    ownerName: "丈夫",
+    currentBalance: "60000",
+    monthlyPayment: "1800",
+    status: "active"
+  },
+  {
+    id: "liability-paid",
+    name: "已结清消费分期",
+    type: "consumerInstallment",
+    ownerName: "妻子",
+    currentBalance: "0",
+    status: "paidOff"
   }
 ];
 
@@ -122,6 +151,10 @@ describe("family finance calculations", () => {
     });
 
     expect(summary.totalAssets).toBe("214000.00");
+    expect(summary.totalLiabilities).toBe("0.00");
+    expect(summary.netAssets).toBe("214000.00");
+    expect(summary.monthlyDebtPayment).toBe("0.00");
+    expect(summary.liabilityBreakdown).toEqual([]);
     expect(summary.monthlyExpense).toBe("2260.00");
     expect(summary.monthlyIncome).toBe("28000.00");
     expect(summary.monthlyBalance).toBe("25740.00");
@@ -132,6 +165,31 @@ describe("family finance calculations", () => {
     expect(summary.categoryBreakdown).toEqual([
       { categoryName: "育儿", amount: "1399.50" },
       { categoryName: "餐饮", amount: "860.50" }
+    ]);
+    expect(summary.memberBreakdown).toEqual([
+      { memberName: "家庭共同", income: "28000.00", expense: "0.00" },
+      { memberName: "丈夫", income: "0.00", expense: "1399.50" },
+      { memberName: "妻子", income: "0.00", expense: "860.50" }
+    ]);
+  });
+
+  it("folds active liabilities into net assets, monthly debt payment and breakdown", () => {
+    const summary = calculateDashboardSummary({
+      month: "2026-06",
+      accounts,
+      transactions,
+      budgets,
+      holdings,
+      liabilities
+    });
+
+    // Only active liabilities count; the paid-off installment is excluded.
+    expect(summary.totalLiabilities).toBe("940000.00");
+    expect(summary.netAssets).toBe("-726000.00");
+    expect(summary.monthlyDebtPayment).toBe("8000.00");
+    expect(summary.liabilityBreakdown).toEqual([
+      { type: "mortgage", amount: "880000.00" },
+      { type: "carLoan", amount: "60000.00" }
     ]);
   });
 

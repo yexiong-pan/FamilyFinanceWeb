@@ -56,14 +56,14 @@ body {
   justify-content: space-between;
   gap: 16px;
   height: auto;
-  min-height: 76px;
-  padding: 14px 24px;
+  min-height: 0;
+  padding: 10px 24px;
   border-bottom: 3px solid #2c2c2c;
   box-shadow: 0 4px 0 #2c2c2c;
 }
 
 .page-title {
-  margin: 0 0 2px;
+  margin: 0;
 }
 
 .app-content {
@@ -90,6 +90,98 @@ body {
 .metric-card .ant-statistic-content {
   color: #2c2c2c;
   font-weight: 650;
+}
+
+.metric-card--asset {
+  background: #eef6ff;
+}
+
+.metric-card--asset .ant-statistic-title {
+  color: #0c447c;
+}
+
+.metric-card--asset .ant-statistic-content {
+  color: #042c53;
+}
+
+.metric-card--income {
+  background: #eaf6ee;
+}
+
+.metric-card--income .ant-statistic-title,
+.metric-card--income .ant-statistic-content {
+  color: #27500a;
+}
+
+.metric-card--expense {
+  background: #ffeeeb;
+}
+
+.metric-card--expense .ant-statistic-title {
+  color: #791f1f;
+}
+
+.metric-card--expense .ant-statistic-content {
+  color: #a32d2d;
+}
+
+.metric-with-members {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.metric-with-members .ant-statistic {
+  flex-shrink: 0;
+}
+
+.member-subcards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.member-subcards--side {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+}
+
+.member-subcard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 2px solid #2c2c2c;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+}
+
+.member-subcards--side .member-subcard {
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.member-subcard-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.member-subcard-value {
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .ant-card {
@@ -126,6 +218,13 @@ body {
 .ant-table-thead > tr > th {
   border-bottom: 3px solid #2c2c2c;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.ant-table-tbody > tr > td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ant-tag {

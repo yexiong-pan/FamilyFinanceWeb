@@ -1,22 +1,35 @@
 import {
   BankOutlined,
   BarChartOutlined,
+  CreditCardOutlined,
+  CrownOutlined,
   DatabaseOutlined,
-  DollarOutlined,
   FundProjectionScreenOutlined,
+  GiftOutlined,
+  HeartOutlined,
   HomeOutlined,
+  ManOutlined,
   PieChartOutlined,
   PlusOutlined,
   ReloadOutlined,
   SettingOutlined,
-  WalletOutlined
+  SkinOutlined,
+  SmileOutlined,
+  StarOutlined,
+  TeamOutlined,
+  UploadOutlined,
+  UserOutlined,
+  WalletOutlined,
+  WomanOutlined
 } from "@ant-design/icons";
 import type {
   Account,
   Budget,
   DashboardSummary,
+  FamilyMemberInfo,
   FinanceTransaction,
-  InvestmentHolding
+  InvestmentHolding,
+  Liability
 } from "@family-finance/shared";
 import { formatMoney } from "@family-finance/shared";
 import {
@@ -35,6 +48,8 @@ import {
   InputNumber,
   Layout,
   Menu,
+  Popconfirm,
+  Popover,
   Progress,
   Row,
   Segmented,
@@ -44,52 +59,100 @@ import {
   Statistic,
   Table,
   Tag,
-  Typography
+  Typography,
+  Upload
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { Column, Line, Pie } from "@ant-design/charts";
+import Modal from "antd/es/modal";
+import { Column, Line, Pie, Tiny } from "@ant-design/charts";
 import dayjs, { type Dayjs } from "dayjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  type AccountSnapshotRecord,
   type AppData,
   type Category,
   createAccount,
   createBudget,
+  createCategory,
   createInvestment,
+  createLiability,
+  createMember,
   createTransaction,
-  loadAppData
+  deleteAccount,
+  deleteBudget,
+  deleteCategory,
+  deleteInvestment,
+  deleteLiability,
+  deleteMember,
+  deleteTransaction,
+  importTransactions,
+  loadAppData,
+  repayLiability,
+  updateAccount,
+  adjustAccount,
+  listAccountSnapshots,
+  updateBudget,
+  updateCategory,
+  updateInvestment,
+  updateLiability,
+  updateMember,
+  updateTransaction
 } from "./api/client";
 import { buildDashboardViewModel } from "./data/view-model";
+import { type ParsedBill, applyCategoryMap, parseAlipayBill, summarizeBill } from "./data/alipay-import";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
-type PageKey = "dashboard" | "transactions" | "accounts" | "budgets" | "investments" | "settings";
+type PageKey =
+  | "dashboard"
+  | "transactions"
+  | "accounts"
+  | "liabilities"
+  | "budgets"
+  | "investments"
+  | "settings";
 
 const emptySummary: DashboardSummary = {
   totalAssets: "0.00",
+  totalLiabilities: "0.00",
+  netAssets: "0.00",
   monthlyExpense: "0.00",
   monthlyIncome: "0.00",
   monthlyBalance: "0.00",
+  monthlyDebtPayment: "0.00",
   investmentMarketValue: "0.00",
   investmentCost: "0.00",
   investmentProfit: "0.00",
   investmentProfitRate: 0,
   categoryBreakdown: [],
+  liabilityBreakdown: [],
+  memberBreakdown: [],
   budgetUsages: []
 };
 
 const emptyData: AppData = {
   summary: emptySummary,
   members: [],
+  familyMembers: [],
   categories: [],
   accounts: [],
   transactions: [],
   budgets: [],
-  investments: []
+  investments: [],
+  liabilities: [],
+  assetTrend: []
 };
 
 export default function App() {
+  return (
+    <AntApp>
+      <AppShell />
+    </AntApp>
+  );
+}
+
+function AppShell() {
   const { message } = AntApp.useApp();
   const screens = Grid.useBreakpoint();
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
@@ -115,17 +178,30 @@ export default function App() {
     void reload();
   }, [reload]);
 
+  const submit = useCallback(
+    async (run: () => Promise<unknown>, options: { success: string; onSuccess?: () => void }) => {
+      try {
+        await run();
+        message.success(options.success);
+        options.onSuccess?.();
+        await reload();
+      } catch (caught) {
+        message.error(caught instanceof Error ? caught.message : "保存失败，请重试");
+      }
+    },
+    [message, reload]
+  );
+
   const commonProps = {
     data,
     monthKey,
     reload,
-    notify: (content: string) => message.success(content)
+    submit
   };
 
   return (
-    <AntApp>
-      <Layout className="app-shell">
-        <Sider width={240} breakpoint="lg" collapsedWidth={0} className="app-sider">
+    <Layout className="app-shell">
+      <Sider width={240} breakpoint="lg" collapsedWidth={0} className="app-sider">
           <div className="brand-block">
             <div className="brand-mark">
               <WalletOutlined />
@@ -143,6 +219,7 @@ export default function App() {
               { key: "dashboard", icon: <PieChartOutlined />, label: "仪表盘" },
               { key: "transactions", icon: <DatabaseOutlined />, label: "收支流水" },
               { key: "accounts", icon: <BankOutlined />, label: "资产账户" },
+              { key: "liabilities", icon: <CreditCardOutlined />, label: "负债" },
               { key: "budgets", icon: <BarChartOutlined />, label: "预算" },
               { key: "investments", icon: <FundProjectionScreenOutlined />, label: "投资持仓" },
               { key: "settings", icon: <SettingOutlined />, label: "设置" }
@@ -151,12 +228,9 @@ export default function App() {
         </Sider>
         <Layout>
           <Header className="app-header">
-            <div>
-              <Title level={screens.md ? 3 : 4} className="page-title">
-                {pageTitle(activePage)}
-              </Title>
-              <Text type="secondary">所有成员都是管理员，第一版不做权限分层。</Text>
-            </div>
+            <Title level={screens.md ? 4 : 5} className="page-title">
+              {pageTitle(activePage)}
+            </Title>
             <Space wrap>
               <DatePicker
                 picker="month"
@@ -183,36 +257,52 @@ export default function App() {
               {activePage === "dashboard" ? <DashboardPage data={data} /> : null}
               {activePage === "transactions" ? <TransactionsPage {...commonProps} /> : null}
               {activePage === "accounts" ? <AccountsPage {...commonProps} /> : null}
+              {activePage === "liabilities" ? <LiabilitiesPage {...commonProps} /> : null}
               {activePage === "budgets" ? <BudgetsPage {...commonProps} /> : null}
               {activePage === "investments" ? <InvestmentsPage {...commonProps} /> : null}
-              {activePage === "settings" ? <SettingsPage data={data} /> : null}
+              {activePage === "settings" ? <SettingsPage {...commonProps} /> : null}
             </Spin>
           </Content>
         </Layout>
       </Layout>
-    </AntApp>
   );
 }
 
 function DashboardPage({ data }: { data: AppData }) {
   const model = buildDashboardViewModel(data.summary);
-  const trendData = [
-    { month: "1月", value: 18200 },
-    { month: "2月", value: 20800 },
-    { month: "3月", value: 17600 },
-    { month: "4月", value: 24600 },
-    { month: "5月", value: 22100 },
-    { month: "6月", value: Number.parseFloat(data.summary.monthlyBalance) }
-  ];
+  const assetTrendData = data.assetTrend.map((point) => ({
+    date: point.date,
+    value: Number.parseFloat(point.totalAssets)
+  }));
+  const memberIconByName = new Map(data.familyMembers.map((member) => [member.name, member.icon]));
+  const incomeByMember = data.summary.memberBreakdown
+    .filter((member) => Number(member.income) > 0)
+    .map((member) => ({ name: member.memberName, amount: member.income }));
+  const expenseByMember = data.summary.memberBreakdown
+    .filter((member) => Number(member.expense) > 0)
+    .map((member) => ({ name: member.memberName, amount: member.expense }));
 
   return (
     <Space direction="vertical" size={16} className="page-stack">
       <Row gutter={[16, 16]}>
         {model.metrics.map((metric) => (
           <Col xs={24} sm={12} lg={8} key={metric.title}>
-            <Card className="metric-card">
-              <Statistic title={metric.title} value={metric.value} />
-              {metric.trend ? <Text type="secondary">{metric.trend}</Text> : null}
+            <Card className={`metric-card metric-card--${metric.tone}`}>
+              {metric.title === "本月收入" || metric.title === "本月支出" ? (
+                <div className="metric-with-members">
+                  <Statistic title={metric.title} value={metric.value} />
+                  <MemberSubcards
+                    rows={metric.title === "本月收入" ? incomeByMember : expenseByMember}
+                    iconByName={memberIconByName}
+                    side
+                  />
+                </div>
+              ) : (
+                <>
+                  <Statistic title={metric.title} value={metric.value} />
+                  {metric.trend ? <Text type="secondary">{metric.trend}</Text> : null}
+                </>
+              )}
             </Card>
           </Col>
         ))}
@@ -220,16 +310,20 @@ function DashboardPage({ data }: { data: AppData }) {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={15}>
-          <Card title="收支结余趋势" className="chart-card">
-            <Line
-              data={trendData}
-              xField="month"
-              yField="value"
-              height={260}
-              point={{ size: 4 }}
-              color="#1677ff"
-              axis={{ y: { labelFormatter: (value: string) => `${Number(value) / 1000}k` } }}
-            />
+          <Card title="总资产变化" className="chart-card">
+            {assetTrendData.length ? (
+              <Line
+                data={assetTrendData}
+                xField="date"
+                yField="value"
+                height={260}
+                point={{ size: 4 }}
+                color="#1677ff"
+                axis={{ y: { labelFormatter: (value: string) => `${Number(value) / 1000}k` } }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产快照数据" />
+            )}
           </Card>
         </Col>
         <Col xs={24} lg={9}>
@@ -276,19 +370,21 @@ function DashboardPage({ data }: { data: AppData }) {
         <Col xs={24} lg={14}>
           <Card title="资产账户" className="list-card">
             <Table<Account>
-              rowKey="id"
+              rowKey="id" tableLayout="fixed"
               size="middle"
               pagination={false}
+              scroll={{ x: 520 }}
               dataSource={data.accounts}
               columns={[
-                { title: "账户", dataIndex: "name" },
-                { title: "类型", dataIndex: "type", render: renderAccountType },
-                { title: "归属", dataIndex: "ownerName" },
+                { title: "账户", dataIndex: "name", width: 180 },
+                { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
+                { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, data.members) },
                 {
                   title: "当前金额",
                   dataIndex: "currentValue",
+                  width: 130,
                   align: "right",
-                  render: (value: string) => formatMoney(value)
+                  render: (value: string) => <Tag color="green">{formatMoney(value)}</Tag>
                 }
               ]}
             />
@@ -301,40 +397,109 @@ function DashboardPage({ data }: { data: AppData }) {
 
 function TransactionsPage(props: PageProps) {
   const [kind, setKind] = useState<"all" | FinanceTransaction["kind"]>("all");
-  const [keyword, setKeyword] = useState("");
+  const [category, setCategory] = useState<string | undefined>(undefined);
+  const [member, setMember] = useState<string | undefined>(undefined);
+  const [amountMin, setAmountMin] = useState<number | null>(null);
+  const [amountMax, setAmountMax] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [form] = Form.useForm();
-  const filtered = props.data.transactions.filter((transaction) => {
-    const kindMatched = kind === "all" || transaction.kind === kind;
-    const keywordMatched = `${transaction.categoryName}${transaction.memberName}${transaction.note ?? ""}`.includes(
-      keyword
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing
+        ? {
+            date: dayjs(editing.date),
+            kind: editing.kind,
+            categoryName: editing.categoryName,
+            accountId: editing.accountId,
+            memberName: editing.memberName,
+            amount: Number(editing.amount),
+            note: editing.note
+          }
+        : {
+            date: dayjs(),
+            kind: "expense",
+            categoryName: undefined,
+            accountId: undefined,
+            memberName: "家庭共同",
+            amount: undefined,
+            note: undefined
+          }
     );
-    return kindMatched && keywordMatched;
+  }, [open, editing, form]);
+  const filtered = props.data.transactions.filter((transaction) => {
+    if (kind !== "all" && transaction.kind !== kind) return false;
+    if (category && transaction.categoryName !== category) return false;
+    if (member && transaction.memberName !== member) return false;
+    const amount = Number(transaction.amount);
+    if (amountMin != null && amount < amountMin) return false;
+    if (amountMax != null && amount > amountMax) return false;
+    return true;
   });
 
   const columns: ColumnsType<FinanceTransaction> = [
-    { title: "日期", dataIndex: "date", width: 120 },
+    {
+      title: "日期",
+      dataIndex: "date",
+      width: 120,
+      sorter: (a, b) => a.date.localeCompare(b.date),
+      defaultSortOrder: "descend"
+    },
     { title: "类型", dataIndex: "kind", width: 96, render: renderTransactionKind },
-    { title: "分类", dataIndex: "categoryName" },
-    { title: "成员", dataIndex: "memberName" },
+    { title: "分类", dataIndex: "categoryName", width: 120 },
+    { title: "成员", dataIndex: "memberName", width: 100 },
     {
       title: "金额",
       dataIndex: "amount",
+      width: 120,
       align: "right",
+      sorter: (a, b) => Number(a.amount) - Number(b.amount),
       render: (value: string, record) => (
         <Text type={record.kind === "expense" ? "danger" : "success"}>{formatMoney(value)}</Text>
       )
     },
-    { title: "备注", dataIndex: "note" }
+    { title: "备注", dataIndex: "note", width: 240 },
+    {
+      title: "操作",
+      key: "actions",
+      width: 120,
+      render: (_, record) => (
+        <RowActions
+          onEdit={() => {
+            setEditing(record);
+            setOpen(true);
+          }}
+          onDelete={() => props.submit(() => deleteTransaction(record.id), { success: "流水已删除" })}
+        />
+      )
+    }
   ];
 
   return (
     <Card
       title="收支流水"
-      extra={<Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>新增流水</Button>}
+      extra={
+        <Space>
+          <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
+            导入账单
+          </Button>
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            新增流水
+          </Button>
+        </Space>
+      }
     >
       <Space direction="vertical" size={16} className="page-stack">
-        <Flex gap={12} wrap="wrap" justify="space-between">
+        <Flex gap={12} wrap="wrap" align="center">
           <Segmented
             value={kind}
             onChange={(value) => setKind(value as typeof kind)}
@@ -346,17 +511,67 @@ function TransactionsPage(props: PageProps) {
               { label: "调整", value: "adjustment" }
             ]}
           />
-          <Input.Search placeholder="搜索分类、成员、备注" allowClear onSearch={setKeyword} onChange={(event) => setKeyword(event.target.value)} />
+          <Select
+            allowClear
+            placeholder="全部分类"
+            style={{ minWidth: 140 }}
+            value={category}
+            onChange={(value) => setCategory(value)}
+            options={props.data.categories.map((item) => ({ label: item.name, value: item.name }))}
+          />
+          <Select
+            allowClear
+            placeholder="全部成员"
+            style={{ minWidth: 120 }}
+            value={member}
+            onChange={(value) => setMember(value)}
+            options={props.data.members.map((item) => ({ label: item, value: item }))}
+          />
+          <Space size={4} align="center">
+            <InputNumber
+              placeholder="最低金额"
+              min={0}
+              style={{ width: 120 }}
+              value={amountMin}
+              onChange={(value) => setAmountMin(value ?? null)}
+            />
+            <span>—</span>
+            <InputNumber
+              placeholder="最高金额"
+              min={0}
+              style={{ width: 120 }}
+              value={amountMax}
+              onChange={(value) => setAmountMax(value ?? null)}
+            />
+          </Space>
         </Flex>
-        <Table rowKey="id" dataSource={filtered} columns={columns} scroll={{ x: 760 }} />
+        <Table rowKey="id" tableLayout="fixed" dataSource={filtered} columns={columns} scroll={{ x: 916 }} />
       </Space>
-      <Drawer title="新增流水" open={open} onClose={() => setOpen(false)} width={420} destroyOnClose>
+      <Drawer
+        title={editing ? "编辑流水" : "新增流水"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ date: dayjs(), kind: "expense", memberName: "家庭共同" }}
-          onFinish={async (values) => {
-            await createTransaction({
+          initialValues={
+            editing
+              ? {
+                  date: dayjs(editing.date),
+                  kind: editing.kind,
+                  categoryName: editing.categoryName,
+                  accountId: editing.accountId,
+                  memberName: editing.memberName,
+                  amount: Number(editing.amount),
+                  note: editing.note
+                }
+              : { date: dayjs(), kind: "expense", memberName: "家庭共同" }
+          }
+          onFinish={(values) => {
+            const payload = {
               date: values.date.format("YYYY-MM-DD"),
               kind: values.kind,
               categoryName: values.categoryName,
@@ -364,104 +579,725 @@ function TransactionsPage(props: PageProps) {
               memberName: values.memberName,
               amount: String(values.amount),
               note: values.note
-            });
-            props.notify("流水已新增");
-            setOpen(false);
-            await props.reload();
+            };
+            return props.submit(
+              () => (editing ? updateTransaction(editing.id, payload) : createTransaction(payload)),
+              { success: editing ? "流水已更新" : "流水已新增", onSuccess: () => setOpen(false) }
+            );
           }}
         >
           <TransactionFormFields data={props.data} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
+      <ImportDrawer
+        data={props.data}
+        submit={props.submit}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+      />
     </Card>
+  );
+}
+
+function ImportDrawer({
+  data,
+  submit,
+  open,
+  onClose
+}: {
+  data: AppData;
+  submit: PageProps["submit"];
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [form] = Form.useForm();
+  const [parsed, setParsed] = useState<ParsedBill | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (open) {
+      setParsed(null);
+      setFileName(null);
+      setCategoryMap({});
+      form.resetFields();
+    }
+  }, [open, form]);
+
+  const handleFile = (file: File) => {
+    void file.arrayBuffer().then((buffer) => {
+      let text = new TextDecoder("gb18030").decode(buffer);
+      if (!text.includes("记录时间")) {
+        text = new TextDecoder("utf-8").decode(buffer);
+      }
+      const bill = parseAlipayBill(text);
+      setParsed(bill);
+      setFileName(file.name);
+      // Pre-fill only categories that already exist in 设置; the rest must be
+      // chosen by the user (the target can only be an existing category).
+      const appNames = new Set(data.categories.map((category) => category.name));
+      const initial: Record<string, string> = {};
+      for (const item of bill.items) {
+        if (!(item.categoryName in initial) && appNames.has(item.categoryName)) {
+          initial[item.categoryName] = item.categoryName;
+        }
+      }
+      setCategoryMap(initial);
+    });
+    return false;
+  };
+
+  const summary = parsed ? summarizeBill(parsed.items) : null;
+  const sourceCategories = parsed ? [...new Set(parsed.items.map((item) => item.categoryName))] : [];
+  // Targets are limited to the categories configured in 设置.
+  const targetOptions = [...new Set(data.categories.map((category) => category.name))].map((name) => ({
+    label: name,
+    value: name
+  }));
+  const allMapped = sourceCategories.every((source) => categoryMap[source]);
+
+  return (
+    <Drawer title="导入支付宝账单" open={open} onClose={onClose} width={460} destroyOnHidden>
+      <Form form={form} layout="vertical" initialValues={{ memberName: "家庭共同" }}>
+        <Form.Item name="memberName" label="成员" rules={[{ required: true }]}>
+          <Select options={data.members.map((member) => ({ label: member, value: member }))} />
+        </Form.Item>
+        <Form.Item label="账单文件（.csv）">
+          <Upload accept=".csv" beforeUpload={handleFile} maxCount={1} showUploadList={false}>
+            <Button icon={<UploadOutlined />}>选择支付宝导出的 CSV</Button>
+          </Upload>
+          {fileName ? (
+            <div style={{ marginTop: 8 }}>
+              <Text type="secondary">{fileName}</Text>
+            </div>
+          ) : null}
+        </Form.Item>
+      </Form>
+
+      {parsed ? (
+        <Alert
+          type={parsed.items.length ? "info" : "warning"}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`共解析 ${parsed.items.length} 条记录`}
+          description={
+            summary
+              ? `支出 ${summary.expense} · 收入 ${summary.income} · 不计收支 ${summary.transfer}${
+                  parsed.skipped ? ` · 跳过 ${parsed.skipped}` : ""
+                }`
+              : undefined
+          }
+        />
+      ) : (
+        <Text type="secondary">
+          支付宝账单为 GBK 编码，会自动识别。“不计收支”记为转账，不影响收入/支出统计。
+        </Text>
+      )}
+
+      {parsed && parsed.items.length ? (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>分类映射</Text>
+          <Text type="secondary" style={{ display: "block", margin: "2px 0 8px", fontSize: 12 }}>
+            每个支付宝分类都要映射到「设置」里已有的分类（多个可映射到同一个）。缺少的分类请先到设置里添加。
+          </Text>
+          <div style={{ maxHeight: 240, overflowY: "auto", paddingRight: 4 }}>
+            {sourceCategories.map((source) => (
+              <Flex key={source} align="center" gap={8} style={{ marginBottom: 8 }}>
+                <Tag style={{ width: 96, margin: 0, textAlign: "center" }}>{source}</Tag>
+                <span style={{ color: "#888" }}>→</span>
+                <Select
+                  size="small"
+                  showSearch
+                  style={{ flex: 1 }}
+                  placeholder="选择分类"
+                  status={categoryMap[source] ? undefined : "error"}
+                  value={categoryMap[source]}
+                  onChange={(value) => setCategoryMap((prev) => ({ ...prev, [source]: value }))}
+                  options={targetOptions}
+                />
+              </Flex>
+            ))}
+          </div>
+          {!allMapped ? (
+            <Text type="danger" style={{ display: "block", marginTop: 4, fontSize: 12 }}>
+              还有分类未映射，全部映射后才能导入。
+            </Text>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Button
+        type="primary"
+        block
+        disabled={!parsed || parsed.items.length === 0 || !allMapped}
+        style={{ marginTop: 12 }}
+        onClick={() => {
+          void form
+            .validateFields()
+            .then((values) =>
+              submit(
+                () =>
+                  importTransactions({
+                    memberName: values.memberName,
+                    items: applyCategoryMap(parsed?.items ?? [], categoryMap)
+                  }),
+                {
+                  success: `已导入 ${parsed?.items.length ?? 0} 条记录`,
+                  onSuccess: () => {
+                    setParsed(null);
+                    setFileName(null);
+                    setCategoryMap({});
+                    onClose();
+                  }
+                }
+              )
+            )
+            .catch(() => undefined);
+        }}
+      >
+        确认导入
+      </Button>
+    </Drawer>
   );
 }
 
 function AccountsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
+  const [adjusting, setAdjusting] = useState<Account | null>(null);
   const [form] = Form.useForm();
+  const [adjustForm] = Form.useForm();
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing
+        ? {
+            name: editing.name,
+            type: editing.type,
+            ownerName: editing.ownerName,
+            note: editing.note
+          }
+        : { name: undefined, type: "bankCard", ownerName: "家庭共同", currentValue: undefined, note: undefined }
+    );
+  }, [open, editing, form]);
+  useEffect(() => {
+    if (!adjusting) return;
+    adjustForm.setFieldsValue({ value: Number(adjusting.currentValue) });
+  }, [adjusting, adjustForm]);
   return (
     <Card
       title="资产账户"
-      extra={<Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>新增账户</Button>}
+      extra={
+        <Button
+          icon={<PlusOutlined />}
+          type="primary"
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
+          新增账户
+        </Button>
+      }
     >
       <Table<Account>
-        rowKey="id"
+        rowKey="id" tableLayout="fixed"
         dataSource={props.data.accounts}
-        scroll={{ x: 760 }}
+        scroll={{ x: 1150 }}
         columns={[
-          { title: "账户", dataIndex: "name" },
-          { title: "类型", dataIndex: "type", render: renderAccountType },
-          { title: "归属", dataIndex: "ownerName" },
-          { title: "备注", dataIndex: "note" },
-          { title: "当前金额", dataIndex: "currentValue", align: "right", render: (value: string) => formatMoney(value) }
+          { title: "账户", dataIndex: "name", width: 180 },
+          { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
+          { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
+          { title: "当前金额", dataIndex: "currentValue", width: 140, align: "right", sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue), defaultSortOrder: "descend", render: (value: string, record) => (
+            <AccountValuePopover account={record}>
+              <Tag color="green" style={{ cursor: "pointer" }}>{formatMoney(value)}</Tag>
+            </AccountValuePopover>
+          ) },
+          { title: "创建时间", dataIndex: "createdAt", width: 150, render: formatDateTime },
+          { title: "更新时间", dataIndex: "updatedAt", width: 150, render: formatDateTime },
+          { title: "备注", dataIndex: "note", width: 160 },
+          {
+            title: "操作",
+            key: "actions",
+            width: 150,
+            render: (_, record) => (
+              <Space size={4}>
+                <Button type="link" size="small" onClick={() => setAdjusting(record)}>调整</Button>
+                <Button type="link" size="small" onClick={() => { setEditing(record); setOpen(true); }}>编辑</Button>
+                <Popconfirm
+                  title="确认删除？"
+                  description="删除后将从列表中移除。"
+                  okText="删除"
+                  okButtonProps={{ danger: true }}
+                  cancelText="取消"
+                  onConfirm={() => props.submit(() => deleteAccount(record.id), { success: "账户已删除" })}
+                >
+                  <Button type="link" size="small" danger>删除</Button>
+                </Popconfirm>
+              </Space>
+            )
+          }
         ]}
       />
-      <Drawer title="新增账户" open={open} onClose={() => setOpen(false)} width={420} destroyOnClose>
+      <Drawer
+        title={editing ? "编辑账户" : "新增账户"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ type: "bankCard", ownerName: "家庭共同" }}
-          onFinish={async (values) => {
-            await createAccount({
+          initialValues={
+            editing
+              ? {
+                  name: editing.name,
+                  type: editing.type,
+                  ownerName: editing.ownerName,
+                  note: editing.note
+                }
+              : { type: "bankCard", ownerName: "家庭共同" }
+          }
+          onFinish={(values) => {
+            const payload = {
               name: values.name,
               type: values.type,
               ownerName: values.ownerName,
-              currentValue: String(values.currentValue),
+              currentValue: String(values.currentValue ?? 0),
               note: values.note
-            });
-            props.notify("账户已新增");
-            setOpen(false);
-            await props.reload();
+            };
+            if (editing) {
+              const { currentValue: _cv, ...updatePayload } = payload;
+              return props.submit(
+                () => updateAccount(editing.id, updatePayload),
+                { success: "账户已更新", onSuccess: () => setOpen(false) }
+              );
+            }
+            return props.submit(
+              () => createAccount(payload),
+              { success: "账户已新增", onSuccess: () => setOpen(false) }
+            );
           }}
         >
-          <AccountFormFields onSubmit={() => form.submit()} />
+          <AccountFormFields editing={!!editing} members={props.data.members} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
+      <Modal
+        title="调整金额"
+        open={!!adjusting}
+        onCancel={() => setAdjusting(null)}
+        onOk={() => adjustForm.submit()}
+        okText="保存"
+        cancelText="取消"
+        destroyOnClose
+      >
+        {adjusting && (
+          <Form
+            form={adjustForm}
+            layout="vertical"
+            onFinish={(values) => {
+              return props.submit(
+                () => adjustAccount(adjusting.id, String(values.value)),
+                { success: "金额已调整", onSuccess: () => setAdjusting(null) }
+              );
+            }}
+          >
+            <Form.Item label="账户名称">
+              <Input value={adjusting.name} disabled />
+            </Form.Item>
+            <Form.Item label="当前金额">
+              <Input value={formatMoney(adjusting.currentValue)} disabled />
+            </Form.Item>
+            <Form.Item name="value" label="调整后金额" rules={[{ required: true, message: "请输入调整后金额" }]}>
+              <InputNumber min={0} precision={2} className="full-width" />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
     </Card>
+  );
+}
+
+function AccountValuePopover({ account, children }: { account: Account; children: ReactNode }) {
+  const [snapshots, setSnapshots] = useState<AccountSnapshotRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const handleOpenChange = async (open: boolean) => {
+    if (open && snapshots.length === 0) {
+      setLoading(true);
+      try {
+        const data = await listAccountSnapshots(account.id);
+        setSnapshots(data);
+      } catch {
+        // silently ignore
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const diffRecords = useMemo(() => {
+    return snapshots.map((s, i) => {
+      const curr = Number(s.value);
+      const prev = i > 0 ? Number(snapshots[i - 1]!.value) : null;
+      const diff = prev !== null ? curr - prev : curr;
+      return { date: s.date, value: s.value, diff, isInitial: prev === null };
+    });
+  }, [snapshots]);
+
+  const chartData = snapshots.map(s => Number(s.value));
+  const recent = diffRecords.slice(-5).reverse();
+
+  const content = loading ? (
+    <Spin size="small" />
+  ) : (
+    <div style={{ width: 280 }}>
+      {chartData.length >= 2 ? (
+        <Tiny.Line data={chartData} width={260} height={60} smooth color="#52c41a" />
+      ) : (
+        <Text type="secondary" style={{ display: "block", textAlign: "center", padding: "12px 0" }}>
+          {chartData.length === 0 ? "暂无调整记录" : "数据不足，暂无趋势图"}
+        </Text>
+      )}
+      {recent.length > 0 && (
+        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 8 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>最近调整</Text>
+          {recent.map((r) => (
+            <div key={r.date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+              <Text style={{ fontSize: 13, flex: "0 0 80px" }}>{r.date}</Text>
+              <Text strong style={{ fontSize: 13, flex: 1, textAlign: "right" }}>{formatMoney(r.value)}</Text>
+              <Tag color={r.diff >= 0 ? "green" : "red"} style={{ marginLeft: 8, minWidth: 80, textAlign: "center" }}>
+                {r.isInitial ? "初始" : `${r.diff >= 0 ? "+" : ""}${formatMoney(String(Math.abs(r.diff)))}`}
+              </Tag>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Popover content={content} title={`${account.name} · 资金变化`} onOpenChange={handleOpenChange} trigger="click">
+      {children}
+    </Popover>
+  );
+}
+
+function LiabilitiesPage(props: PageProps) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Liability | null>(null);
+  const [repaying, setRepaying] = useState<Liability | null>(null);
+  const [form] = Form.useForm();
+  const [repayForm] = Form.useForm();
+  const { summary } = props.data;
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing
+        ? {
+            name: editing.name,
+            type: editing.type,
+            ownerName: editing.ownerName,
+            currentBalance: Number(editing.currentBalance),
+            monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
+            paymentDay: editing.paymentDay,
+            remainingPeriods: editing.remainingPeriods,
+            lender: editing.lender,
+            status: editing.status,
+            note: editing.note
+          }
+        : {
+            name: undefined,
+            type: "mortgage",
+            ownerName: "家庭共同",
+            currentBalance: undefined,
+            monthlyPayment: undefined,
+            paymentDay: undefined,
+            remainingPeriods: undefined,
+            lender: undefined,
+            status: "active",
+            note: undefined
+          }
+    );
+  }, [open, editing, form]);
+  useEffect(() => {
+    if (!repaying) return;
+    repayForm.setFieldsValue({
+      amount: Number(repaying.monthlyPayment ?? repaying.currentBalance)
+    });
+  }, [repaying, repayForm]);
+  return (
+    <Space direction="vertical" size={16} className="page-stack">
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={8}>
+          <Card className="metric-card">
+            <Statistic title="总负债" value={formatMoney(summary.totalLiabilities)} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="metric-card">
+            <Statistic title="月供合计" value={formatMoney(summary.monthlyDebtPayment)} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="metric-card">
+            <Statistic title="净资产" value={formatMoney(summary.netAssets)} />
+          </Card>
+        </Col>
+      </Row>
+      <Card
+        title="负债明细"
+        extra={
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            新增负债
+          </Button>
+        }
+      >
+        <Table<Liability>
+          rowKey="id" tableLayout="fixed"
+          dataSource={props.data.liabilities}
+          scroll={{ x: 1360 }}
+          columns={[
+            { title: "名称", dataIndex: "name", width: 160 },
+            { title: "类型", dataIndex: "type", width: 110, render: renderLiabilityType },
+            { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
+            { title: "债权机构", dataIndex: "lender", width: 130 },
+            {
+              title: "月供",
+              dataIndex: "monthlyPayment",
+              width: 120,
+              align: "right",
+              render: (value?: string) => (value ? formatMoney(value) : "—")
+            },
+            {
+              title: "还款日",
+              dataIndex: "paymentDay",
+              width: 90,
+              align: "center",
+              render: (value?: number) => (value ? `每月${value}号` : "—")
+            },
+            {
+              title: "剩余期数",
+              dataIndex: "remainingPeriods",
+              width: 90,
+              align: "center",
+              render: (value?: number) => (value == null ? "—" : `${value} 期`)
+            },
+            {
+              title: "当前余额",
+              dataIndex: "currentBalance",
+              width: 130,
+              align: "right",
+              render: (value: string) => formatMoney(value)
+            },
+            { title: "状态", dataIndex: "status", width: 90, render: renderLiabilityStatus },
+            { title: "备注", dataIndex: "note", width: 160 },
+            {
+              title: "操作",
+              key: "actions",
+              width: 180,
+              render: (_, record) => (
+                <Space size={4}>
+                  {record.status === "active" ? (
+                    <Button type="link" size="small" onClick={() => setRepaying(record)}>
+                      还款
+                    </Button>
+                  ) : null}
+                  <RowActions
+                    onEdit={() => {
+                      setEditing(record);
+                      setOpen(true);
+                    }}
+                    onDelete={() => props.submit(() => deleteLiability(record.id), { success: "负债已删除" })}
+                  />
+                </Space>
+              )
+            }
+          ]}
+        />
+      </Card>
+      <Drawer
+        title={editing ? "编辑负债" : "新增负债"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={
+            editing
+              ? {
+                  name: editing.name,
+                  type: editing.type,
+                  ownerName: editing.ownerName,
+                  currentBalance: Number(editing.currentBalance),
+                  monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
+                  paymentDay: editing.paymentDay,
+                  remainingPeriods: editing.remainingPeriods,
+                  lender: editing.lender,
+                  status: editing.status,
+                  note: editing.note
+                }
+              : { type: "mortgage", ownerName: "家庭共同", status: "active" }
+          }
+          onFinish={(values) => {
+            const payload = {
+              name: values.name,
+              type: values.type,
+              ownerName: values.ownerName,
+              currentBalance: String(values.currentBalance),
+              monthlyPayment:
+                values.monthlyPayment == null ? undefined : String(values.monthlyPayment),
+              paymentDay: values.paymentDay ?? undefined,
+              remainingPeriods: values.remainingPeriods ?? undefined,
+              lender: values.lender,
+              status: values.status,
+              note: values.note
+            };
+            return props.submit(
+              () => (editing ? updateLiability(editing.id, payload) : createLiability(payload)),
+              { success: editing ? "负债已更新" : "负债已新增", onSuccess: () => setOpen(false) }
+            );
+          }}
+        >
+          <LiabilityFormFields members={props.data.members} onSubmit={() => form.submit()} />
+        </Form>
+      </Drawer>
+      <Drawer
+        title="登记还款"
+        open={repaying != null}
+        onClose={() => setRepaying(null)}
+        width={380}
+        destroyOnHidden
+      >
+        {repaying ? (
+          <Form
+            form={repayForm}
+            layout="vertical"
+            initialValues={{ amount: Number(repaying.monthlyPayment ?? repaying.currentBalance) }}
+            onFinish={(values) =>
+              props.submit(
+                () => repayLiability(repaying.id, { amount: String(values.amount) }),
+                { success: "已登记还款", onSuccess: () => setRepaying(null) }
+              )
+            }
+          >
+            <div className="page-stack" style={{ marginBottom: 12 }}>
+              <Text type="secondary">
+                {repaying.name} · 当前余额 {formatMoney(repaying.currentBalance)}
+                {repaying.remainingPeriods != null ? ` · 剩余 ${repaying.remainingPeriods} 期` : ""}
+              </Text>
+            </div>
+            <Form.Item name="amount" label="本次还款金额" rules={[{ required: true }]}>
+              <InputNumber min={0} precision={2} className="full-width" />
+            </Form.Item>
+            <Text type="secondary">确认后将从余额中扣除，剩余期数自动减一，扣清后标记为已结清。</Text>
+            <Button type="primary" htmlType="button" onClick={() => repayForm.submit()} block style={{ marginTop: 12 }}>
+              确认还款
+            </Button>
+          </Form>
+        ) : null}
+      </Drawer>
+    </Space>
   );
 }
 
 function BudgetsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Budget | null>(null);
   const [form] = Form.useForm();
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing
+        ? { month: editing.month, categoryName: editing.categoryName, limitAmount: Number(editing.limitAmount) }
+        : { month: props.monthKey, categoryName: undefined, limitAmount: undefined }
+    );
+  }, [open, editing, form, props.monthKey]);
   const usageByCategory = new Map(props.data.summary.budgetUsages.map((usage) => [usage.categoryName, usage]));
   return (
     <Card
       title={`${props.monthKey} 预算`}
-      extra={<Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>新增预算</Button>}
+      extra={
+        <Button
+          icon={<PlusOutlined />}
+          type="primary"
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
+          新增预算
+        </Button>
+      }
     >
       <Table<Budget>
-        rowKey="id"
+        rowKey="id" tableLayout="fixed"
+        scroll={{ x: 720 }}
         dataSource={props.data.budgets}
         columns={[
           { title: "月份", dataIndex: "month", width: 110 },
-          { title: "分类", dataIndex: "categoryName" },
-          { title: "预算", dataIndex: "limitAmount", align: "right", render: (value: string) => formatMoney(value) },
+          { title: "分类", dataIndex: "categoryName", width: 140 },
+          { title: "预算", dataIndex: "limitAmount", width: 130, align: "right", render: (value: string) => formatMoney(value) },
           {
             title: "使用进度",
+            width: 220,
             render: (_, record) => {
               const usage = usageByCategory.get(record.categoryName);
               const percent = usage ? Math.min(100, Math.round(usage.usageRate * 100)) : 0;
               return <Progress percent={percent} size="small" status={usage?.status === "over" ? "exception" : "active"} />;
             }
+          },
+          {
+            title: "操作",
+            key: "actions",
+            width: 120,
+            render: (_, record) => (
+              <RowActions
+                onEdit={() => {
+                  setEditing(record);
+                  setOpen(true);
+                }}
+                onDelete={() => props.submit(() => deleteBudget(record.id), { success: "预算已删除" })}
+              />
+            )
           }
         ]}
       />
-      <Drawer title="新增预算" open={open} onClose={() => setOpen(false)} width={420} destroyOnClose>
+      <Drawer
+        title={editing ? "编辑预算" : "新增预算"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ month: props.monthKey }}
-          onFinish={async (values) => {
-            await createBudget({
+          initialValues={
+            editing
+              ? { month: editing.month, categoryName: editing.categoryName, limitAmount: Number(editing.limitAmount) }
+              : { month: props.monthKey }
+          }
+          onFinish={(values) => {
+            const payload = {
               month: values.month,
               categoryName: values.categoryName,
               limitAmount: String(values.limitAmount)
-            });
-            props.notify("预算已新增");
-            setOpen(false);
-            await props.reload();
+            };
+            return props.submit(
+              () => (editing ? updateBudget(editing.id, payload) : createBudget(payload)),
+              { success: editing ? "预算已更新" : "预算已新增", onSuccess: () => setOpen(false) }
+            );
           }}
         >
           <Form.Item name="month" label="月份" rules={[{ required: true }]}>
@@ -484,77 +1320,304 @@ function BudgetsPage(props: PageProps) {
 
 function InvestmentsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<InvestmentHolding | null>(null);
   const [form] = Form.useForm();
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing
+        ? {
+            name: editing.name,
+            code: editing.code,
+            type: editing.type,
+            accountId: editing.accountId,
+            marketValue: Number(editing.marketValue),
+            profit: Number(editing.profit),
+            note: editing.note
+          }
+        : {
+            name: undefined,
+            code: undefined,
+            type: "fund",
+            accountId: props.data.accounts.find((item) => item.type === "fund")?.id,
+            marketValue: undefined,
+            profit: undefined,
+            note: undefined
+          }
+    );
+  }, [open, editing, form, props.data.accounts]);
+  const accountById = new Map(props.data.accounts.map((account) => [account.id, account]));
+  const totalMarket = props.data.investments.reduce((sum, h) => sum + Number(h.marketValue), 0);
+  const totalProfit = props.data.investments.reduce((sum, h) => sum + Number(h.profit), 0);
+  const totalCost = totalMarket - totalProfit;
+  const totalRate = totalCost !== 0 ? totalProfit / totalCost : 0;
   return (
-    <Card
-      title="投资持仓"
-      extra={<Button icon={<PlusOutlined />} type="primary" onClick={() => setOpen(true)}>新增持仓</Button>}
-    >
-      <Table<InvestmentHolding>
-        rowKey="id"
-        dataSource={props.data.investments}
-        scroll={{ x: 900 }}
-        columns={[
-          { title: "名称", dataIndex: "name" },
-          { title: "代码", dataIndex: "code", width: 110 },
-          { title: "类型", dataIndex: "type", width: 100, render: renderHoldingType },
-          { title: "市值", dataIndex: "marketValue", align: "right", render: (value: string) => formatMoney(value) },
-          { title: "成本", dataIndex: "cost", align: "right", render: (value: string) => formatMoney(value) },
-          { title: "数量", dataIndex: "quantity", align: "right" },
-          { title: "备注", dataIndex: "note" }
-        ]}
-      />
-      <Drawer title="新增持仓" open={open} onClose={() => setOpen(false)} width={420} destroyOnClose>
+    <Space direction="vertical" size={16} className="page-stack">
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={8}>
+          <Card className="metric-card">
+            <Statistic title="总金额" value={formatMoney(totalMarket.toFixed(2))} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className={`metric-card metric-card--${totalProfit >= 0 ? "income" : "expense"}`}>
+            <Statistic title="总收益" value={formatMoney(totalProfit.toFixed(2))} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="metric-card">
+            <Statistic title="总收益率" value={`${(totalRate * 100).toFixed(2)}%`} />
+          </Card>
+        </Col>
+      </Row>
+      <Card
+        title="投资持仓"
+        extra={
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            新增持仓
+          </Button>
+        }
+      >
+        <Table<InvestmentHolding>
+          rowKey="id"
+          tableLayout="fixed"
+          dataSource={props.data.investments}
+          scroll={{ x: 1220 }}
+          columns={[
+            { title: "名称", dataIndex: "name", width: 160 },
+            { title: "代码", dataIndex: "code", width: 100 },
+            { title: "类型", dataIndex: "type", width: 100, render: renderHoldingType },
+            { title: "当前金额", dataIndex: "marketValue", width: 120, align: "right", render: (value: string) => formatMoney(value) },
+            {
+              title: "当前收益",
+              dataIndex: "profit",
+              width: 120,
+              align: "right",
+              render: (value: string) => (
+                <Text type={Number(value) >= 0 ? "success" : "danger"}>{formatMoney(value)}</Text>
+              )
+            },
+            {
+              title: "收益率",
+              key: "rate",
+              width: 100,
+              align: "right",
+              render: (_, record) => {
+                const cost = Number(record.marketValue) - Number(record.profit);
+                const rate = cost !== 0 ? Number(record.profit) / cost : 0;
+                return (
+                  <Text type={rate >= 0 ? "success" : "danger"}>{`${(rate * 100).toFixed(2)}%`}</Text>
+                );
+              }
+            },
+            {
+              title: "所属账户",
+              dataIndex: "accountId",
+              width: 140,
+              render: (accountId: string) => accountById.get(accountId)?.name ?? "—"
+            },
+            {
+              title: "成员",
+              key: "owner",
+              width: 100,
+              render: (_, record) => accountById.get(record.accountId)?.ownerName ?? "—"
+            },
+            { title: "备注", dataIndex: "note", width: 160 },
+            {
+              title: "操作",
+              key: "actions",
+              width: 120,
+              render: (_, record) => (
+                <RowActions
+                  onEdit={() => {
+                    setEditing(record);
+                    setOpen(true);
+                  }}
+                  onDelete={() => props.submit(() => deleteInvestment(record.id), { success: "持仓已删除" })}
+                />
+              )
+            }
+          ]}
+        />
+      </Card>
+      <Drawer
+        title={editing ? "编辑持仓" : "新增持仓"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ type: "fund", accountId: props.data.accounts.find((item) => item.type === "fund")?.id }}
-          onFinish={async (values) => {
-            await createInvestment({
+          initialValues={
+            editing
+              ? {
+                  name: editing.name,
+                  code: editing.code,
+                  type: editing.type,
+                  accountId: editing.accountId,
+                  marketValue: Number(editing.marketValue),
+                  profit: Number(editing.profit),
+                  note: editing.note
+                }
+              : { type: "fund", accountId: props.data.accounts.find((item) => item.type === "fund")?.id }
+          }
+          onFinish={(values) => {
+            const payload = {
               name: values.name,
               code: values.code,
               type: values.type,
               accountId: values.accountId,
               marketValue: String(values.marketValue),
-              cost: String(values.cost),
-              quantity: String(values.quantity),
+              profit: String(values.profit),
               note: values.note
-            });
-            props.notify("持仓已新增");
-            setOpen(false);
-            await props.reload();
+            };
+            return props.submit(
+              () => (editing ? updateInvestment(editing.id, payload) : createInvestment(payload)),
+              { success: editing ? "持仓已更新" : "持仓已新增", onSuccess: () => setOpen(false) }
+            );
           }}
         >
           <InvestmentFormFields accounts={props.data.accounts} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
-    </Card>
+    </Space>
   );
 }
 
-function SettingsPage({ data }: { data: AppData }) {
+function SettingsPage(props: PageProps) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Category | null>(null);
+  const [form] = Form.useForm();
+  const [memberOpen, setMemberOpen] = useState(false);
+  const [memberEditing, setMemberEditing] = useState<FamilyMemberInfo | null>(null);
+  const [memberForm] = Form.useForm();
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue(
+      editing ? { name: editing.name, kind: editing.kind } : { name: undefined, kind: "expense" }
+    );
+  }, [open, editing, form]);
+  useEffect(() => {
+    if (!memberOpen) return;
+    memberForm.setFieldsValue({
+      name: memberEditing ? memberEditing.name : undefined,
+      icon: memberEditing?.icon ?? "user"
+    });
+  }, [memberOpen, memberEditing, memberForm]);
   return (
     <Row gutter={[16, 16]}>
-      <Col xs={24} lg={12}>
-        <Card title="家庭成员">
-          <Space wrap>
-            {data.members.map((member) => (
-              <Tag icon={<HomeOutlined />} color="blue" key={member}>
-                {member} · Owner
-              </Tag>
-            ))}
-          </Space>
+      <Col xs={24} lg={8}>
+        <Card
+          title="家庭成员"
+          extra={
+            <Button
+              icon={<PlusOutlined />}
+              type="primary"
+              onClick={() => {
+                setMemberEditing(null);
+                setMemberOpen(true);
+              }}
+            >
+              新增成员
+            </Button>
+          }
+        >
+          <Table<FamilyMemberInfo>
+            rowKey="id"
+            size="middle"
+            pagination={false}
+            scroll={{ x: 280 }}
+            dataSource={props.data.familyMembers}
+            columns={[
+              {
+                title: "成员",
+                dataIndex: "name",
+                width: 160,
+                render: (value: string, record) => (
+                  <Space size={6}>
+                    {renderMemberIcon(record.icon)}
+                    <span>{value}</span>
+                  </Space>
+                )
+              },
+              {
+                title: "操作",
+                key: "actions",
+                width: 120,
+                render: (_, record) => (
+                  <RowActions
+                    onEdit={() => {
+                      setMemberEditing(record);
+                      setMemberOpen(true);
+                    }}
+                    onDelete={() => props.submit(() => deleteMember(record.id), { success: "成员已删除" })}
+                  />
+                )
+              }
+            ]}
+          />
         </Card>
       </Col>
-      <Col xs={24} lg={12}>
-        <Card title="分类">
-          <Space wrap>
-            {data.categories.map((category) => (
-              <Tag color={category.kind === "expense" ? "red" : "green"} key={category.id}>
-                {category.name}
-              </Tag>
-            ))}
-          </Space>
+      <Col xs={24} lg={16}>
+        <Card
+          title="分类"
+          extra={
+            <Button
+              icon={<PlusOutlined />}
+              type="primary"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              新增分类
+            </Button>
+          }
+        >
+          <Table<Category>
+            rowKey="id" tableLayout="fixed"
+            size="middle"
+            pagination={false}
+            scroll={{ x: 416 }}
+            dataSource={props.data.categories}
+            columns={[
+              {
+                title: "名称",
+                dataIndex: "name",
+                width: 200,
+                render: (value: string, record) => (
+                  <Space size={6}>
+                    <span>{value}</span>
+                    {record.isDefault ? <Tag color="default">默认</Tag> : null}
+                  </Space>
+                )
+              },
+              { title: "类型", dataIndex: "kind", width: 96, render: renderTransactionKind },
+              {
+                title: "操作",
+                key: "actions",
+                width: 120,
+                render: (_, record) => (
+                  <RowActions
+                    onEdit={() => {
+                      setEditing(record);
+                      setOpen(true);
+                    }}
+                    onDelete={() => props.submit(() => deleteCategory(record.id), { success: "分类已删除" })}
+                  />
+                )
+              }
+            ]}
+          />
         </Card>
       </Col>
       <Col span={24}>
@@ -565,6 +1628,73 @@ function SettingsPage({ data }: { data: AppData }) {
           />
         </Card>
       </Col>
+      <Drawer
+        title={editing ? "编辑分类" : "新增分类"}
+        open={open}
+        onClose={() => setOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ kind: "expense" }}
+          onFinish={(values) => {
+            const payload = { name: values.name, kind: values.kind };
+            return props.submit(
+              () => (editing ? updateCategory(editing.id, payload) : createCategory(payload)),
+              { success: editing ? "分类已更新" : "分类已新增", onSuccess: () => setOpen(false) }
+            );
+          }}
+        >
+          <Form.Item name="name" label="分类名称" rules={[{ required: true }]}>
+            <Input placeholder="如：餐饮、工资" />
+          </Form.Item>
+          <Form.Item name="kind" label="类型" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { label: "支出", value: "expense" },
+                { label: "收入", value: "income" },
+                { label: "转账", value: "transfer" },
+                { label: "调整", value: "adjustment" }
+              ]}
+            />
+          </Form.Item>
+          <Button type="primary" htmlType="button" onClick={() => form.submit()} block>
+            保存
+          </Button>
+        </Form>
+      </Drawer>
+      <Drawer
+        title={memberEditing ? "编辑成员" : "新增成员"}
+        open={memberOpen}
+        onClose={() => setMemberOpen(false)}
+        width={420}
+        destroyOnHidden
+      >
+        <Form
+          form={memberForm}
+          layout="vertical"
+          initialValues={{ icon: "user" }}
+          onFinish={(values) => {
+            const payload = { name: values.name, icon: values.icon };
+            return props.submit(
+              () => (memberEditing ? updateMember(memberEditing.id, payload) : createMember(payload)),
+              { success: memberEditing ? "成员已更新" : "成员已新增", onSuccess: () => setMemberOpen(false) }
+            );
+          }}
+        >
+          <Form.Item name="name" label="成员名称" rules={[{ required: true }]}>
+            <Input placeholder="如：雄哥、瑶雯" />
+          </Form.Item>
+          <Form.Item name="icon" label="图标" rules={[{ required: true }]}>
+            <Select options={memberIconOptions} />
+          </Form.Item>
+          <Button type="primary" htmlType="button" onClick={() => memberForm.submit()} block>
+            保存
+          </Button>
+        </Form>
+      </Drawer>
     </Row>
   );
 }
@@ -573,7 +1703,10 @@ interface PageProps {
   data: AppData;
   monthKey: string;
   reload: () => Promise<void>;
-  notify: (content: string) => void;
+  submit: (
+    run: () => Promise<unknown>,
+    options: { success: string; onSuccess?: () => void }
+  ) => Promise<void>;
 }
 
 function TransactionFormFields({ data, onSubmit }: { data: AppData; onSubmit: () => void }) {
@@ -595,8 +1728,12 @@ function TransactionFormFields({ data, onSubmit }: { data: AppData; onSubmit: ()
       <Form.Item name="categoryName" label="分类" rules={[{ required: true }]}>
         <Select options={data.categories.map(toSelectOption)} />
       </Form.Item>
-      <Form.Item name="accountId" label="账户" rules={[{ required: true }]}>
-        <Select options={data.accounts.map((account) => ({ label: account.name, value: account.id }))} />
+      <Form.Item name="accountId" label="账户（可选）">
+        <Select
+          allowClear
+          placeholder="不关联账户"
+          options={data.accounts.map((account) => ({ label: account.name, value: account.id }))}
+        />
       </Form.Item>
       <Form.Item name="memberName" label="成员" rules={[{ required: true }]}>
         <Select options={data.members.map((member) => ({ label: member, value: member }))} />
@@ -614,7 +1751,7 @@ function TransactionFormFields({ data, onSubmit }: { data: AppData; onSubmit: ()
   );
 }
 
-function AccountFormFields({ onSubmit }: { onSubmit: () => void }) {
+function AccountFormFields({ editing, members, onSubmit }: { editing: boolean; members: string[]; onSubmit: () => void }) {
   return (
     <>
       <Form.Item name="name" label="账户名称" rules={[{ required: true }]}>
@@ -634,10 +1771,52 @@ function AccountFormFields({ onSubmit }: { onSubmit: () => void }) {
         />
       </Form.Item>
       <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
-        <Select options={["丈夫", "妻子", "家庭共同"].map((value) => ({ label: value, value }))} />
+        <Select options={members.map((member) => ({ label: member, value: member }))} />
       </Form.Item>
-      <Form.Item name="currentValue" label="当前金额" rules={[{ required: true }]}>
+      {!editing && (
+        <Form.Item name="currentValue" label="当前金额" rules={[{ required: true }]}>
+          <InputNumber min={0} precision={2} className="full-width" />
+        </Form.Item>
+      )}
+      <Form.Item name="note" label="备注">
+        <Input.TextArea rows={3} />
+      </Form.Item>
+      <Button type="primary" htmlType="button" onClick={onSubmit} block>
+        保存
+      </Button>
+    </>
+  );
+}
+
+function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmit: () => void }) {
+  return (
+    <>
+      <Form.Item name="name" label="负债名称" rules={[{ required: true }]}>
+        <Input placeholder="如：招行首套房贷" />
+      </Form.Item>
+      <Form.Item name="type" label="类型" rules={[{ required: true }]}>
+        <Select options={liabilityTypeOptions} />
+      </Form.Item>
+      <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
+        <Select options={members.map((member) => ({ label: member, value: member }))} />
+      </Form.Item>
+      <Form.Item name="currentBalance" label="当前余额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />
+      </Form.Item>
+      <Form.Item name="monthlyPayment" label="月供（可选）">
+        <InputNumber min={0} precision={2} className="full-width" />
+      </Form.Item>
+      <Form.Item name="paymentDay" label="还款日（每月几号，可选）">
+        <InputNumber min={1} max={31} precision={0} className="full-width" />
+      </Form.Item>
+      <Form.Item name="remainingPeriods" label="剩余期数（可选）">
+        <InputNumber min={0} precision={0} className="full-width" />
+      </Form.Item>
+      <Form.Item name="lender" label="债权机构（可选）">
+        <Input placeholder="如：招商银行" />
+      </Form.Item>
+      <Form.Item name="status" label="状态" rules={[{ required: true }]}>
+        <Select options={liabilityStatusOptions} />
       </Form.Item>
       <Form.Item name="note" label="备注">
         <Input.TextArea rows={3} />
@@ -670,14 +1849,11 @@ function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onS
       <Form.Item name="accountId" label="所属账户" rules={[{ required: true }]}>
         <Select options={accounts.map((account) => ({ label: account.name, value: account.id }))} />
       </Form.Item>
-      <Form.Item name="marketValue" label="市值" rules={[{ required: true }]}>
+      <Form.Item name="marketValue" label="当前金额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />
       </Form.Item>
-      <Form.Item name="cost" label="成本" rules={[{ required: true }]}>
-        <InputNumber min={0} precision={2} className="full-width" />
-      </Form.Item>
-      <Form.Item name="quantity" label="数量" rules={[{ required: true }]}>
-        <InputNumber min={0} precision={4} className="full-width" />
+      <Form.Item name="profit" label="当前收益（可为负）" rules={[{ required: true }]}>
+        <InputNumber precision={2} className="full-width" />
       </Form.Item>
       <Form.Item name="note" label="备注">
         <Input.TextArea rows={3} />
@@ -689,15 +1865,130 @@ function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onS
   );
 }
 
+function formatDateTime(value?: string) {
+  return value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—";
+}
+
+const memberIcons: { key: string; label: string; node: ReactNode }[] = [
+  { key: "user", label: "用户", node: <UserOutlined /> },
+  { key: "man", label: "男士", node: <ManOutlined /> },
+  { key: "woman", label: "女士", node: <WomanOutlined /> },
+  { key: "home", label: "家", node: <HomeOutlined /> },
+  { key: "team", label: "家庭", node: <TeamOutlined /> },
+  { key: "smile", label: "笑脸", node: <SmileOutlined /> },
+  { key: "heart", label: "爱心", node: <HeartOutlined /> },
+  { key: "crown", label: "皇冠", node: <CrownOutlined /> },
+  { key: "star", label: "星星", node: <StarOutlined /> },
+  { key: "gift", label: "礼物", node: <GiftOutlined /> },
+  { key: "skin", label: "衣服", node: <SkinOutlined /> }
+];
+
+const memberIconOptions = memberIcons.map((item) => ({
+  value: item.key,
+  label: (
+    <Space size={8}>
+      {item.node}
+      <span>{item.label}</span>
+    </Space>
+  )
+}));
+
+function renderMemberIcon(icon?: string): ReactNode {
+  return memberIcons.find((item) => item.key === icon)?.node ?? <UserOutlined />;
+}
+
+function MemberSubcards({
+  rows,
+  iconByName,
+  side
+}: {
+  rows: { name: string; amount: string }[];
+  iconByName: Map<string, string | undefined>;
+  side?: boolean;
+}) {
+  if (!rows.length) {
+    return <Text type="secondary">本月暂无</Text>;
+  }
+  return (
+    <div className={side ? "member-subcards member-subcards--side" : "member-subcards"}>
+      {rows.map((row) => (
+        <div className="member-subcard" key={row.name}>
+          <span className="member-subcard-name">
+            {renderMemberIcon(iconByName.get(row.name))}
+            <span>{row.name}</span>
+          </span>
+          <span className="member-subcard-value">{formatMoney(row.amount)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <Space size={4}>
+      <Button type="link" size="small" onClick={onEdit}>
+        编辑
+      </Button>
+      <Popconfirm
+        title="确认删除？"
+        description="删除后将从列表中移除。"
+        okText="删除"
+        okButtonProps={{ danger: true }}
+        cancelText="取消"
+        onConfirm={onDelete}
+      >
+        <Button type="link" size="small" danger>
+          删除
+        </Button>
+      </Popconfirm>
+    </Space>
+  );
+}
+
 function pageTitle(activePage: PageKey): string {
   return {
     dashboard: "仪表盘",
     transactions: "收支流水",
     accounts: "资产账户",
+    liabilities: "负债",
     budgets: "预算",
     investments: "投资持仓",
     settings: "设置"
   }[activePage];
+}
+
+const liabilityTypeLabels: Record<Liability["type"], string> = {
+  mortgage: "房贷",
+  carLoan: "车贷",
+  consumerInstallment: "消费分期",
+  creditCard: "信用卡",
+  privateLoan: "私人借款",
+  other: "其他"
+};
+
+const liabilityStatusLabels: Record<Liability["status"], string> = {
+  active: "进行中",
+  paidOff: "已结清",
+  closed: "已关闭"
+};
+
+const liabilityTypeOptions = (Object.keys(liabilityTypeLabels) as Liability["type"][]).map((value) => ({
+  label: liabilityTypeLabels[value],
+  value
+}));
+
+const liabilityStatusOptions = (Object.keys(liabilityStatusLabels) as Liability["status"][]).map(
+  (value) => ({ label: liabilityStatusLabels[value], value })
+);
+
+function renderLiabilityType(type: Liability["type"]) {
+  return <Tag color="volcano">{liabilityTypeLabels[type]}</Tag>;
+}
+
+function renderLiabilityStatus(status: Liability["status"]) {
+  const color = status === "active" ? "blue" : status === "paidOff" ? "green" : "default";
+  return <Tag color={color}>{liabilityStatusLabels[status]}</Tag>;
 }
 
 function toSelectOption(category: Category) {
@@ -716,16 +2007,27 @@ function renderTransactionKind(kind: FinanceTransaction["kind"]) {
 }
 
 function renderAccountType(type: Account["type"]) {
-  const map: Record<Account["type"], string> = {
-    bankCard: "银行卡",
-    cash: "现金",
-    alipay: "支付宝",
-    wechat: "微信",
-    fund: "基金",
-    stock: "股票",
-    other: "其他"
+  const map: Record<Account["type"], { label: string; color: string }> = {
+    bankCard: { label: "银行卡", color: "blue" },
+    cash: { label: "现金", color: "green" },
+    alipay: { label: "支付宝", color: "cyan" },
+    wechat: { label: "微信", color: "geekblue" },
+    fund: { label: "基金", color: "orange" },
+    stock: { label: "股票", color: "volcano" },
+    other: { label: "其他", color: "default" }
   };
-  return <Tag icon={<DollarOutlined />}>{map[type]}</Tag>;
+  const { label, color } = map[type];
+  return <Tag color={color}>{label}</Tag>;
+}
+
+const memberColors = ["magenta", "purple", "cyan", "orange", "green", "blue", "gold", "lime", "geekblue", "volcano"];
+function getMemberColor(name: string, members: string[]): string {
+  const index = members.indexOf(name);
+  return index >= 0 ? memberColors[index % memberColors.length]! : "default";
+}
+
+function renderOwnerTag(ownerName: string, members: string[]) {
+  return <Tag color={getMemberColor(ownerName, members)}>{ownerName}</Tag>;
 }
 
 function renderHoldingType(type: InvestmentHolding["type"]) {

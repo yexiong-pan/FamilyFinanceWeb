@@ -3,6 +3,14 @@ export type MoneyAmount = string;
 export type AccountType = "bankCard" | "cash" | "alipay" | "wechat" | "fund" | "stock" | "other";
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
 export type InvestmentHoldingType = "fund" | "stock" | "etf";
+export type LiabilityType =
+  | "mortgage"
+  | "carLoan"
+  | "consumerInstallment"
+  | "creditCard"
+  | "privateLoan"
+  | "other";
+export type LiabilityStatus = "active" | "paidOff" | "closed";
 
 export interface Account {
   id: string;
@@ -11,6 +19,8 @@ export interface Account {
   ownerName: string;
   currentValue: MoneyAmount;
   note?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FinanceTransaction {
@@ -18,7 +28,7 @@ export interface FinanceTransaction {
   date: string;
   kind: TransactionKind;
   categoryName: string;
-  accountId: string;
+  accountId?: string;
   memberName: string;
   amount: MoneyAmount;
   note?: string;
@@ -38,14 +48,57 @@ export interface InvestmentHolding {
   type: InvestmentHoldingType;
   accountId: string;
   marketValue: MoneyAmount;
-  cost: MoneyAmount;
-  quantity: MoneyAmount;
+  profit: MoneyAmount;
+  note?: string;
+}
+
+export interface Liability {
+  id: string;
+  name: string;
+  type: LiabilityType;
+  ownerName: string;
+  currentBalance: MoneyAmount;
+  monthlyPayment?: MoneyAmount;
+  paymentDay?: number;
+  remainingPeriods?: number;
+  lender?: string;
+  status: LiabilityStatus;
   note?: string;
 }
 
 export interface CategoryBreakdownItem {
   categoryName: string;
   amount: MoneyAmount;
+}
+
+export interface MemberBreakdownItem {
+  memberName: string;
+  income: MoneyAmount;
+  expense: MoneyAmount;
+}
+
+export interface LiabilityBreakdownItem {
+  type: LiabilityType;
+  amount: MoneyAmount;
+}
+
+export interface AssetTrendPoint {
+  date: string;
+  totalAssets: MoneyAmount;
+}
+
+export interface ImportTransactionItem {
+  date: string;
+  kind: TransactionKind;
+  categoryName: string;
+  amount: MoneyAmount;
+  note?: string;
+}
+
+export interface FamilyMemberInfo {
+  id: string;
+  name: string;
+  icon?: string;
 }
 
 export interface BudgetUsage {
@@ -60,14 +113,19 @@ export interface BudgetUsage {
 
 export interface DashboardSummary {
   totalAssets: MoneyAmount;
+  totalLiabilities: MoneyAmount;
+  netAssets: MoneyAmount;
   monthlyExpense: MoneyAmount;
   monthlyIncome: MoneyAmount;
   monthlyBalance: MoneyAmount;
+  monthlyDebtPayment: MoneyAmount;
   investmentMarketValue: MoneyAmount;
   investmentCost: MoneyAmount;
   investmentProfit: MoneyAmount;
   investmentProfitRate: number;
   categoryBreakdown: CategoryBreakdownItem[];
+  liabilityBreakdown: LiabilityBreakdownItem[];
+  memberBreakdown: MemberBreakdownItem[];
   budgetUsages: BudgetUsage[];
 }
 
@@ -77,6 +135,7 @@ export interface DashboardSummaryInput {
   transactions: FinanceTransaction[];
   budgets: Budget[];
   holdings: InvestmentHolding[];
+  liabilities?: Liability[];
 }
 
 export function calculateDashboardSummary(input: DashboardSummaryInput): DashboardSummary {
@@ -94,23 +153,79 @@ export function calculateDashboardSummary(input: DashboardSummaryInput): Dashboa
       .map((transaction) => transaction.amount)
   );
   const investmentMarketValue = sumMoney(input.holdings.map((holding) => holding.marketValue));
-  const investmentCost = sumMoney(input.holdings.map((holding) => holding.cost));
-  const investmentProfitCents = toCents(investmentMarketValue) - toCents(investmentCost);
-  const investmentCostCents = toCents(investmentCost);
+  const investmentProfit = sumMoney(input.holdings.map((holding) => holding.profit));
+  const investmentProfitCents = toCents(investmentProfit);
+  const investmentCostCents = toCents(investmentMarketValue) - investmentProfitCents;
+  const investmentCost = fromCents(investmentCostCents);
+
+  const activeLiabilities = (input.liabilities ?? []).filter(
+    (liability) => liability.status === "active"
+  );
+  const totalAssets = sumMoney(input.accounts.map((account) => account.currentValue));
+  const totalLiabilities = sumMoney(activeLiabilities.map((liability) => liability.currentBalance));
+  const monthlyDebtPayment = sumMoney(
+    activeLiabilities.map((liability) => liability.monthlyPayment ?? "0")
+  );
 
   return {
-    totalAssets: sumMoney(input.accounts.map((account) => account.currentValue)),
+    totalAssets,
+    totalLiabilities,
+    netAssets: fromCents(toCents(totalAssets) - toCents(totalLiabilities)),
     monthlyExpense,
     monthlyIncome,
     monthlyBalance: fromCents(toCents(monthlyIncome) - toCents(monthlyExpense)),
+    monthlyDebtPayment,
     investmentMarketValue,
     investmentCost,
-    investmentProfit: fromCents(investmentProfitCents),
+    investmentProfit,
     investmentProfitRate:
       investmentCostCents === 0 ? 0 : roundTo(investmentProfitCents / investmentCostCents, 4),
     categoryBreakdown: calculateCategoryBreakdown(input.month, input.transactions),
+    liabilityBreakdown: calculateLiabilityBreakdown(activeLiabilities),
+    memberBreakdown: calculateMemberBreakdown(input.month, input.transactions),
     budgetUsages: calculateBudgetUsages(input.month, input.budgets, input.transactions)
   };
+}
+
+export function calculateMemberBreakdown(
+  month: string,
+  transactions: FinanceTransaction[]
+): MemberBreakdownItem[] {
+  const totals = new Map<string, { income: number; expense: number }>();
+  for (const transaction of transactions) {
+    if (!isDateInMonth(transaction.date, month)) {
+      continue;
+    }
+    if (transaction.kind !== "income" && transaction.kind !== "expense") {
+      continue;
+    }
+    const entry = totals.get(transaction.memberName) ?? { income: 0, expense: 0 };
+    entry[transaction.kind] += toCents(transaction.amount);
+    totals.set(transaction.memberName, entry);
+  }
+
+  return [...totals.entries()]
+    .map(([memberName, value]) => ({
+      memberName,
+      income: fromCents(value.income),
+      expense: fromCents(value.expense)
+    }))
+    .sort((left, right) => {
+      const diff =
+        toCents(right.income) + toCents(right.expense) - (toCents(left.income) + toCents(left.expense));
+      return diff === 0 ? left.memberName.localeCompare(right.memberName, "zh-CN") : diff;
+    });
+}
+
+export function calculateLiabilityBreakdown(liabilities: Liability[]): LiabilityBreakdownItem[] {
+  const totals = liabilities.reduce<Record<string, number>>((breakdown, liability) => {
+    breakdown[liability.type] = (breakdown[liability.type] ?? 0) + toCents(liability.currentBalance);
+    return breakdown;
+  }, {});
+
+  return Object.entries(totals)
+    .map(([type, cents]) => ({ type: type as LiabilityType, amount: fromCents(cents) }))
+    .sort((left, right) => toCents(right.amount) - toCents(left.amount));
 }
 
 export function calculateBudgetUsages(
