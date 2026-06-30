@@ -70,6 +70,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import {
   type AccountSnapshotRecord,
   type AppData,
+  type AssetTrendPoint,
   type Category,
   createAccount,
   createBudget,
@@ -1321,6 +1322,7 @@ function BudgetsPage(props: PageProps) {
 function InvestmentsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<InvestmentHolding | null>(null);
+  const [showProfitChart, setShowProfitChart] = useState(false);
   const [form] = Form.useForm();
   useEffect(() => {
     if (!open) return;
@@ -1360,12 +1362,12 @@ function InvestmentsPage(props: PageProps) {
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card className={`metric-card metric-card--${totalProfit >= 0 ? "income" : "expense"}`}>
+          <Card className={`metric-card metric-card--${totalProfit >= 0 ? "asset" : "expense"}`}>
             <Statistic title="总收益" value={formatMoney(totalProfit.toFixed(2))} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card className="metric-card">
+          <Card className="metric-card" style={{ cursor: "pointer" }} onClick={() => setShowProfitChart(true)}>
             <Statistic title="总收益率" value={`${(totalRate * 100).toFixed(2)}%`} />
           </Card>
         </Col>
@@ -1401,7 +1403,7 @@ function InvestmentsPage(props: PageProps) {
               width: 120,
               align: "right",
               render: (value: string) => (
-                <Text type={Number(value) >= 0 ? "success" : "danger"}>{formatMoney(value)}</Text>
+                <Text type={Number(value) >= 0 ? "danger" : "success"}>{formatMoney(value)}</Text>
               )
             },
             {
@@ -1413,7 +1415,7 @@ function InvestmentsPage(props: PageProps) {
                 const cost = Number(record.marketValue) - Number(record.profit);
                 const rate = cost !== 0 ? Number(record.profit) / cost : 0;
                 return (
-                  <Text type={rate >= 0 ? "success" : "danger"}>{`${(rate * 100).toFixed(2)}%`}</Text>
+                  <Text type={rate >= 0 ? "danger" : "success"} style={{ cursor: "pointer" }}>{`${(rate * 100).toFixed(2)}%`}</Text>
                 );
               }
             },
@@ -1489,7 +1491,29 @@ function InvestmentsPage(props: PageProps) {
           <InvestmentFormFields accounts={props.data.accounts} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
+      <Modal
+        title="总收益走势"
+        open={showProfitChart}
+        onCancel={() => setShowProfitChart(false)}
+        footer={null}
+        width={600}
+        destroyOnHidden
+      >
+        {showProfitChart && <ProfitTrendChart data={props.data.assetTrend} />}
+      </Modal>
     </Space>
+  );
+}
+
+function ProfitTrendChart({ data }: { data: AssetTrendPoint[] }) {
+  if (data.length < 2) {
+    return <Text type="secondary">数据不足，暂无收益走势图</Text>;
+  }
+  const chartData = data.map((p) => Number(p.totalAssets));
+  return (
+    <div>
+      <Line data={data} xField="date" yField="totalAssets" height={300} smooth color={data.length > 0 && Number(data[data.length - 1]!.totalAssets) >= Number(data[0]!.totalAssets) ? "#cf1322" : "#3f8600"} point={{ size: 3 }} axis={{ y: { labelFormatter: (value: string) => formatMoney(value) } }} />
+    </div>
   );
 }
 
