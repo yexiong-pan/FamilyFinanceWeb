@@ -1497,11 +1497,22 @@ function SingleAccountHistoryTab({ data }: { data: AppData }) {
       setPoints([]);
       return;
     }
+    let cancelled = false;
     setLoading(true);
     listAccountSnapshots(accountId)
-      .then(setPoints)
-      .catch(() => setPoints([]))
-      .finally(() => setLoading(false));
+      .then((p) => {
+        if (!cancelled) setPoints(p);
+      })
+      .catch((e) => {
+        console.error("listAccountSnapshots failed", e);
+        if (!cancelled) setPoints([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [accountId]);
 
   const chartData = points.map((p) => ({ date: p.date, value: Number(p.value) }));
