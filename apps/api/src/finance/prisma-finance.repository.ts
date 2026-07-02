@@ -367,20 +367,22 @@ export class PrismaFinanceRepository implements FinanceRepository {
         name: input.name,
         type: input.type,
         ownerName: input.ownerName,
+        currentValue: normalizeMoney(input.currentValue),
         note: input.note ?? null
       }
     });
     return mapAccount(account);
   }
 
-  async adjustAccount(id: string, value: MoneyAmount): Promise<Account> {
+  async snapshotAllAccounts(): Promise<{ date: string; count: number }> {
     await this.ensureBaseData();
-    const account = await this.prisma.account.update({
-      where: { id },
-      data: { currentValue: normalizeMoney(value) }
+    const accounts = await this.prisma.account.findMany({
+      where: { familyId: DEFAULT_FAMILY_ID, deletedAt: null }
     });
-    await this.snapshotAccount(account.id, decimalToMoney(account.currentValue));
-    return mapAccount(account);
+    for (const account of accounts) {
+      await this.snapshotAccount(account.id, decimalToMoney(account.currentValue));
+    }
+    return { date: formatDate(startOfTodayUtc()), count: accounts.length };
   }
 
   async listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]> {

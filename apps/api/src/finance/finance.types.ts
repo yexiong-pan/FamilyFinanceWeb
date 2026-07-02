@@ -31,11 +31,7 @@ export interface CategoryInput {
 }
 
 export type CreateAccountInput = Omit<Account, "id" | "createdAt" | "updatedAt">;
-export type UpdateAccountInput = Omit<Account, "id" | "currentValue" | "createdAt" | "updatedAt">;
-
-export interface AdjustAccountInput {
-  value: MoneyAmount;
-}
+export type UpdateAccountInput = Omit<Account, "id" | "createdAt" | "updatedAt">;
 
 export interface AccountSnapshotRecord {
   date: string;

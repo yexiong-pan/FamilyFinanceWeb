@@ -104,8 +104,8 @@ export class FinanceService {
     return this.repository.updateAccount(id, input);
   }
 
-  async adjustAccount(id: string, value: MoneyAmount): Promise<Account> {
-    return this.repository.adjustAccount(id, value);
+  async snapshotAllAccounts(): Promise<{ date: string; count: number }> {
+    return this.repository.snapshotAllAccounts();
   }
 
   async listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]> {

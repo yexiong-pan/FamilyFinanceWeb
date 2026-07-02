@@ -70,10 +70,10 @@ function createEmptyRepository(): FinanceRepository {
       return { id: "account-1", ...input };
     },
     async updateAccount(id, input) {
-      return { id, currentValue: "0.00", ...input };
+      return { id, ...input };
     },
-    async adjustAccount(_id, _value) {
-      return { id: "account-1", name: "test", type: "bankCard" as const, ownerName: "test", currentValue: "0.00" };
+    async snapshotAllAccounts() {
+      return { date: "2026-07-01", count: 0 };
     },
     async listAccountSnapshots(_accountId) {
       return [];

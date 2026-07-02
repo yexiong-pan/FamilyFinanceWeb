@@ -1,6 +1,7 @@
 import {
   BankOutlined,
   BarChartOutlined,
+  CameraOutlined,
   CreditCardOutlined,
   CrownOutlined,
   DatabaseOutlined,
@@ -49,7 +50,6 @@ import {
   Layout,
   Menu,
   Popconfirm,
-  Popover,
   Progress,
   Row,
   Segmented,
@@ -64,11 +64,10 @@ import {
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
-import { Column, Line, Pie, Tiny } from "@ant-design/charts";
+import { Column, Line, Pie } from "@ant-design/charts";
 import dayjs, { type Dayjs } from "dayjs";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
-  type AccountSnapshotRecord,
   type AppData,
   type AssetTrendPoint,
   type Category,
@@ -90,8 +89,7 @@ import {
   loadAppData,
   repayLiability,
   updateAccount,
-  adjustAccount,
-  listAccountSnapshots,
+  snapshotAllAccounts,
   updateBudget,
   updateCategory,
   updateInvestment,
@@ -283,6 +281,11 @@ function DashboardPage({ data }: { data: AppData }) {
     .filter((member) => Number(member.expense) > 0)
     .map((member) => ({ name: member.memberName, amount: member.expense }));
 
+  const [accountOwnerFilter, setAccountOwnerFilter] = useState<string | undefined>(undefined);
+  const filteredAccounts = accountOwnerFilter
+    ? data.accounts.filter((a) => a.ownerName === accountOwnerFilter)
+    : data.accounts;
+
   return (
     <Space direction="vertical" size={16} className="page-stack">
       <Row gutter={[16, 16]}>
@@ -369,13 +372,26 @@ function DashboardPage({ data }: { data: AppData }) {
           </Card>
         </Col>
         <Col xs={24} lg={14}>
-          <Card title="资产账户" className="list-card">
+          <Card
+            title="资产账户"
+            className="list-card"
+            extra={
+              <Select
+                allowClear
+                placeholder="全部归属"
+                style={{ minWidth: 130 }}
+                value={accountOwnerFilter}
+                onChange={(value) => setAccountOwnerFilter(value)}
+                options={data.members.map((item) => ({ label: item, value: item }))}
+              />
+            }
+          >
             <Table<Account>
               rowKey="id" tableLayout="fixed"
               size="middle"
               pagination={false}
               scroll={{ x: 520 }}
-              dataSource={data.accounts}
+              dataSource={filteredAccounts}
               columns={[
                 { title: "账户", dataIndex: "name", width: 180 },
                 { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
@@ -764,9 +780,17 @@ function ImportDrawer({
 function AccountsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
-  const [adjusting, setAdjusting] = useState<Account | null>(null);
+  const [ownerFilter, setOwnerFilter] = useState<string | undefined>(undefined);
   const [form] = Form.useForm();
-  const [adjustForm] = Form.useForm();
+
+  const filteredAccounts = ownerFilter
+    ? props.data.accounts.filter((a) => a.ownerName === ownerFilter)
+    : props.data.accounts;
+
+  const filteredTotalValue = filteredAccounts.reduce(
+    (sum, a) => sum + Number(a.currentValue),
+    0
+  );
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue(
@@ -775,44 +799,60 @@ function AccountsPage(props: PageProps) {
             name: editing.name,
             type: editing.type,
             ownerName: editing.ownerName,
+            currentValue: Number(editing.currentValue),
             note: editing.note
           }
         : { name: undefined, type: "bankCard", ownerName: "家庭共同", currentValue: undefined, note: undefined }
     );
   }, [open, editing, form]);
-  useEffect(() => {
-    if (!adjusting) return;
-    adjustForm.setFieldsValue({ value: Number(adjusting.currentValue) });
-  }, [adjusting, adjustForm]);
   return (
     <Card
-      title="资产账户"
+      title={
+        <Space size={8}>
+          <span>资产账户</span>
+          <Tag color="blue">{formatMoney(String(filteredTotalValue))}</Tag>
+        </Space>
+      }
       extra={
-        <Button
-          icon={<PlusOutlined />}
-          type="primary"
-          onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}
-        >
-          新增账户
-        </Button>
+        <Space size={8}>
+          <Select
+            allowClear
+            placeholder="全部归属"
+            style={{ minWidth: 130 }}
+            value={ownerFilter}
+            onChange={(value) => setOwnerFilter(value)}
+            options={props.data.members.map((item) => ({ label: item, value: item }))}
+          />
+          <Button
+            icon={<CameraOutlined />}
+            onClick={() =>
+              props.submit(() => snapshotAllAccounts(), { success: "资产快照已保存" })
+            }
+          >
+            保存快照
+          </Button>
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              setOpen(true);
+            }}
+          >
+            新增账户
+          </Button>
+        </Space>
       }
     >
       <Table<Account>
         rowKey="id" tableLayout="fixed"
-        dataSource={props.data.accounts}
+        dataSource={filteredAccounts}
         scroll={{ x: 1150 }}
         columns={[
           { title: "账户", dataIndex: "name", width: 180 },
           { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
           { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
-          { title: "当前金额", dataIndex: "currentValue", width: 140, align: "right", sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue), defaultSortOrder: "descend", render: (value: string, record) => (
-            <AccountValuePopover account={record}>
-              <Tag color="green" style={{ cursor: "pointer" }}>{formatMoney(value)}</Tag>
-            </AccountValuePopover>
-          ) },
+          { title: "当前金额", dataIndex: "currentValue", width: 140, align: "right", sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue), defaultSortOrder: "descend", render: (value: string) => <Tag color="green">{formatMoney(value)}</Tag> },
           { title: "创建时间", dataIndex: "createdAt", width: 150, render: formatDateTime },
           { title: "更新时间", dataIndex: "updatedAt", width: 150, render: formatDateTime },
           { title: "备注", dataIndex: "note", width: 160 },
@@ -822,7 +862,6 @@ function AccountsPage(props: PageProps) {
             width: 150,
             render: (_, record) => (
               <Space size={4}>
-                <Button type="link" size="small" onClick={() => setAdjusting(record)}>调整</Button>
                 <Button type="link" size="small" onClick={() => { setEditing(record); setOpen(true); }}>编辑</Button>
                 <Popconfirm
                   title="确认删除？"
@@ -868,9 +907,8 @@ function AccountsPage(props: PageProps) {
               note: values.note
             };
             if (editing) {
-              const { currentValue: _cv, ...updatePayload } = payload;
               return props.submit(
-                () => updateAccount(editing.id, updatePayload),
+                () => updateAccount(editing.id, payload),
                 { success: "账户已更新", onSuccess: () => setOpen(false) }
               );
             }
@@ -880,107 +918,10 @@ function AccountsPage(props: PageProps) {
             );
           }}
         >
-          <AccountFormFields editing={!!editing} members={props.data.members} onSubmit={() => form.submit()} />
+          <AccountFormFields members={props.data.members} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
-      <Modal
-        title="调整金额"
-        open={!!adjusting}
-        onCancel={() => setAdjusting(null)}
-        onOk={() => adjustForm.submit()}
-        okText="保存"
-        cancelText="取消"
-        destroyOnClose
-      >
-        {adjusting && (
-          <Form
-            form={adjustForm}
-            layout="vertical"
-            onFinish={(values) => {
-              return props.submit(
-                () => adjustAccount(adjusting.id, String(values.value)),
-                { success: "金额已调整", onSuccess: () => setAdjusting(null) }
-              );
-            }}
-          >
-            <Form.Item label="账户名称">
-              <Input value={adjusting.name} disabled />
-            </Form.Item>
-            <Form.Item label="当前金额">
-              <Input value={formatMoney(adjusting.currentValue)} disabled />
-            </Form.Item>
-            <Form.Item name="value" label="调整后金额" rules={[{ required: true, message: "请输入调整后金额" }]}>
-              <InputNumber min={0} precision={2} className="full-width" />
-            </Form.Item>
-          </Form>
-        )}
-      </Modal>
     </Card>
-  );
-}
-
-function AccountValuePopover({ account, children }: { account: Account; children: ReactNode }) {
-  const [snapshots, setSnapshots] = useState<AccountSnapshotRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const handleOpenChange = async (open: boolean) => {
-    if (open && snapshots.length === 0) {
-      setLoading(true);
-      try {
-        const data = await listAccountSnapshots(account.id);
-        setSnapshots(data);
-      } catch {
-        // silently ignore
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  const diffRecords = useMemo(() => {
-    return snapshots.map((s, i) => {
-      const curr = Number(s.value);
-      const prev = i > 0 ? Number(snapshots[i - 1]!.value) : null;
-      const diff = prev !== null ? curr - prev : curr;
-      return { date: s.date, value: s.value, diff, isInitial: prev === null };
-    });
-  }, [snapshots]);
-
-  const chartData = snapshots.map(s => Number(s.value));
-  const recent = diffRecords.slice(-5).reverse();
-
-  const content = loading ? (
-    <Spin size="small" />
-  ) : (
-    <div style={{ width: 280 }}>
-      {chartData.length >= 2 ? (
-        <Tiny.Line data={chartData} width={260} height={60} smooth color="#52c41a" />
-      ) : (
-        <Text type="secondary" style={{ display: "block", textAlign: "center", padding: "12px 0" }}>
-          {chartData.length === 0 ? "暂无调整记录" : "数据不足，暂无趋势图"}
-        </Text>
-      )}
-      {recent.length > 0 && (
-        <div style={{ marginTop: 8, borderTop: "1px solid #f0f0f0", paddingTop: 8 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>最近调整</Text>
-          {recent.map((r) => (
-            <div key={r.date} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-              <Text style={{ fontSize: 13, flex: "0 0 80px" }}>{r.date}</Text>
-              <Text strong style={{ fontSize: 13, flex: 1, textAlign: "right" }}>{formatMoney(r.value)}</Text>
-              <Tag color={r.diff >= 0 ? "green" : "red"} style={{ marginLeft: 8, minWidth: 80, textAlign: "center" }}>
-                {r.isInitial ? "初始" : `${r.diff >= 0 ? "+" : ""}${formatMoney(String(Math.abs(r.diff)))}`}
-              </Tag>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <Popover content={content} title={`${account.name} · 资金变化`} onOpenChange={handleOpenChange} trigger="click">
-      {children}
-    </Popover>
   );
 }
 
@@ -1414,8 +1355,9 @@ function InvestmentsPage(props: PageProps) {
               render: (_, record) => {
                 const cost = Number(record.marketValue) - Number(record.profit);
                 const rate = cost !== 0 ? Number(record.profit) / cost : 0;
+                const color = rate >= 0 ? "red" : "green";
                 return (
-                  <Text type={rate >= 0 ? "danger" : "success"} style={{ cursor: "pointer" }}>{`${(rate * 100).toFixed(2)}%`}</Text>
+                  <Tag color={color}>{`${(rate * 100).toFixed(2)}%`}</Tag>
                 );
               }
             },
@@ -1775,7 +1717,7 @@ function TransactionFormFields({ data, onSubmit }: { data: AppData; onSubmit: ()
   );
 }
 
-function AccountFormFields({ editing, members, onSubmit }: { editing: boolean; members: string[]; onSubmit: () => void }) {
+function AccountFormFields({ members, onSubmit }: { members: string[]; onSubmit: () => void }) {
   return (
     <>
       <Form.Item name="name" label="账户名称" rules={[{ required: true }]}>
@@ -1797,11 +1739,9 @@ function AccountFormFields({ editing, members, onSubmit }: { editing: boolean; m
       <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
         <Select options={members.map((member) => ({ label: member, value: member }))} />
       </Form.Item>
-      {!editing && (
-        <Form.Item name="currentValue" label="当前金额" rules={[{ required: true }]}>
-          <InputNumber min={0} precision={2} className="full-width" />
-        </Form.Item>
-      )}
+      <Form.Item name="currentValue" label="当前金额" rules={[{ required: true }]}>
+        <InputNumber min={0} precision={2} className="full-width" />
+      </Form.Item>
       <Form.Item name="note" label="备注">
         <Input.TextArea rows={3} />
       </Form.Item>

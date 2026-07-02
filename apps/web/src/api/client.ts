@@ -103,7 +103,7 @@ export async function importTransactions(payload: {
   return postJson("/transactions/import", payload);
 }
 
-export type UpdateAccountInput = Omit<Account, "id" | "currentValue" | "createdAt" | "updatedAt">;
+export type UpdateAccountInput = Omit<Account, "id" | "createdAt" | "updatedAt">;
 
 export async function createAccount(input: Omit<Account, "id">): Promise<Account> {
   return postJson("/accounts", input);
@@ -113,8 +113,8 @@ export async function updateAccount(id: string, input: UpdateAccountInput): Prom
   return patchJson(`/accounts/${id}`, input);
 }
 
-export async function adjustAccount(id: string, value: string): Promise<Account> {
-  return postJson(`/accounts/${id}/adjust`, { value });
+export async function snapshotAllAccounts(): Promise<{ date: string; count: number }> {
+  return postJson("/accounts/snapshots", {});
 }
 
 export interface AccountSnapshotRecord {

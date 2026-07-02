@@ -20,8 +20,7 @@ import type {
   CreateTransactionInput,
   ImportTransactionsInput,
   MemberInput,
-  RepayLiabilityInput,
-  AdjustAccountInput
+  RepayLiabilityInput
 } from "./finance.types";
 
 @Controller()
@@ -98,9 +97,9 @@ export class FinanceController {
     return this.financeService.updateAccount(id, input);
   }
 
-  @Post("accounts/:id/adjust")
-  adjustAccount(@Param("id") id: string, @Body() input: AdjustAccountInput): Promise<Account> {
-    return this.financeService.adjustAccount(id, input.value);
+  @Post("accounts/snapshots")
+  snapshotAllAccounts(): Promise<{ date: string; count: number }> {
+    return this.financeService.snapshotAllAccounts();
   }
 
   @Get("accounts/:id/snapshots")

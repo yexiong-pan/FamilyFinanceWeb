@@ -9,7 +9,6 @@ import type {
   MoneyAmount
 } from "@family-finance/shared";
 import type {
-  AdjustAccountInput,
   Category,
   CategoryInput,
   CreateAccountInput,
@@ -40,7 +39,7 @@ export interface FinanceRepository {
   listAssetTrend(): Promise<AssetTrendPoint[]>;
   createAccount(input: CreateAccountInput): Promise<Account>;
   updateAccount(id: string, input: UpdateAccountInput): Promise<Account>;
-  adjustAccount(id: string, value: MoneyAmount): Promise<Account>;
+  snapshotAllAccounts(): Promise<{ date: string; count: number }>;
   listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]>;
   deleteAccount(id: string): Promise<void>;
   listTransactions(filter?: { month?: string }): Promise<FinanceTransaction[]>;

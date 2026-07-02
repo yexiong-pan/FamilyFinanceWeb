@@ -4,8 +4,7 @@ import type {
   Budget,
   FinanceTransaction,
   InvestmentHolding,
-  Liability,
-  MoneyAmount
+  Liability
 } from "@family-finance/shared";
 import { FinanceService } from "./finance.service";
 import {
@@ -71,6 +70,28 @@ describe("FinanceService", () => {
       monthlyIncome: "0.00",
       monthlyBalance: "-120.00"
     });
+  });
+
+  it("updates account amount through the normal edit flow", async () => {
+    const service = new FinanceService(createRepository());
+    const account = await service.createAccount({
+      name: "招商银行卡",
+      type: "bankCard",
+      ownerName: "家庭共同",
+      currentValue: "1000",
+      note: "初始录入"
+    });
+
+    const updated = await service.updateAccount(account.id, {
+      name: "招商银行卡",
+      type: "bankCard",
+      ownerName: "家庭共同",
+      currentValue: "1500",
+      note: "编辑余额"
+    });
+
+    expect(updated.currentValue).toBe("1500.00");
+    expect((await service.listAccounts())[0]?.currentValue).toBe("1500.00");
   });
 
   it("keeps only default configuration, not fake finance records", async () => {
@@ -181,16 +202,12 @@ function createRepository(): FinanceRepository {
       const index = accounts.findIndex((item) => item.id === id);
       if (index < 0) throw new Error("Account not found");
       const existing = accounts[index]!;
-      const updated = { ...existing, ...input };
+      const updated = { ...existing, ...input, currentValue: normalizeMoney(input.currentValue) };
       accounts[index] = updated;
       return updated;
     },
-    async adjustAccount(id: string, value: MoneyAmount) {
-      const index = accounts.findIndex((item) => item.id === id);
-      if (index < 0) throw new Error("Account not found");
-      const updated = { ...accounts[index]!, currentValue: normalizeMoney(value) };
-      accounts[index] = updated;
-      return updated;
+    async snapshotAllAccounts() {
+      return { date: "2026-07-01", count: accounts.length };
     },
     async listAccountSnapshots(_accountId: string) {
       return [];
