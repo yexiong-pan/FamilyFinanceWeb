@@ -70,6 +70,7 @@ import { Column, Line, Pie } from "@ant-design/charts";
 import dayjs, { type Dayjs } from "dayjs";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
+  type AccountSnapshotPoint,
   type AppData,
   type AssetTrendPoint,
   type Category,
@@ -88,6 +89,7 @@ import {
   deleteMember,
   deleteTransaction,
   importTransactions,
+  listAccountSnapshots,
   loadAppData,
   repayLiability,
   updateAccount,
@@ -1486,7 +1488,74 @@ function TotalAssetTrendTab({ data }: { data: AppData }) {
 }
 
 function SingleAccountHistoryTab({ data }: { data: AppData }) {
-  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  const [points, setPoints] = useState<AccountSnapshotPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!accountId) {
+      setPoints([]);
+      return;
+    }
+    setLoading(true);
+    listAccountSnapshots(accountId)
+      .then(setPoints)
+      .catch(() => setPoints([]))
+      .finally(() => setLoading(false));
+  }, [accountId]);
+
+  const chartData = points.map((p) => ({ date: p.date, value: Number(p.value) }));
+  const rows = points.map((p, i) => {
+    const prev = i > 0 ? Number(points[i - 1]!.value) : null;
+    const change = prev === null ? null : Number(p.value) - prev;
+    return { key: p.date, date: p.date, value: p.value, change };
+  });
+
+  return (
+    <Space direction="vertical" size={16} className="page-stack">
+      <Select
+        showSearch
+        placeholder="选择账户"
+        style={{ minWidth: 240 }}
+        options={data.accounts.map((a) => ({ label: a.name, value: a.id }))}
+        onChange={(value) => setAccountId(value)}
+      />
+      {accountId ? (
+        <>
+          <Card className="chart-card">
+            {chartData.length >= 2 ? (
+              <Line
+                data={chartData}
+                xField="date"
+                yField="value"
+                height={300}
+                point={{ size: 3 }}
+                color="#1677ff"
+                axis={{ y: { labelFormatter: (v: string) => formatMoney(v) } }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无该账户快照" />
+            )}
+          </Card>
+          <Card title="明细" className="list-card">
+            <Table
+              size="middle"
+              pagination={false}
+              loading={loading}
+              dataSource={rows}
+              columns={[
+                { title: "日期", dataIndex: "date", width: 150 },
+                { title: "金额", dataIndex: "value", width: 140, align: "right", render: (v: string) => formatMoney(v) },
+                { title: "较上次变化", dataIndex: "change", width: 140, align: "right", render: (c: number | null) => renderChange(c) }
+              ]}
+            />
+          </Card>
+        </>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择一个账户" />
+      )}
+    </Space>
+  );
 }
 
 function SnapshotRecordsTab({ data, submit }: { data: AppData; submit: PageProps["submit"] }) {
@@ -2003,6 +2072,14 @@ function renderTransactionKind(kind: FinanceTransaction["kind"]) {
   } as const;
   const [label, color] = map[kind];
   return <Tag color={color}>{label}</Tag>;
+}
+
+function renderChange(change: number | null): ReactNode {
+  if (change === null) return <Tag>初始</Tag>;
+  if (change === 0) return <Tag color="default">¥0.00</Tag>;
+  const color = change > 0 ? "red" : "green";
+  const sign = change > 0 ? "+" : "";
+  return <Tag color={color}>{sign}{formatMoney(change.toFixed(2))}</Tag>;
 }
 
 function renderAccountType(type: Account["type"]) {
