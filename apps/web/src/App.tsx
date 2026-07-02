@@ -68,7 +68,7 @@ import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
 import { Column, Line, Pie } from "@ant-design/charts";
 import dayjs, { type Dayjs } from "dayjs";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AccountSnapshotPoint,
   type AppData,
@@ -1577,19 +1577,26 @@ function SnapshotRecordsTab({ data, submit }: { data: AppData; submit: PageProps
   const [records, setRecords] = useState<AccountSnapshotRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const requestIdRef = useRef(0);
+
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     listAllSnapshots({
       accountId,
       from: range?.[0]?.format("YYYY-MM-DD"),
       to: range?.[1]?.format("YYYY-MM-DD")
     })
-      .then((r) => setRecords(r))
+      .then((r) => {
+        if (requestId === requestIdRef.current) setRecords(r);
+      })
       .catch((e) => {
         console.error("listAllSnapshots failed", e);
-        setRecords([]);
+        if (requestId === requestIdRef.current) setRecords([]);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false);
+      });
   }, [accountId, range]);
 
   useEffect(() => {
