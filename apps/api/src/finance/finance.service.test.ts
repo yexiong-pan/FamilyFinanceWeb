@@ -94,6 +94,13 @@ describe("FinanceService", () => {
     expect((await service.listAccounts())[0]?.currentValue).toBe("1500.00");
   });
 
+  it("lists all snapshots and deletes one through the service", async () => {
+    const service = new FinanceService(createRepository());
+    const all = await service.listAllSnapshots({ accountId: "a1" });
+    expect(all).toEqual([]);
+    await expect(service.deleteSnapshot("s1")).resolves.toBeUndefined();
+  });
+
   it("keeps only default configuration, not fake finance records", async () => {
     const service = new FinanceService(createRepository());
 

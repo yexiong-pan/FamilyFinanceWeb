@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type {
   Account,
+  AccountSnapshotRecord,
   AssetTrendPoint,
   Budget,
   DashboardSummary,
@@ -110,6 +111,14 @@ export class FinanceService {
 
   async listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]> {
     return this.repository.listAccountSnapshots(accountId);
+  }
+
+  async listAllSnapshots(filter?: { accountId?: string; from?: string; to?: string }): Promise<AccountSnapshotRecord[]> {
+    return this.repository.listAllSnapshots(filter);
+  }
+
+  async deleteSnapshot(id: string): Promise<void> {
+    return this.repository.deleteSnapshot(id);
   }
 
   async deleteAccount(id: string): Promise<void> {
