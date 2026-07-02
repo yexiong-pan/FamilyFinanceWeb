@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountSnapshotRecord,
   AssetTrendPoint,
   Budget,
   DashboardSummary,
@@ -117,13 +118,28 @@ export async function snapshotAllAccounts(): Promise<{ date: string; count: numb
   return postJson("/accounts/snapshots", {});
 }
 
-export interface AccountSnapshotRecord {
+export interface AccountSnapshotPoint {
   date: string;
   value: string;
 }
 
-export async function listAccountSnapshots(accountId: string): Promise<AccountSnapshotRecord[]> {
+export async function listAccountSnapshots(accountId: string): Promise<AccountSnapshotPoint[]> {
   return getJson(`/accounts/${accountId}/snapshots`);
+}
+
+export async function listAllSnapshots(
+  filter?: { accountId?: string; from?: string; to?: string }
+): Promise<AccountSnapshotRecord[]> {
+  const params = new URLSearchParams();
+  if (filter?.accountId) params.set("accountId", filter.accountId);
+  if (filter?.from) params.set("from", filter.from);
+  if (filter?.to) params.set("to", filter.to);
+  const query = params.toString();
+  return getJson(`/accounts/snapshots${query ? `?${query}` : ""}`);
+}
+
+export async function deleteSnapshot(id: string): Promise<void> {
+  return del(`/accounts/snapshots/${id}`);
 }
 
 export async function deleteAccount(id: string): Promise<void> {
