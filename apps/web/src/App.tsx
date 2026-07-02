@@ -1486,7 +1486,79 @@ function AssetHistoryPage(props: PageProps) {
 }
 
 function TotalAssetTrendTab({ data }: { data: AppData }) {
-  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [dayRecords, setDayRecords] = useState<AccountSnapshotRecord[]>([]);
+  const [dayLoading, setDayLoading] = useState(false);
+
+  const chartData = data.assetTrend.map((p) => ({ date: p.date, value: Number.parseFloat(p.totalAssets) }));
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setDayRecords([]);
+      return;
+    }
+    let cancelled = false;
+    setDayLoading(true);
+    listAllSnapshots({ from: selectedDate, to: selectedDate })
+      .then((r) => {
+        if (!cancelled) setDayRecords(r);
+      })
+      .catch((e) => {
+        console.error("listAllSnapshots failed", e);
+        if (!cancelled) setDayRecords([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDayLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate]);
+
+  return (
+    <Space direction="vertical" size={16} className="page-stack">
+      <Card title="总资产变化" className="chart-card">
+        {chartData.length >= 2 ? (
+          <Line
+            data={chartData}
+            xField="date"
+            yField="value"
+            height={320}
+            point={{ size: 3 }}
+            color="#1677ff"
+            slider={{}}
+            axis={{ y: { labelFormatter: (v: string) => `${Number(v) / 1000}k` } }}
+            onEvent={(event: { type?: string; data?: { data?: { date?: string } } }) => {
+              if (event?.type === "element:click" && event.data?.data?.date) {
+                const d = event.data.data.date;
+                setSelectedDate((prev) => (prev === d ? null : d));
+              }
+            }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无资产快照数据" />
+        )}
+      </Card>
+      {selectedDate ? (
+        <Card title={`${selectedDate} 快照明细`} className="list-card" loading={dayLoading}>
+          {dayRecords.length ? (
+            <Table
+              size="middle"
+              pagination={false}
+              dataSource={dayRecords}
+              columns={[
+                { title: "账户", dataIndex: "accountName", width: 180 },
+                { title: "归属", dataIndex: "ownerName", width: 100, render: (v: string) => renderOwnerTag(v, data.members) },
+                { title: "金额", dataIndex: "value", width: 140, align: "right", render: (v: string) => formatMoney(v) }
+              ]}
+            />
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当日无快照" />
+          )}
+        </Card>
+      ) : null}
+    </Space>
+  );
 }
 
 function SingleAccountHistoryTab({ data }: { data: AppData }) {
