@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from "@nestjs/common";
 import type {
   Account,
+  AccountSnapshotRecord,
   AssetTrendPoint,
   Budget,
   FamilyMemberInfo,
@@ -105,6 +106,20 @@ export class FinanceController {
   @Get("accounts/:id/snapshots")
   listAccountSnapshots(@Param("id") id: string): Promise<{ date: string; value: string }[]> {
     return this.financeService.listAccountSnapshots(id);
+  }
+
+  @Get("accounts/snapshots")
+  listAllSnapshots(
+    @Query("accountId") accountId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ): Promise<AccountSnapshotRecord[]> {
+    return this.financeService.listAllSnapshots({ accountId, from, to });
+  }
+
+  @Delete("accounts/snapshots/:id")
+  deleteSnapshot(@Param("id") id: string): Promise<void> {
+    return this.financeService.deleteSnapshot(id);
   }
 
   @Delete("accounts/:id")

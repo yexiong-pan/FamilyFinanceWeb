@@ -26,6 +26,20 @@ describe("FinanceController", () => {
       monthlyExpense: "0.00"
     });
   });
+
+  it("routes aggregate snapshot query and delete through the controller", async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [FinanceController],
+      providers: [
+        FinanceService,
+        { provide: FINANCE_REPOSITORY, useValue: createEmptyRepository() }
+      ]
+    }).compile();
+    const controller = moduleRef.get(FinanceController);
+
+    await expect(controller.listAllSnapshots("a1", "2026-07-01", "2026-07-02")).resolves.toEqual([]);
+    await expect(controller.deleteSnapshot("s1")).resolves.toBeUndefined();
+  });
 });
 
 function createEmptyRepository(): FinanceRepository {
