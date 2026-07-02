@@ -33,7 +33,7 @@ import type {
   InvestmentHolding,
   Liability
 } from "@family-finance/shared";
-import { formatMoney } from "@family-finance/shared";
+import { formatMoney, type AccountSnapshotRecord } from "@family-finance/shared";
 import {
   Alert,
   App as AntApp,
@@ -68,7 +68,7 @@ import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
 import { Column, Line, Pie } from "@ant-design/charts";
 import dayjs, { type Dayjs } from "dayjs";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AccountSnapshotPoint,
   type AppData,
@@ -87,9 +87,11 @@ import {
   deleteInvestment,
   deleteLiability,
   deleteMember,
+  deleteSnapshot,
   deleteTransaction,
   importTransactions,
   listAccountSnapshots,
+  listAllSnapshots,
   loadAppData,
   repayLiability,
   updateAccount,
@@ -1570,7 +1572,99 @@ function SingleAccountHistoryTab({ data }: { data: AppData }) {
 }
 
 function SnapshotRecordsTab({ data, submit }: { data: AppData; submit: PageProps["submit"] }) {
-  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const [records, setRecords] = useState<AccountSnapshotRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    listAllSnapshots({
+      accountId,
+      from: range?.[0]?.format("YYYY-MM-DD"),
+      to: range?.[1]?.format("YYYY-MM-DD")
+    })
+      .then((r) => setRecords(r))
+      .catch((e) => {
+        console.error("listAllSnapshots failed", e);
+        setRecords([]);
+      })
+      .finally(() => setLoading(false));
+  }, [accountId, range]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const rows = useMemo(() => {
+    const byAccount = new Map<string, AccountSnapshotRecord[]>();
+    for (const r of records) {
+      const list = byAccount.get(r.accountId) ?? [];
+      list.push(r);
+      byAccount.set(r.accountId, list);
+    }
+    const withChange: (AccountSnapshotRecord & { change: number | null })[] = [];
+    for (const list of byAccount.values()) {
+      list.sort((a, b) => a.date.localeCompare(b.date));
+      list.forEach((r, i) => {
+        const prev = i > 0 ? Number(list[i - 1]!.value) : null;
+        withChange.push({ ...r, change: prev === null ? null : Number(r.value) - prev });
+      });
+    }
+    return withChange.sort((a, b) => b.date.localeCompare(a.date));
+  }, [records]);
+
+  return (
+    <Space direction="vertical" size={16} className="page-stack">
+      <Space size={8} wrap>
+        <Select
+          allowClear
+          placeholder="全部账户"
+          style={{ minWidth: 180 }}
+          options={data.accounts.map((a) => ({ label: a.name, value: a.id }))}
+          value={accountId}
+          onChange={(v) => setAccountId(v)}
+        />
+        <DatePicker.RangePicker
+          value={range}
+          onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)}
+        />
+      </Space>
+      <Card className="list-card">
+        <Table
+          rowKey="id"
+          size="middle"
+          loading={loading}
+          dataSource={rows}
+          columns={[
+            { title: "日期", dataIndex: "date", width: 150 },
+            { title: "账户", dataIndex: "accountName", width: 160 },
+            { title: "归属", dataIndex: "ownerName", width: 100, render: (v: string) => renderOwnerTag(v, data.members) },
+            { title: "金额", dataIndex: "value", width: 140, align: "right", render: (v: string) => formatMoney(v) },
+            { title: "较上次变化", dataIndex: "change", width: 140, align: "right", render: (c: number | null) => renderChange(c) },
+            {
+              title: "操作",
+              key: "actions",
+              width: 100,
+              render: (_, record) => (
+                <Popconfirm
+                  title="确认删除该快照？"
+                  okText="删除"
+                  okButtonProps={{ danger: true }}
+                  cancelText="取消"
+                  onConfirm={() =>
+                    submit(() => deleteSnapshot(record.id), { success: "快照已删除", onSuccess: load })
+                  }
+                >
+                  <Button type="link" size="small" danger>删除</Button>
+                </Popconfirm>
+              )
+            }
+          ]}
+        />
+      </Card>
+    </Space>
+  );
 }
 
 function SettingsPage(props: PageProps) {
