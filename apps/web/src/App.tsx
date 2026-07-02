@@ -8,6 +8,7 @@ import {
   FundProjectionScreenOutlined,
   GiftOutlined,
   HeartOutlined,
+  HistoryOutlined,
   HomeOutlined,
   ManOutlined,
   PieChartOutlined,
@@ -58,6 +59,7 @@ import {
   Spin,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Typography,
   Upload
@@ -107,6 +109,7 @@ type PageKey =
   | "dashboard"
   | "transactions"
   | "accounts"
+  | "assetHistory"
   | "liabilities"
   | "budgets"
   | "investments"
@@ -218,6 +221,7 @@ function AppShell() {
               { key: "dashboard", icon: <PieChartOutlined />, label: "仪表盘" },
               { key: "transactions", icon: <DatabaseOutlined />, label: "收支流水" },
               { key: "accounts", icon: <BankOutlined />, label: "资产账户" },
+              { key: "assetHistory", icon: <HistoryOutlined />, label: "资产历史" },
               { key: "liabilities", icon: <CreditCardOutlined />, label: "负债" },
               { key: "budgets", icon: <BarChartOutlined />, label: "预算" },
               { key: "investments", icon: <FundProjectionScreenOutlined />, label: "投资持仓" },
@@ -256,6 +260,7 @@ function AppShell() {
               {activePage === "dashboard" ? <DashboardPage data={data} /> : null}
               {activePage === "transactions" ? <TransactionsPage {...commonProps} /> : null}
               {activePage === "accounts" ? <AccountsPage {...commonProps} /> : null}
+              {activePage === "assetHistory" ? <AssetHistoryPage {...commonProps} /> : null}
               {activePage === "liabilities" ? <LiabilitiesPage {...commonProps} /> : null}
               {activePage === "budgets" ? <BudgetsPage {...commonProps} /> : null}
               {activePage === "investments" ? <InvestmentsPage {...commonProps} /> : null}
@@ -1459,6 +1464,35 @@ function ProfitTrendChart({ data }: { data: AssetTrendPoint[] }) {
   );
 }
 
+function AssetHistoryPage(props: PageProps) {
+  return (
+    <Tabs
+      defaultActiveKey="total"
+      items={[
+        { key: "total", label: "总资产趋势", children: <TotalAssetTrendTab data={props.data} /> },
+        { key: "single", label: "单账户历史", children: <SingleAccountHistoryTab data={props.data} /> },
+        {
+          key: "records",
+          label: "快照记录",
+          children: <SnapshotRecordsTab data={props.data} submit={props.submit} />
+        }
+      ]}
+    />
+  );
+}
+
+function TotalAssetTrendTab({ data }: { data: AppData }) {
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+}
+
+function SingleAccountHistoryTab({ data }: { data: AppData }) {
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+}
+
+function SnapshotRecordsTab({ data, submit }: { data: AppData; submit: PageProps["submit"] }) {
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="待实现" />;
+}
+
 function SettingsPage(props: PageProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
@@ -1915,6 +1949,7 @@ function pageTitle(activePage: PageKey): string {
     dashboard: "仪表盘",
     transactions: "收支流水",
     accounts: "资产账户",
+    assetHistory: "资产历史",
     liabilities: "负债",
     budgets: "预算",
     investments: "投资持仓",
