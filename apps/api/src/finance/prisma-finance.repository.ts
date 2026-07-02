@@ -3,6 +3,7 @@ import type { Prisma, Account as DbAccount, Budget as DbBudget, Category as DbCa
 import { normalizeMoney } from "@family-finance/shared";
 import type {
   Account,
+  AccountSnapshotRecord,
   AssetTrendPoint,
   Budget,
   FamilyMemberInfo,
@@ -392,6 +393,41 @@ export class PrismaFinanceRepository implements FinanceRepository {
       orderBy: { date: "asc" }
     });
     return snapshots.map((s) => ({ date: formatDate(s.date), value: decimalToMoney(s.value) }));
+  }
+
+  async listAllSnapshots(filter?: { accountId?: string; from?: string; to?: string }): Promise<AccountSnapshotRecord[]> {
+    await this.ensureBaseData();
+    const where: Prisma.AccountSnapshotWhereInput = { familyId: DEFAULT_FAMILY_ID };
+    if (filter?.accountId) where.accountId = filter.accountId;
+    if (filter?.from || filter?.to) {
+      where.date = {};
+      if (filter?.from) where.date.gte = parseDate(filter.from);
+      if (filter?.to) where.date.lte = parseDate(filter.to);
+    }
+    const [snapshots, accounts] = await Promise.all([
+      this.prisma.accountSnapshot.findMany({ where, orderBy: { date: "asc" } }),
+      this.prisma.account.findMany({ where: { familyId: DEFAULT_FAMILY_ID, deletedAt: null } })
+    ]);
+    const accountById = new Map(accounts.map((a) => [a.id, a]));
+    return snapshots
+      .map((s): AccountSnapshotRecord | null => {
+        const account = accountById.get(s.accountId);
+        if (!account) return null;
+        return {
+          id: s.id,
+          accountId: s.accountId,
+          accountName: account.name,
+          ownerName: account.ownerName,
+          date: formatDate(s.date),
+          value: decimalToMoney(s.value)
+        };
+      })
+      .filter((r): r is AccountSnapshotRecord => r !== null);
+  }
+
+  async deleteSnapshot(id: string): Promise<void> {
+    await this.ensureBaseData();
+    await this.prisma.accountSnapshot.delete({ where: { id } });
   }
 
   async deleteAccount(id: string): Promise<void> {

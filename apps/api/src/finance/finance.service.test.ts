@@ -212,6 +212,12 @@ function createRepository(): FinanceRepository {
     async listAccountSnapshots(_accountId: string) {
       return [];
     },
+    async listAllSnapshots() {
+      return [];
+    },
+    async deleteSnapshot() {
+      return undefined;
+    },
     async deleteAccount(id: string) {
       const index = accounts.findIndex((item) => item.id === id);
       if (index >= 0) accounts.splice(index, 1);

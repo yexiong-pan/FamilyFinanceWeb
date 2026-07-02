@@ -78,6 +78,12 @@ function createEmptyRepository(): FinanceRepository {
     async listAccountSnapshots(_accountId) {
       return [];
     },
+    async listAllSnapshots() {
+      return [];
+    },
+    async deleteSnapshot() {
+      return undefined;
+    },
     async deleteAccount() {
       return undefined;
     },

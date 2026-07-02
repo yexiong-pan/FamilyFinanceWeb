@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountSnapshotRecord,
   AssetTrendPoint,
   Budget,
   FamilyMemberInfo,
@@ -41,6 +42,8 @@ export interface FinanceRepository {
   updateAccount(id: string, input: UpdateAccountInput): Promise<Account>;
   snapshotAllAccounts(): Promise<{ date: string; count: number }>;
   listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]>;
+  listAllSnapshots(filter?: { accountId?: string; from?: string; to?: string }): Promise<AccountSnapshotRecord[]>;
+  deleteSnapshot(id: string): Promise<void>;
   deleteAccount(id: string): Promise<void>;
   listTransactions(filter?: { month?: string }): Promise<FinanceTransaction[]>;
   createTransaction(input: CreateTransactionInput): Promise<FinanceTransaction>;
