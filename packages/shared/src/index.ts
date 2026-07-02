@@ -87,6 +87,15 @@ export interface AssetTrendPoint {
   totalAssets: MoneyAmount;
 }
 
+export interface AccountSnapshotRecord {
+  id: string;
+  accountId: string;
+  accountName: string;
+  ownerName: string;
+  date: string;
+  value: MoneyAmount;
+}
+
 export interface ImportTransactionItem {
   date: string;
   kind: TransactionKind;
