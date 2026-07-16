@@ -6,160 +6,160 @@
 | --- | --- | --- |
 | `apps/api` | 后端 API | NestJS + Prisma + PostgreSQL |
 | `apps/web` | 前端 | React + Vite + Ant Design |
-| `packages/shared` | 前后端共享的类型与领域逻辑 | TypeScript |
+| `packages/shared` | 前后端共享类型与领域逻辑 | TypeScript |
 
-## 端口约定
+## 环境划分
 
-| 服务 | 本地开发 | 容器（docker compose） |
-| --- | --- | --- |
-| Web 前端 | `5173`（Vite dev） | `5173 → 4173`（vite preview） |
-| API 后端 | `4000` | `4000` |
-| PostgreSQL | — | `5433 → 5432`（宿主机用 `5433` 连接） |
+| 环境 | Web | API | PostgreSQL |
+| --- | --- | --- | --- |
+| 本地开发 | Vite `http://localhost:5173` | NestJS `http://localhost:4000/api` | Docker `localhost:5433` |
+| NAS 生产 | Nginx `http://NAS_IP:5173` | 仅容器内部 `api:4000` | 仅容器内部 `postgres:5432` |
 
----
+本地开发和 NAS 生产使用不同的 Compose 文件与数据库，互不影响：
 
-## 1. 本地开发（推荐）
+- `docker-compose.dev.yml`：只启动本地开发数据库。
+- `docker-compose.yml`：构建并启动 NAS 生产环境的 Web、API 和数据库。
 
-本地直接运行前后端 Node 服务，数据库用容器里的 PostgreSQL。
+## 1. 本地开发
 
 ### 1.1 前置条件
 
-- Node.js 24+（与镜像保持一致）
-- Docker（仅用于跑数据库）
+- Node.js 24+
+- Docker Desktop
 
-### 1.2 只启动数据库容器
-
-```bash
-docker compose up -d postgres
-```
-
-数据库会监听宿主机的 **5433** 端口（数据持久化在 `family-finance-postgres` 这个 volume 里）。
-
-### 1.3 安装依赖
-
-在仓库根目录执行（npm workspaces 会安装所有子包）：
+### 1.2 安装依赖和配置
 
 ```bash
 npm install
-```
-
-### 1.4 配置后端环境变量
-
-后端通过 Prisma 读取 `DATABASE_URL`。npm 脚本以 `apps/api` 为工作目录运行，所以 `.env` 要放在 **`apps/api/.env`**：
-
-```bash
 cp .env.example apps/api/.env
 ```
 
-`apps/api/.env` 内容（连接容器里的库，注意端口是宿主机映射的 `5433`）：
+`apps/api/.env` 默认连接本地开发数据库：
 
 ```env
 DATABASE_URL="postgresql://family_finance:family_finance@localhost:5433/family_finance?schema=public"
 API_PORT=4000
 ```
 
-> 前端本地开发无需配置环境变量：默认请求 `http://localhost:4000/api`。
-> 如需指向其它地址，给 `apps/web` 设置 `VITE_API_BASE_URL`。
+前端本地开发默认请求 `http://localhost:4000/api`，无需额外环境变量。
 
-### 1.5 初始化数据库表
-
-首次启动、或改了 `apps/api/prisma/schema.prisma` 后执行：
+### 1.3 启动
 
 ```bash
-npm run db:generate   # 生成 Prisma Client
-npm run db:migrate    # 创建/更新表（prisma migrate dev）
-```
-
-> 想快速同步 schema 而不生成 migration 历史，可用：
-> `npm run prisma:push -w @family-finance/api`（等价于 `prisma db push`）。
-> 后端首次响应请求时会自动写入基础数据（家庭、成员、默认分类）。
-
-### 1.6 启动前后端
-
-一条命令同时起前后端：
-
-```bash
+npm run dev:db
+npm run prisma:push -w @family-finance/api
 npm run dev
 ```
 
-或分别启动：
+常用命令：
 
 ```bash
-npm run dev:api   # 后端 http://localhost:4000/api
-npm run dev:web   # 前端 http://localhost:5173
+npm run dev:db:down  # 停止本地数据库，保留数据卷
+npm run dev:api      # 只启动 API
+npm run dev:web      # 只启动 Web
+npm run test
+npm run typecheck
+npm run build
 ```
 
-打开 http://localhost:5173 即可。
+## 2. NAS 生产部署
 
----
+### 2.1 运行结构
 
-## 2. 常用脚本
+生产环境只开放 Web 端口。Nginx 提供静态页面，并将浏览器的 `/api` 请求转发到内部 API 容器：
 
-在仓库根目录运行：
+```text
+浏览器 -> NAS:5173 -> Nginx Web -> API -> PostgreSQL
+```
+
+### 2.2 准备群晖目录
+
+建议创建：
+
+```text
+/volume1/docker/family-finance/
+├── app/       # 本项目源码
+└── postgres/  # 生产数据库持久化目录
+```
+
+将项目上传到 `app` 目录，然后在项目根目录创建 `.env`：
 
 ```bash
-npm run build       # 构建全部 workspace
-npm run test        # 运行全部测试
-npm run typecheck   # 类型检查
-npm run db:generate # 生成 Prisma Client
-npm run db:migrate  # 数据库迁移
+cp .env.nas.example .env
 ```
 
----
+修改 `.env`：
 
-## 3. 打包与运行镜像（docker compose）
+```env
+POSTGRES_PASSWORD=请替换为足够长的随机字母数字密码
+POSTGRES_DATA_PATH=/volume1/docker/family-finance/postgres
+WEB_PORT=5173
+```
 
-`docker-compose.yml` 定义了三个服务：`postgres`、`api`、`web`。
+数据库密码会用于 PostgreSQL URL，请只使用大小写字母和数字。
 
-### 3.1 构建镜像
+### 2.3 使用 Container Manager 部署
+
+1. 在群晖套件中心安装 `Container Manager`。
+2. 打开 `Container Manager -> 项目 -> 新增`。
+3. 项目名称填写 `family-finance`。
+4. 项目路径选择 `/volume1/docker/family-finance/app`。
+5. 使用项目根目录的 `docker-compose.yml`。
+6. 选择构建并启动项目。
+7. 等待 `postgres`、`api`、`web` 三个服务正常运行。
+
+访问地址：
+
+```text
+http://群晖局域网IP:5173
+```
+
+系统当前没有登录鉴权。仅允许家庭局域网访问 `WEB_PORT`，不要在路由器上开放该端口到公网。
+
+### 2.4 使用命令行部署
+
+在安装了 Docker Compose 的主机上也可以执行：
 
 ```bash
-docker compose build
+npm run nas:config
+npm run nas:up
+docker compose -p family-finance-nas ps
+docker compose -p family-finance-nas logs -f api
 ```
 
-- `api` 镜像：构建时执行 `prisma generate` 与 `tsc`，容器启动时先 `prisma db push` 同步表结构，再启动服务。
-- `web` 镜像：构建时执行 `vite build`，构建参数 `VITE_API_BASE_URL` 默认 `http://localhost:4000/api`。
-
-### 3.2 启动整套（含数据库）
+停止生产容器：
 
 ```bash
-docker compose up -d --build
+npm run nas:down
 ```
 
-启动后访问：
+PostgreSQL 数据保存在 `POSTGRES_DATA_PATH`，停止、重建或升级容器不会清空该目录。本阶段不配置自动备份。
 
-- 前端：http://localhost:5173
-- 后端：http://localhost:4000/api
+### 2.5 更新版本
 
-容器内 API 通过 `postgres:5432`（compose 内部网络）连库，无需 `.env` —— `DATABASE_URL` 已在 compose 中注入。
+1. 替换 NAS `app` 目录中的项目文件，保留 `.env`。
+2. 在 Container Manager 的项目详情中重新构建并启动。
+3. 确认三个服务均正常，再打开页面检查。
 
-### 3.3 查看日志 / 停止
+API 容器启动时会运行 `prisma db push`，自动将生产数据库结构同步到当前版本。
 
-```bash
-docker compose logs -f api      # 查看后端日志
-docker compose ps               # 查看服务状态
-docker compose stop             # 停止容器（保留数据）
-docker compose down             # 停止并删除容器（保留数据 volume）
-docker compose down -v          # 连同数据库数据一起删除
-```
+## 3. 目录结构
 
----
-
-## 4. 目录结构
-
-```
+```text
 FamilyFinanceWeb/
 ├── apps/
-│   ├── api/                 # NestJS 后端
+│   ├── api/
 │   │   ├── prisma/schema.prisma
 │   │   ├── src/
 │   │   └── Dockerfile
-│   └── web/                 # React 前端
+│   └── web/
+│       ├── nginx.conf
 │       ├── src/
 │       └── Dockerfile
-├── packages/
-│   └── shared/              # 共享类型与领域逻辑
+├── packages/shared/
+├── docker-compose.dev.yml
 ├── docker-compose.yml
 ├── .env.example
-└── package.json             # workspaces 根
+├── .env.nas.example
+└── package.json
 ```

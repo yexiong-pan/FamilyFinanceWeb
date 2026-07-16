@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardSummary } from "@family-finance/shared";
-import { buildDashboardViewModel } from "./view-model";
+import { buildMonthlyReportViewModel } from "./view-model";
 
 const summary: DashboardSummary = {
   totalAssets: "490000.00",
@@ -33,35 +33,37 @@ const summary: DashboardSummary = {
   ]
 };
 
-describe("buildDashboardViewModel", () => {
-  it("formats metric cards and chart rows for Ant Design dashboard components", () => {
-    const model = buildDashboardViewModel(summary);
+describe("buildMonthlyReportViewModel", () => {
+  it("shows monthly income, expense, balance, and member cashflow", () => {
+    const model = buildMonthlyReportViewModel(summary);
 
-    expect(model.metrics.map((item) => item.title)).toEqual([
-      "当前总资产",
-      "净资产",
-      "本月应还",
-      "本月收入",
-      "本月支出",
-      "本月结余",
+    expect(model.cashflowMetrics).toEqual([
+      { title: "本月收入", value: "¥42,000.00", tone: "income" },
+      { title: "本月支出", value: "¥13,960.00", tone: "expense" },
+      { title: "本月结余", value: "¥28,040.00", tone: "income" }
+    ]);
+    expect(model.supportingMetrics.map((item) => item.title)).toEqual([
+      "家庭净资产",
+      "总负债",
       "投资收益"
     ]);
-    expect(model.metrics[0]?.value).toBe("¥490,000.00");
-    expect(model.metrics[1]?.value).toBe("¥370,000.00");
-    expect(model.metrics[6]?.trend).toBe("收益率 6.06%");
-    expect(model.metrics.map((item) => item.tone)).toEqual([
-      "asset",
-      "asset",
-      "expense",
-      "income",
-      "expense",
-      "income",
-      "income"
-    ]);
+    expect(model.supportingMetrics[0]?.value).toBe("¥370,000.00");
+    expect(model.supportingMetrics[2]?.trend).toBe("收益率 6.06%");
     expect(model.categoryChart).toEqual([
       { type: "房贷", value: 8500 },
       { type: "育儿", value: 2400 }
     ]);
-    expect(model.budgetHighlights[0]?.percent).toBe(100);
+    expect(model.topCategories).toEqual([
+      { name: "房贷", amount: "¥8,500.00", percent: 60.9 },
+      { name: "育儿", amount: "¥2,400.00", percent: 17.2 }
+    ]);
+    expect(model.memberCashflow).toEqual([
+      {
+        memberName: "家庭共同",
+        income: "¥42,000.00",
+        expense: "¥13,960.00",
+        balance: "¥28,040.00"
+      }
+    ]);
   });
 });

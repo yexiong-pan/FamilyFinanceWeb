@@ -1,7 +1,8 @@
 export type MoneyAmount = string;
 
-export type AccountType = "bankCard" | "cash" | "alipay" | "wechat" | "fund" | "stock" | "other";
+export type AccountType = string;
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
+export type TransactionSource = "manual" | "alipay" | "wechat";
 export type InvestmentHoldingType = "fund" | "stock" | "etf";
 export type LiabilityType =
   | "mortgage"
@@ -32,6 +33,9 @@ export interface FinanceTransaction {
   memberName: string;
   amount: MoneyAmount;
   note?: string;
+  source?: TransactionSource;
+  sourceCategory?: string;
+  confirmedAt?: string;
 }
 
 export interface Budget {
@@ -48,8 +52,17 @@ export interface InvestmentHolding {
   type: InvestmentHoldingType;
   accountId: string;
   marketValue: MoneyAmount;
+  investedAmount?: MoneyAmount;
   profit: MoneyAmount;
   note?: string;
+}
+
+export interface MonthlyReviewStatus {
+  month: string;
+  spending: boolean;
+  assets: boolean;
+  liabilities: boolean;
+  investments: boolean;
 }
 
 export interface Liability {
@@ -96,18 +109,121 @@ export interface AccountSnapshotRecord {
   value: MoneyAmount;
 }
 
+export interface MonthlyAssetSnapshotItem {
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  ownerName: string;
+  value: MoneyAmount;
+  change?: MoneyAmount;
+}
+
+export interface MonthlyLiabilitySnapshotItem {
+  liabilityId: string;
+  liabilityName: string;
+  ownerName: string;
+  currentBalance: MoneyAmount;
+  monthlyPayment?: MoneyAmount;
+  remainingPeriods?: number;
+  change?: MoneyAmount;
+}
+
+export interface MonthlyInvestmentSnapshotItem {
+  holdingId: string;
+  holdingName: string;
+  code: string;
+  accountName: string;
+  investedAmount: MoneyAmount;
+  marketValue: MoneyAmount;
+  profit: MoneyAmount;
+  returnRate: number;
+  change?: MoneyAmount;
+}
+
+export interface MonthlySnapshotData {
+  month: string;
+  review: MonthlyReviewStatus;
+  summary: {
+    totalAssets: MoneyAmount;
+    totalLiabilities: MoneyAmount;
+    netAssets: MoneyAmount;
+    investmentMarketValue: MoneyAmount;
+    investmentProfit: MoneyAmount;
+    netAssetsChange?: MoneyAmount;
+  };
+  assets: MonthlyAssetSnapshotItem[];
+  liabilities: MonthlyLiabilitySnapshotItem[];
+  investments: MonthlyInvestmentSnapshotItem[];
+}
+
+export interface YearlyReportMonth {
+  month: string;
+  income: MoneyAmount;
+  expense: MoneyAmount;
+  balance: MoneyAmount;
+  review: MonthlyReviewStatus;
+  totalAssets?: MoneyAmount;
+  totalLiabilities?: MoneyAmount;
+  netAssets?: MoneyAmount;
+  investmentMarketValue?: MoneyAmount;
+  investmentProfit?: MoneyAmount;
+}
+
+export interface YearlyReportData {
+  year: string;
+  summary: {
+    totalIncome: MoneyAmount;
+    totalExpense: MoneyAmount;
+    balance: MoneyAmount;
+    savingsRate: number;
+    yearEndNetAssets?: MoneyAmount;
+    netAssetsChange?: MoneyAmount;
+    yearEndSnapshotMonth?: string;
+    yearEndInvestmentMarketValue?: MoneyAmount;
+    yearEndInvestmentProfit?: MoneyAmount;
+  };
+  months: YearlyReportMonth[];
+  categories: Array<{
+    categoryName: string;
+    amount: MoneyAmount;
+    percent: number;
+    previousYearAmount?: MoneyAmount;
+    changeRate?: number;
+  }>;
+  members: Array<{
+    memberName: string;
+    income: MoneyAmount;
+    expense: MoneyAmount;
+    balance: MoneyAmount;
+    expensePercent: number;
+  }>;
+  highlights: {
+    highestExpenseMonth?: string;
+    topCategory?: string;
+    bestSavingsMonth?: string;
+  };
+}
+
 export interface ImportTransactionItem {
   date: string;
   kind: TransactionKind;
   categoryName: string;
   amount: MoneyAmount;
   note?: string;
+  sourceCategory?: string;
 }
 
 export interface FamilyMemberInfo {
   id: string;
   name: string;
   icon?: string;
+}
+
+export interface AccountTypeOption {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  isActive: boolean;
 }
 
 export interface BudgetUsage {
@@ -162,9 +278,17 @@ export function calculateDashboardSummary(input: DashboardSummaryInput): Dashboa
       .map((transaction) => transaction.amount)
   );
   const investmentMarketValue = sumMoney(input.holdings.map((holding) => holding.marketValue));
-  const investmentProfit = sumMoney(input.holdings.map((holding) => holding.profit));
-  const investmentProfitCents = toCents(investmentProfit);
-  const investmentCostCents = toCents(investmentMarketValue) - investmentProfitCents;
+  const investmentCostCents = input.holdings.reduce(
+    (total, holding) =>
+      total +
+      toCents(
+        holding.investedAmount ??
+          fromCents(toCents(holding.marketValue) - toCents(holding.profit))
+      ),
+    0
+  );
+  const investmentProfitCents = toCents(investmentMarketValue) - investmentCostCents;
+  const investmentProfit = fromCents(investmentProfitCents);
   const investmentCost = fromCents(investmentCostCents);
 
   const activeLiabilities = (input.liabilities ?? []).filter(

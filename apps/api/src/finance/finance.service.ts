@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type {
   Account,
   AccountSnapshotRecord,
+  AccountTypeOption,
   AssetTrendPoint,
   Budget,
   DashboardSummary,
@@ -9,11 +10,17 @@ import type {
   FinanceTransaction,
   InvestmentHolding,
   Liability,
-  MoneyAmount
+  MonthlyReviewStatus,
+  MonthlySnapshotData,
+  MoneyAmount,
+  YearlyReportData
 } from "@family-finance/shared";
 import { calculateDashboardSummary } from "@family-finance/shared";
 import type {
+  AccountTypeInput,
   Category,
+  CategoryMapping,
+  CategoryMappingInput,
   CategoryInput,
   CreateAccountInput,
   UpdateAccountInput,
@@ -29,6 +36,7 @@ import {
   FINANCE_REPOSITORY,
   type FinanceRepository
 } from "./finance.repository";
+import { buildYearlyReport } from "./yearly-report";
 
 @Injectable()
 export class FinanceService {
@@ -37,11 +45,11 @@ export class FinanceService {
   async getDashboardSummary(month: string): Promise<DashboardSummary> {
     await this.repository.ensureBaseData();
     const [accounts, transactions, budgets, holdings, liabilities] = await Promise.all([
-      this.repository.listAccounts(),
+      this.repository.listAccountsForMonth(month),
       this.repository.listTransactions({ month }),
       this.repository.listBudgets(month),
-      this.repository.listHoldings(),
-      this.repository.listLiabilities()
+      this.repository.listHoldingsForMonth(month),
+      this.repository.listLiabilitiesForMonth(month)
     ]);
     return calculateDashboardSummary({
       month,
@@ -73,6 +81,22 @@ export class FinanceService {
     return this.repository.deleteMember(id);
   }
 
+  async listAccountTypes(): Promise<AccountTypeOption[]> {
+    return this.repository.listAccountTypes();
+  }
+
+  async createAccountType(input: AccountTypeInput): Promise<AccountTypeOption> {
+    return this.repository.createAccountType(input);
+  }
+
+  async updateAccountType(id: string, input: AccountTypeInput): Promise<AccountTypeOption> {
+    return this.repository.updateAccountType(id, input);
+  }
+
+  async deleteAccountType(id: string): Promise<void> {
+    return this.repository.deleteAccountType(id);
+  }
+
   async listCategories(): Promise<Category[]> {
     return this.repository.listCategories();
   }
@@ -89,8 +113,28 @@ export class FinanceService {
     return this.repository.deleteCategory(id);
   }
 
+  async listCategoryMappings(): Promise<CategoryMapping[]> {
+    return this.repository.listCategoryMappings();
+  }
+
+  async createCategoryMapping(input: CategoryMappingInput): Promise<CategoryMapping> {
+    return this.repository.createCategoryMapping(input);
+  }
+
+  async updateCategoryMapping(id: string, input: CategoryMappingInput): Promise<CategoryMapping> {
+    return this.repository.updateCategoryMapping(id, input);
+  }
+
+  async deleteCategoryMapping(id: string): Promise<void> {
+    return this.repository.deleteCategoryMapping(id);
+  }
+
   async listAccounts(): Promise<Account[]> {
     return this.repository.listAccounts();
+  }
+
+  async listAccountsForMonth(month: string): Promise<Account[]> {
+    return this.repository.listAccountsForMonth(month);
   }
 
   async getAssetTrend(): Promise<AssetTrendPoint[]> {
@@ -105,8 +149,8 @@ export class FinanceService {
     return this.repository.updateAccount(id, input);
   }
 
-  async snapshotAllAccounts(): Promise<{ date: string; count: number }> {
-    return this.repository.snapshotAllAccounts();
+  async snapshotAllAccounts(month?: string): Promise<{ date: string; count: number }> {
+    return this.repository.snapshotAllAccounts(month);
   }
 
   async listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]> {
@@ -137,6 +181,10 @@ export class FinanceService {
     return this.repository.updateTransaction(id, input);
   }
 
+  async confirmTransaction(id: string): Promise<FinanceTransaction> {
+    return this.repository.confirmTransaction(id);
+  }
+
   async deleteTransaction(id: string): Promise<void> {
     return this.repository.deleteTransaction(id);
   }
@@ -165,6 +213,10 @@ export class FinanceService {
     return this.repository.listHoldings();
   }
 
+  async listHoldingsForMonth(month: string): Promise<InvestmentHolding[]> {
+    return this.repository.listHoldingsForMonth(month);
+  }
+
   async createHolding(input: CreateInvestmentHoldingInput): Promise<InvestmentHolding> {
     return this.repository.createHolding(input);
   }
@@ -177,8 +229,16 @@ export class FinanceService {
     return this.repository.deleteHolding(id);
   }
 
+  async snapshotAllInvestments(month: string): Promise<{ month: string; count: number }> {
+    return this.repository.snapshotAllInvestments(month);
+  }
+
   async listLiabilities(): Promise<Liability[]> {
     return this.repository.listLiabilities();
+  }
+
+  async listLiabilitiesForMonth(month: string): Promise<Liability[]> {
+    return this.repository.listLiabilitiesForMonth(month);
   }
 
   async createLiability(input: CreateLiabilityInput): Promise<Liability> {
@@ -195,5 +255,32 @@ export class FinanceService {
 
   async deleteLiability(id: string): Promise<void> {
     return this.repository.deleteLiability(id);
+  }
+
+
+  async snapshotAllLiabilities(month: string): Promise<{ month: string; count: number }> {
+    return this.repository.snapshotAllLiabilities(month);
+  }
+
+  async getMonthlyReview(month: string): Promise<MonthlyReviewStatus> {
+    return this.repository.getMonthlyReview(month);
+  }
+
+  async getMonthlySnapshot(month: string): Promise<MonthlySnapshotData> {
+    return this.repository.getMonthlySnapshot(month);
+  }
+
+  async getYearlyReport(year: string): Promise<YearlyReportData> {
+    const [transactions, previousYearTransactions, members, snapshots] = await Promise.all([
+      this.repository.listTransactionsForYear(year),
+      this.repository.listTransactionsForYear(String(Number(year) - 1)),
+      this.repository.listMembers(),
+      this.repository.listAnnualSnapshotSummaries(year)
+    ]);
+    return buildYearlyReport({ year, transactions, previousYearTransactions, members, snapshots });
+  }
+
+  async confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus> {
+    return this.repository.confirmMonthlySpending(month);
   }
 }

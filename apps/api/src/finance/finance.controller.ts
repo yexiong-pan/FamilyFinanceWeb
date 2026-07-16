@@ -2,16 +2,23 @@ import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from
 import type {
   Account,
   AccountSnapshotRecord,
+  AccountTypeOption,
   AssetTrendPoint,
   Budget,
   FamilyMemberInfo,
   FinanceTransaction,
   InvestmentHolding,
-  Liability
+  Liability,
+  MonthlyReviewStatus,
+  MonthlySnapshotData,
+  YearlyReportData
 } from "@family-finance/shared";
 import { FinanceService } from "./finance.service";
 import type {
+  AccountTypeInput,
   Category,
+  CategoryMapping,
+  CategoryMappingInput,
   CategoryInput,
   CreateAccountInput,
   UpdateAccountInput,
@@ -58,6 +65,26 @@ export class FinanceController {
     return this.financeService.deleteMember(id);
   }
 
+  @Get("account-types")
+  listAccountTypes(): Promise<AccountTypeOption[]> {
+    return this.financeService.listAccountTypes();
+  }
+
+  @Post("account-types")
+  createAccountType(@Body() input: AccountTypeInput): Promise<AccountTypeOption> {
+    return this.financeService.createAccountType(input);
+  }
+
+  @Patch("account-types/:id")
+  updateAccountType(@Param("id") id: string, @Body() input: AccountTypeInput): Promise<AccountTypeOption> {
+    return this.financeService.updateAccountType(id, input);
+  }
+
+  @Delete("account-types/:id")
+  deleteAccountType(@Param("id") id: string): Promise<void> {
+    return this.financeService.deleteAccountType(id);
+  }
+
   @Get("categories")
   listCategories(): Promise<Category[]> {
     return this.financeService.listCategories();
@@ -78,9 +105,29 @@ export class FinanceController {
     return this.financeService.deleteCategory(id);
   }
 
+  @Get("category-mappings")
+  listCategoryMappings(): Promise<CategoryMapping[]> {
+    return this.financeService.listCategoryMappings();
+  }
+
+  @Post("category-mappings")
+  createCategoryMapping(@Body() input: CategoryMappingInput): Promise<CategoryMapping> {
+    return this.financeService.createCategoryMapping(input);
+  }
+
+  @Patch("category-mappings/:id")
+  updateCategoryMapping(@Param("id") id: string, @Body() input: CategoryMappingInput): Promise<CategoryMapping> {
+    return this.financeService.updateCategoryMapping(id, input);
+  }
+
+  @Delete("category-mappings/:id")
+  deleteCategoryMapping(@Param("id") id: string): Promise<void> {
+    return this.financeService.deleteCategoryMapping(id);
+  }
+
   @Get("accounts")
-  listAccounts(): Promise<Account[]> {
-    return this.financeService.listAccounts();
+  listAccounts(@Query("month") month?: string): Promise<Account[]> {
+    return month ? this.financeService.listAccountsForMonth(month) : this.financeService.listAccounts();
   }
 
   @Get("dashboard/asset-trend")
@@ -99,8 +146,8 @@ export class FinanceController {
   }
 
   @Post("accounts/snapshots")
-  snapshotAllAccounts(): Promise<{ date: string; count: number }> {
-    return this.financeService.snapshotAllAccounts();
+  snapshotAllAccounts(@Body() input: { month?: string }): Promise<{ date: string; count: number }> {
+    return this.financeService.snapshotAllAccounts(input.month);
   }
 
   @Get("accounts/:id/snapshots")
@@ -150,6 +197,11 @@ export class FinanceController {
     return this.financeService.updateTransaction(id, input);
   }
 
+  @Post("transactions/:id/confirm")
+  confirmTransaction(@Param("id") id: string): Promise<FinanceTransaction> {
+    return this.financeService.confirmTransaction(id);
+  }
+
   @Delete("transactions/:id")
   deleteTransaction(@Param("id") id: string): Promise<void> {
     return this.financeService.deleteTransaction(id);
@@ -176,8 +228,8 @@ export class FinanceController {
   }
 
   @Get("investments")
-  listHoldings(): Promise<InvestmentHolding[]> {
-    return this.financeService.listHoldings();
+  listHoldings(@Query("month") month?: string): Promise<InvestmentHolding[]> {
+    return month ? this.financeService.listHoldingsForMonth(month) : this.financeService.listHoldings();
   }
 
   @Post("investments")
@@ -198,9 +250,14 @@ export class FinanceController {
     return this.financeService.deleteHolding(id);
   }
 
+  @Post("investments/snapshots")
+  snapshotAllInvestments(@Body() input: { month: string }) {
+    return this.financeService.snapshotAllInvestments(input.month);
+  }
+
   @Get("liabilities")
-  listLiabilities(): Promise<Liability[]> {
-    return this.financeService.listLiabilities();
+  listLiabilities(@Query("month") month?: string): Promise<Liability[]> {
+    return month ? this.financeService.listLiabilitiesForMonth(month) : this.financeService.listLiabilities();
   }
 
   @Post("liabilities")
@@ -221,5 +278,31 @@ export class FinanceController {
   @Delete("liabilities/:id")
   deleteLiability(@Param("id") id: string): Promise<void> {
     return this.financeService.deleteLiability(id);
+  }
+
+
+  @Post("liabilities/snapshots")
+  snapshotAllLiabilities(@Body() input: { month: string }) {
+    return this.financeService.snapshotAllLiabilities(input.month);
+  }
+
+  @Get("monthly-review")
+  getMonthlyReview(@Query("month") month: string): Promise<MonthlyReviewStatus> {
+    return this.financeService.getMonthlyReview(month);
+  }
+
+  @Get("monthly-snapshots")
+  getMonthlySnapshot(@Query("month") month: string): Promise<MonthlySnapshotData> {
+    return this.financeService.getMonthlySnapshot(month);
+  }
+
+  @Get("reports/yearly")
+  getYearlyReport(@Query("year") year: string): Promise<YearlyReportData> {
+    return this.financeService.getYearlyReport(year);
+  }
+
+  @Post("monthly-review/spending")
+  confirmMonthlySpending(@Body() input: { month: string }): Promise<MonthlyReviewStatus> {
+    return this.financeService.confirmMonthlySpending(input.month);
   }
 }

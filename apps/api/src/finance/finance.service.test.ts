@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   Account,
+  AccountTypeOption,
   Budget,
   FinanceTransaction,
   InvestmentHolding,
@@ -12,6 +13,7 @@ import {
   type FinanceRepository
 } from "./finance.repository";
 import type {
+  AccountTypeInput,
   Category,
   CategoryInput,
   CreateAccountInput,
@@ -94,6 +96,44 @@ describe("FinanceService", () => {
     expect((await service.listAccounts())[0]?.currentValue).toBe("1500.00");
   });
 
+  it("preserves custom account types", async () => {
+    const service = new FinanceService(createRepository());
+
+    const account = await service.createAccount({
+      name: "券商理财账户",
+      type: "券商理财",
+      ownerName: "家庭共同",
+      currentValue: "12000",
+      note: "自定义类型"
+    });
+
+    expect(account.type).toBe("券商理财");
+    expect((await service.listAccounts())[0]?.type).toBe("券商理财");
+  });
+
+  it("manages account type options for settings", async () => {
+    const service = new FinanceService(createRepository());
+
+    expect((await service.listAccountTypes()).map((type) => type.name)).toEqual([
+      "银行卡",
+      "现金",
+      "支付宝",
+      "微信",
+      "基金",
+      "股票",
+      "其他"
+    ]);
+
+    const created = await service.createAccountType({ name: "券商理财" });
+    expect(created).toMatchObject({ name: "券商理财", isDefault: false, isActive: true });
+
+    const updated = await service.updateAccountType(created.id, { name: "券商账户" });
+    expect(updated.name).toBe("券商账户");
+
+    await service.deleteAccountType(created.id);
+    expect((await service.listAccountTypes()).map((type) => type.name)).not.toContain("券商账户");
+  });
+
   it("lists all snapshots and deletes one through the service", async () => {
     const service = new FinanceService(createRepository());
     const all = await service.listAllSnapshots({ accountId: "a1" });
@@ -118,6 +158,41 @@ describe("FinanceService", () => {
     expect(await service.listBudgets("2026-06")).toEqual([]);
     expect(await service.listHoldings()).toEqual([]);
   });
+
+  it("builds a historical monthly report from month-scoped financial snapshots", async () => {
+    const repository = createRepository();
+    const account = {
+      id: "account-june",
+      name: "六月余额",
+      type: "银行卡",
+      ownerName: "家庭共同",
+      currentValue: "8800.00"
+    };
+    const listAccountsForMonth = vi.fn(async () => [account]);
+    const listLiabilitiesForMonth = vi.fn(async () => []);
+    const listHoldingsForMonth = vi.fn(async () => []);
+    Object.assign(repository, { listAccountsForMonth, listLiabilitiesForMonth, listHoldingsForMonth });
+
+    const summary = await new FinanceService(repository).getDashboardSummary("2026-06");
+
+    expect(summary.totalAssets).toBe("8800.00");
+    expect(listAccountsForMonth).toHaveBeenCalledWith("2026-06");
+    expect(listLiabilitiesForMonth).toHaveBeenCalledWith("2026-06");
+    expect(listHoldingsForMonth).toHaveBeenCalledWith("2026-06");
+  });
+
+  it("confirms liability and investment snapshots for the selected month", async () => {
+    const repository = createRepository();
+    const snapshotAllLiabilities = vi.fn(async () => ({ month: "2026-07", count: 2 }));
+    const snapshotAllInvestments = vi.fn(async () => ({ month: "2026-07", count: 3 }));
+    Object.assign(repository, { snapshotAllLiabilities, snapshotAllInvestments });
+    const service = new FinanceService(repository);
+
+    await expect((service as any).snapshotAllLiabilities("2026-07")).resolves.toEqual({ month: "2026-07", count: 2 });
+    await expect((service as any).snapshotAllInvestments("2026-07")).resolves.toEqual({ month: "2026-07", count: 3 });
+    expect(snapshotAllLiabilities).toHaveBeenCalledWith("2026-07");
+    expect(snapshotAllInvestments).toHaveBeenCalledWith("2026-07");
+  });
 });
 
 function createRepository(): FinanceRepository {
@@ -134,6 +209,15 @@ function createRepository(): FinanceRepository {
     { id: "category-shopping", name: "购物", kind: "expense", isDefault: true, isActive: true },
     { id: "category-salary", name: "工资", kind: "income", isDefault: true, isActive: true },
     { id: "category-investment", name: "投资收益", kind: "income", isDefault: true, isActive: true }
+  ];
+  const accountTypes: AccountTypeOption[] = [
+    { id: "account-type-bank-card", name: "银行卡", isDefault: true, isActive: true },
+    { id: "account-type-cash", name: "现金", isDefault: true, isActive: true },
+    { id: "account-type-alipay", name: "支付宝", isDefault: true, isActive: true },
+    { id: "account-type-wechat", name: "微信", isDefault: true, isActive: true },
+    { id: "account-type-fund", name: "基金", isDefault: true, isActive: true },
+    { id: "account-type-stock", name: "股票", isDefault: true, isActive: true },
+    { id: "account-type-other", name: "其他", isDefault: true, isActive: true }
   ];
   const accounts: Account[] = [];
   const transactions: FinanceTransaction[] = [];
@@ -167,6 +251,34 @@ function createRepository(): FinanceRepository {
       const index = familyMembers.findIndex((item) => item.id === id);
       if (index >= 0) familyMembers.splice(index, 1);
     },
+    async listAccountTypes() {
+      return accountTypes.filter((item) => item.isActive);
+    },
+    async createAccountType(input: AccountTypeInput) {
+      const existing = accountTypes.find((item) => item.name === input.name);
+      if (existing) {
+        existing.isActive = true;
+        return existing;
+      }
+      const accountType: AccountTypeOption = {
+        id: `account-type-${accountTypes.length + 1}`,
+        name: input.name,
+        isDefault: false,
+        isActive: true
+      };
+      accountTypes.push(accountType);
+      return accountType;
+    },
+    async updateAccountType(id: string, input: AccountTypeInput) {
+      const accountType = accountTypes.find((item) => item.id === id);
+      if (!accountType) throw new Error("not found");
+      accountType.name = input.name;
+      return accountType;
+    },
+    async deleteAccountType(id: string) {
+      const accountType = accountTypes.find((item) => item.id === id);
+      if (accountType) accountType.isActive = false;
+    },
     async listCategories() {
       return categories.filter((item) => item.isActive);
     },
@@ -197,7 +309,22 @@ function createRepository(): FinanceRepository {
       const category = categories.find((item) => item.id === id);
       if (category) category.isActive = false;
     },
+    async listCategoryMappings() {
+      return [];
+    },
+    async createCategoryMapping(input) {
+      return { id: "mapping-1", targetCategoryName: "餐饮", ...input };
+    },
+    async updateCategoryMapping(id, input) {
+      return { id, targetCategoryName: "餐饮", ...input };
+    },
+    async deleteCategoryMapping() {
+      return undefined;
+    },
     async listAccounts() {
+      return accounts;
+    },
+    async listAccountsForMonth() {
       return accounts;
     },
     async createAccount(input: CreateAccountInput) {
@@ -235,6 +362,9 @@ function createRepository(): FinanceRepository {
     async listTransactions(filter = {}) {
       return filter.month ? transactions.filter((item) => item.date.slice(0, 7) === filter.month) : transactions;
     },
+    async listTransactionsForYear(year: string) {
+      return transactions.filter((item) => item.date.startsWith(year));
+    },
     // Transactions are an independent ledger and do not touch account balances.
     async createTransaction(input: CreateTransactionInput) {
       const transaction = { id: `transaction-${transactions.length + 1}`, ...input, amount: normalizeMoney(input.amount) };
@@ -245,6 +375,12 @@ function createRepository(): FinanceRepository {
       const transaction = { id, ...input, amount: normalizeMoney(input.amount) };
       const index = transactions.findIndex((item) => item.id === id);
       if (index >= 0) transactions[index] = transaction;
+      return transaction;
+    },
+    async confirmTransaction(id: string) {
+      const transaction = transactions.find((item) => item.id === id);
+      if (!transaction) throw new Error("not found");
+      transaction.confirmedAt = new Date().toISOString();
       return transaction;
     },
     async deleteTransaction(id: string) {
@@ -287,6 +423,12 @@ function createRepository(): FinanceRepository {
     async listHoldings() {
       return holdings;
     },
+    async listHoldingsForMonth() {
+      return holdings;
+    },
+    async snapshotAllInvestments(month: string) {
+      return { month, count: holdings.length };
+    },
     async createHolding(input: CreateInvestmentHoldingInput) {
       const holding = {
         id: `holding-${holdings.length + 1}`,
@@ -314,6 +456,37 @@ function createRepository(): FinanceRepository {
     },
     async listLiabilities() {
       return liabilities;
+    },
+    async listLiabilitiesForMonth() {
+      return liabilities;
+    },
+    async snapshotAllLiabilities(month: string) {
+      return { month, count: liabilities.length };
+    },
+    async getMonthlyReview(month: string) {
+      return { month, spending: false, assets: false, liabilities: false, investments: false };
+    },
+    async getMonthlySnapshot(month: string) {
+      return {
+        month,
+        review: { month, spending: false, assets: false, liabilities: false, investments: false },
+        summary: {
+          totalAssets: "0.00",
+          totalLiabilities: "0.00",
+          netAssets: "0.00",
+          investmentMarketValue: "0.00",
+          investmentProfit: "0.00"
+        },
+        assets: [],
+        liabilities: [],
+        investments: []
+      };
+    },
+    async listAnnualSnapshotSummaries() {
+      return [];
+    },
+    async confirmMonthlySpending(month: string) {
+      return { month, spending: true, assets: false, liabilities: false, investments: false };
     },
     async createLiability(input: CreateLiabilityInput) {
       const liability: Liability = {

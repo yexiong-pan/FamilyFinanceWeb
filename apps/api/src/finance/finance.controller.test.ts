@@ -38,6 +38,7 @@ describe("FinanceController", () => {
     const controller = moduleRef.get(FinanceController);
 
     await expect(controller.listAllSnapshots("a1", "2026-07-01", "2026-07-02")).resolves.toEqual([]);
+    await expect(controller.getMonthlySnapshot("2026-07")).resolves.toMatchObject({ month: "2026-07" });
     await expect(controller.deleteSnapshot("s1")).resolves.toBeUndefined();
   });
 });
@@ -62,6 +63,18 @@ function createEmptyRepository(): FinanceRepository {
     async deleteMember() {
       return undefined;
     },
+    async listAccountTypes() {
+      return [];
+    },
+    async createAccountType(input) {
+      return { id: "account-type-1", isDefault: false, isActive: true, ...input };
+    },
+    async updateAccountType(id, input) {
+      return { id, isDefault: false, isActive: true, ...input };
+    },
+    async deleteAccountType() {
+      return undefined;
+    },
     async listCategories() {
       return [];
     },
@@ -74,7 +87,22 @@ function createEmptyRepository(): FinanceRepository {
     async deleteCategory() {
       return undefined;
     },
+    async listCategoryMappings() {
+      return [];
+    },
+    async createCategoryMapping(input) {
+      return { id: "mapping-1", targetCategoryName: "餐饮", ...input };
+    },
+    async updateCategoryMapping(id, input) {
+      return { id, targetCategoryName: "餐饮", ...input };
+    },
+    async deleteCategoryMapping() {
+      return undefined;
+    },
     async listAccounts() {
+      return [];
+    },
+    async listAccountsForMonth() {
       return [];
     },
     async listAssetTrend() {
@@ -104,11 +132,25 @@ function createEmptyRepository(): FinanceRepository {
     async listTransactions() {
       return [];
     },
+    async listTransactionsForYear() {
+      return [];
+    },
     async createTransaction(input) {
       return { id: "transaction-1", ...input };
     },
     async updateTransaction(id, input) {
       return { id, ...input };
+    },
+    async confirmTransaction(id) {
+      return {
+        id,
+        date: "2026-07-01",
+        kind: "expense",
+        categoryName: "餐饮",
+        memberName: "家庭共同",
+        amount: "10.00",
+        confirmedAt: new Date().toISOString()
+      };
     },
     async deleteTransaction() {
       return undefined;
@@ -131,6 +173,12 @@ function createEmptyRepository(): FinanceRepository {
     async listHoldings() {
       return [];
     },
+    async listHoldingsForMonth() {
+      return [];
+    },
+    async snapshotAllInvestments(month) {
+      return { month, count: 0 };
+    },
     async createHolding(input) {
       return { id: "holding-1", ...input };
     },
@@ -142,6 +190,24 @@ function createEmptyRepository(): FinanceRepository {
     },
     async listLiabilities() {
       return [];
+    },
+    async listLiabilitiesForMonth() {
+      return [];
+    },
+    async snapshotAllLiabilities(month) {
+      return { month, count: 0 };
+    },
+    async getMonthlyReview(month) {
+      return { month, spending: false, assets: false, liabilities: false, investments: false };
+    },
+    async getMonthlySnapshot(month) {
+      return emptyMonthlySnapshot(month);
+    },
+    async listAnnualSnapshotSummaries() {
+      return [];
+    },
+    async confirmMonthlySpending(month) {
+      return { month, spending: true, assets: false, liabilities: false, investments: false };
     },
     async createLiability(input) {
       return { id: "liability-1", ...input, status: input.status ?? "active" };
@@ -162,5 +228,22 @@ function createEmptyRepository(): FinanceRepository {
     async deleteLiability() {
       return undefined;
     }
+  };
+}
+
+function emptyMonthlySnapshot(month: string) {
+  return {
+    month,
+    review: { month, spending: false, assets: false, liabilities: false, investments: false },
+    summary: {
+      totalAssets: "0.00",
+      totalLiabilities: "0.00",
+      netAssets: "0.00",
+      investmentMarketValue: "0.00",
+      investmentProfit: "0.00"
+    },
+    assets: [],
+    liabilities: [],
+    investments: []
   };
 }

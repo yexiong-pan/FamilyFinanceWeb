@@ -26,6 +26,14 @@ const accounts: Account[] = [
     ownerName: "家庭共同",
     currentValue: "86000",
     note: "长期投资"
+  },
+  {
+    id: "acc-custom",
+    name: "券商理财账户",
+    type: "券商理财",
+    ownerName: "家庭共同",
+    currentValue: "12000",
+    note: "自定义账户类型"
   }
 ];
 
@@ -150,9 +158,9 @@ describe("family finance calculations", () => {
       holdings
     });
 
-    expect(summary.totalAssets).toBe("214000.00");
+    expect(summary.totalAssets).toBe("226000.00");
     expect(summary.totalLiabilities).toBe("0.00");
-    expect(summary.netAssets).toBe("214000.00");
+    expect(summary.netAssets).toBe("226000.00");
     expect(summary.monthlyDebtPayment).toBe("0.00");
     expect(summary.liabilityBreakdown).toEqual([]);
     expect(summary.monthlyExpense).toBe("2260.00");
@@ -185,7 +193,7 @@ describe("family finance calculations", () => {
 
     // Only active liabilities count; the paid-off installment is excluded.
     expect(summary.totalLiabilities).toBe("940000.00");
-    expect(summary.netAssets).toBe("-726000.00");
+    expect(summary.netAssets).toBe("-714000.00");
     expect(summary.monthlyDebtPayment).toBe("8000.00");
     expect(summary.liabilityBreakdown).toEqual([
       { type: "mortgage", amount: "880000.00" },

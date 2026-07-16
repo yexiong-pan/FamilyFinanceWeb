@@ -11,21 +11,17 @@ enum UserRole {
   OWNER
 }
 
-enum AccountType {
-  bankCard
-  cash
-  alipay
-  wechat
-  fund
-  stock
-  other
-}
-
 enum TransactionKind {
   expense
   income
   transfer
   adjustment
+}
+
+enum TransactionSource {
+  manual
+  alipay
+  wechat
 }
 
 enum InvestmentHoldingType {
@@ -50,43 +46,48 @@ enum LiabilityStatus {
 }
 
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  displayName  String
-  role         UserRole       @default(OWNER)
-  memberships  FamilyMember[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-}
-
-model Family {
   id          String         @id @default(uuid())
-  name        String
-  members     FamilyMember[]
-  accounts    Account[]
-  categories  Category[]
-  transactions FinanceTransaction[]
-  budgets     Budget[]
-  holdings    InvestmentHolding[]
-  liabilities Liability[]
-  snapshots   AccountSnapshot[]
-  auditLogs   AuditLog[]
-  importJobs  ImportJob[]
+  email       String         @unique
+  displayName String
+  role        UserRole       @default(OWNER)
+  memberships FamilyMember[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }
 
+model Family {
+  id                  String               @id @default(uuid())
+  name                String
+  members             FamilyMember[]
+  accounts            Account[]
+  accountTypes        AccountTypeOption[]
+  categories          Category[]
+  transactions        FinanceTransaction[]
+  budgets             Budget[]
+  holdings            InvestmentHolding[]
+  liabilities         Liability[]
+  snapshots           AccountSnapshot[]
+  liabilitySnapshots  LiabilitySnapshot[]
+  investmentSnapshots InvestmentSnapshot[]
+  monthlyReviews      MonthlyReview[]
+  auditLogs           AuditLog[]
+  importJobs          ImportJob[]
+  categoryMappings    CategoryMapping[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
 model FamilyMember {
-  id          String   @id @default(uuid())
-  familyId    String
-  userId      String?
-  name        String
-  icon        String?
-  role        UserRole @default(OWNER)
-  family      Family   @relation(fields: [familyId], references: [id])
-  user        User?    @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  familyId  String
+  userId    String?
+  name      String
+  icon      String?
+  role      UserRole @default(OWNER)
+  family    Family   @relation(fields: [familyId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([familyId, name])
 }
@@ -95,7 +96,7 @@ model Account {
   id           String               @id @default(uuid())
   familyId     String
   name         String
-  type         AccountType
+  type         String
   ownerName    String
   currentValue Decimal              @db.Decimal(18, 2)
   note         String?
@@ -108,90 +109,172 @@ model Account {
   updatedAt    DateTime             @updatedAt
 }
 
+model AccountTypeOption {
+  id        String   @id @default(uuid())
+  familyId  String
+  name      String
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  family    Family   @relation(fields: [familyId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([familyId, name])
+}
+
 model Category {
-  id          String               @id @default(uuid())
-  familyId    String
-  name        String
-  kind        TransactionKind
-  isDefault   Boolean              @default(false)
-  isActive    Boolean              @default(true)
-  family      Family               @relation(fields: [familyId], references: [id])
-  transactions FinanceTransaction[]
-  budgets     Budget[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  id             String               @id @default(uuid())
+  familyId       String
+  name           String
+  kind           TransactionKind
+  note           String?
+  isDefault      Boolean              @default(false)
+  isActive       Boolean              @default(true)
+  family         Family               @relation(fields: [familyId], references: [id])
+  transactions   FinanceTransaction[]
+  budgets        Budget[]
+  sourceMappings CategoryMapping[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@unique([familyId, name, kind])
 }
 
 model FinanceTransaction {
-  id           String          @id @default(uuid())
-  familyId     String
-  accountId    String?
-  categoryId   String?
-  date         DateTime
-  kind         TransactionKind
-  categoryName String
-  memberName   String
-  amount       Decimal         @db.Decimal(18, 2)
-  note         String?
-  deletedAt    DateTime?
-  family       Family          @relation(fields: [familyId], references: [id])
-  account      Account?        @relation(fields: [accountId], references: [id])
-  category     Category?       @relation(fields: [categoryId], references: [id])
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id             String             @id @default(uuid())
+  familyId       String
+  accountId      String?
+  categoryId     String?
+  date           DateTime
+  kind           TransactionKind
+  categoryName   String
+  memberName     String
+  amount         Decimal            @db.Decimal(18, 2)
+  note           String?
+  source         TransactionSource?
+  sourceCategory String?
+  confirmedAt    DateTime?
+  deletedAt      DateTime?
+  family         Family             @relation(fields: [familyId], references: [id])
+  account        Account?           @relation(fields: [accountId], references: [id])
+  category       Category?          @relation(fields: [categoryId], references: [id])
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+model CategoryMapping {
+  id               String            @id @default(uuid())
+  familyId         String
+  source           TransactionSource
+  kind             TransactionKind
+  sourceCategory   String
+  targetCategoryId String
+  family           Family            @relation(fields: [familyId], references: [id])
+  targetCategory   Category          @relation(fields: [targetCategoryId], references: [id])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([familyId, source, kind, sourceCategory])
 }
 
 model Budget {
-  id          String   @id @default(uuid())
-  familyId    String
-  categoryId  String?
-  month       String
+  id           String    @id @default(uuid())
+  familyId     String
+  categoryId   String?
+  month        String
   categoryName String
-  limitAmount Decimal  @db.Decimal(18, 2)
-  family      Family   @relation(fields: [familyId], references: [id])
-  category    Category? @relation(fields: [categoryId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  limitAmount  Decimal   @db.Decimal(18, 2)
+  family       Family    @relation(fields: [familyId], references: [id])
+  category     Category? @relation(fields: [categoryId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([familyId, month, categoryName])
 }
 
 model InvestmentHolding {
-  id          String                @id @default(uuid())
-  familyId    String
-  accountId   String
-  name        String
-  code        String
-  type        InvestmentHoldingType
-  marketValue Decimal               @db.Decimal(18, 2)
-  profit      Decimal               @db.Decimal(18, 2)
-  note        String?
-  deletedAt   DateTime?
-  family      Family                @relation(fields: [familyId], references: [id])
-  account     Account               @relation(fields: [accountId], references: [id])
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id             String                @id @default(uuid())
+  familyId       String
+  accountId      String
+  name           String
+  code           String
+  type           InvestmentHoldingType
+  marketValue    Decimal               @db.Decimal(18, 2)
+  investedAmount Decimal?              @db.Decimal(18, 2)
+  profit         Decimal               @db.Decimal(18, 2)
+  note           String?
+  deletedAt      DateTime?
+  family         Family                @relation(fields: [familyId], references: [id])
+  account        Account               @relation(fields: [accountId], references: [id])
+  snapshots      InvestmentSnapshot[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 }
 
 model Liability {
-  id             String          @id @default(uuid())
-  familyId       String
-  name           String
-  type           LiabilityType
-  ownerName      String
-  currentBalance Decimal         @db.Decimal(18, 2)
-  monthlyPayment Decimal?        @db.Decimal(18, 2)
-  paymentDay     Int?
+  id               String              @id @default(uuid())
+  familyId         String
+  name             String
+  type             LiabilityType
+  ownerName        String
+  currentBalance   Decimal             @db.Decimal(18, 2)
+  monthlyPayment   Decimal?            @db.Decimal(18, 2)
+  paymentDay       Int?
   remainingPeriods Int?
-  lender         String?
-  status         LiabilityStatus @default(active)
-  note           String?
-  deletedAt      DateTime?
-  family         Family          @relation(fields: [familyId], references: [id])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  lender           String?
+  status           LiabilityStatus     @default(active)
+  note             String?
+  deletedAt        DateTime?
+  family           Family              @relation(fields: [familyId], references: [id])
+  snapshots        LiabilitySnapshot[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model LiabilitySnapshot {
+  id               String    @id @default(uuid())
+  familyId         String
+  liabilityId      String
+  month            String
+  currentBalance   Decimal   @db.Decimal(18, 2)
+  monthlyPayment   Decimal?  @db.Decimal(18, 2)
+  remainingPeriods Int?
+  confirmedAt      DateTime  @default(now())
+  family           Family    @relation(fields: [familyId], references: [id])
+  liability        Liability @relation(fields: [liabilityId], references: [id])
+
+  @@unique([liabilityId, month])
+  @@index([familyId, month])
+}
+
+model InvestmentSnapshot {
+  id             String            @id @default(uuid())
+  familyId       String
+  holdingId      String
+  month          String
+  investedAmount Decimal           @db.Decimal(18, 2)
+  marketValue    Decimal           @db.Decimal(18, 2)
+  confirmedAt    DateTime          @default(now())
+  family         Family            @relation(fields: [familyId], references: [id])
+  holding        InvestmentHolding @relation(fields: [holdingId], references: [id])
+
+  @@unique([holdingId, month])
+  @@index([familyId, month])
+}
+
+model MonthlyReview {
+  id                     String    @id @default(uuid())
+  familyId               String
+  month                  String
+  spendingConfirmedAt    DateTime?
+  assetsConfirmedAt      DateTime?
+  liabilitiesConfirmedAt DateTime?
+  investmentsConfirmedAt DateTime?
+  family                 Family    @relation(fields: [familyId], references: [id])
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([familyId, month])
 }
 
 model AccountSnapshot {
@@ -220,15 +303,15 @@ model AuditLog {
 }
 
 model ImportJob {
-  id         String   @id @default(uuid())
-  familyId   String
-  fileName   String
-  status     String
-  totalRows  Int      @default(0)
-  successRows Int     @default(0)
-  failedRows Int      @default(0)
-  message    String?
-  family     Family   @relation(fields: [familyId], references: [id])
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(uuid())
+  familyId    String
+  fileName    String
+  status      String
+  totalRows   Int      @default(0)
+  successRows Int      @default(0)
+  failedRows  Int      @default(0)
+  message     String?
+  family      Family   @relation(fields: [familyId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

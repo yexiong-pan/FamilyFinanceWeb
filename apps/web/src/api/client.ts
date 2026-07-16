@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountSnapshotRecord,
+  AccountTypeOption,
   AssetTrendPoint,
   Budget,
   DashboardSummary,
@@ -8,8 +9,12 @@ import type {
   FinanceTransaction,
   ImportTransactionItem,
   InvestmentHolding,
-  Liability
+  Liability,
+  MonthlyReviewStatus,
+  MonthlySnapshotData,
+  YearlyReportData
 } from "@family-finance/shared";
+import type { TransactionSource } from "@family-finance/shared";
 
 export type { AssetTrendPoint };
 
@@ -19,48 +24,65 @@ export interface Category {
   id: string;
   name: string;
   kind: "expense" | "income" | "transfer" | "adjustment";
+  note?: string;
   isDefault: boolean;
   isActive: boolean;
+}
+
+export interface CategoryMapping {
+  id: string;
+  source: Exclude<TransactionSource, "manual">;
+  kind: "expense" | "income";
+  sourceCategory: string;
+  targetCategoryId: string;
+  targetCategoryName: string;
 }
 
 export interface AppData {
   summary: DashboardSummary;
   members: string[];
   familyMembers: FamilyMemberInfo[];
+  accountTypes: AccountTypeOption[];
   categories: Category[];
+  categoryMappings: CategoryMapping[];
   accounts: Account[];
   transactions: FinanceTransaction[];
   budgets: Budget[];
   investments: InvestmentHolding[];
   liabilities: Liability[];
   assetTrend: AssetTrendPoint[];
+  monthlyReview: MonthlyReviewStatus;
 }
 
 export async function loadAppData(month: string): Promise<AppData> {
-  const [summary, familyMembers, categories, accounts, transactions, budgets, investments, liabilities, assetTrend] =
+  const [summary, familyMembers, accountTypes, categories, categoryMappings, accounts, transactions, investments, liabilities, monthlyReview] =
     await Promise.all([
       getJson<DashboardSummary>(`/dashboard/summary?month=${month}`),
       getJson<FamilyMemberInfo[]>("/family-members"),
+      getJson<AccountTypeOption[]>("/account-types"),
       getJson<Category[]>("/categories"),
-      getJson<Account[]>("/accounts"),
+      getJson<CategoryMapping[]>("/category-mappings"),
+      getJson<Account[]>(`/accounts?month=${month}`),
       getJson<FinanceTransaction[]>(`/transactions?month=${month}`),
-      getJson<Budget[]>(`/budgets?month=${month}`),
-      getJson<InvestmentHolding[]>("/investments"),
-      getJson<Liability[]>("/liabilities"),
-      getJson<AssetTrendPoint[]>("/dashboard/asset-trend")
+      getJson<InvestmentHolding[]>(`/investments?month=${month}`),
+      getJson<Liability[]>(`/liabilities?month=${month}`),
+      getJson<MonthlyReviewStatus>(`/monthly-review?month=${month}`)
     ]);
 
   return {
     summary,
     members: familyMembers.map((member) => member.name),
     familyMembers,
+    accountTypes,
     categories,
+    categoryMappings,
     accounts,
     transactions,
-    budgets,
+    budgets: [],
     investments,
     liabilities,
-    assetTrend
+    assetTrend: [],
+    monthlyReview
   };
 }
 
@@ -79,6 +101,20 @@ export async function deleteMember(id: string): Promise<void> {
   return del(`/family-members/${id}`);
 }
 
+export type AccountTypeInput = { name: string };
+
+export async function createAccountType(input: AccountTypeInput): Promise<AccountTypeOption> {
+  return postJson("/account-types", input);
+}
+
+export async function updateAccountType(id: string, input: AccountTypeInput): Promise<AccountTypeOption> {
+  return patchJson(`/account-types/${id}`, input);
+}
+
+export async function deleteAccountType(id: string): Promise<void> {
+  return del(`/account-types/${id}`);
+}
+
 export type LiabilityInput = Omit<Liability, "id" | "status"> & { status?: Liability["status"] };
 
 export async function createTransaction(input: Omit<FinanceTransaction, "id">): Promise<FinanceTransaction> {
@@ -92,6 +128,10 @@ export async function updateTransaction(
   return patchJson(`/transactions/${id}`, input);
 }
 
+export async function confirmTransaction(id: string): Promise<FinanceTransaction> {
+  return postJson(`/transactions/${id}/confirm`, {});
+}
+
 export async function deleteTransaction(id: string): Promise<void> {
   return del(`/transactions/${id}`);
 }
@@ -99,6 +139,7 @@ export async function deleteTransaction(id: string): Promise<void> {
 export async function importTransactions(payload: {
   accountId?: string;
   memberName: string;
+  source: Exclude<TransactionSource, "manual">;
   items: ImportTransactionItem[];
 }): Promise<{ imported: number }> {
   return postJson("/transactions/import", payload);
@@ -114,8 +155,28 @@ export async function updateAccount(id: string, input: UpdateAccountInput): Prom
   return patchJson(`/accounts/${id}`, input);
 }
 
-export async function snapshotAllAccounts(): Promise<{ date: string; count: number }> {
-  return postJson("/accounts/snapshots", {});
+export async function snapshotAllAccounts(month: string): Promise<{ date: string; count: number }> {
+  return postJson("/accounts/snapshots", { month });
+}
+
+export async function snapshotAllLiabilities(month: string): Promise<{ month: string; count: number }> {
+  return postJson("/liabilities/snapshots", { month });
+}
+
+export async function snapshotAllInvestments(month: string): Promise<{ month: string; count: number }> {
+  return postJson("/investments/snapshots", { month });
+}
+
+export async function confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus> {
+  return postJson("/monthly-review/spending", { month });
+}
+
+export async function getMonthlySnapshot(month: string): Promise<MonthlySnapshotData> {
+  return getJson(`/monthly-snapshots?month=${encodeURIComponent(month)}`);
+}
+
+export async function getYearlyReport(year: string): Promise<YearlyReportData> {
+  return getJson(`/reports/yearly?year=${encodeURIComponent(year)}`);
 }
 
 export interface AccountSnapshotPoint {
@@ -185,7 +246,9 @@ export async function repayLiability(id: string, input: { amount: string }): Pro
   return postJson(`/liabilities/${id}/repay`, input);
 }
 
-export type CategoryInput = { name: string; kind: Category["kind"] };
+export type CategoryInput = { name: string; kind: Category["kind"]; note?: string };
+
+export type CategoryMappingInput = Omit<CategoryMapping, "id" | "targetCategoryName">;
 
 export async function createCategory(input: CategoryInput): Promise<Category> {
   return postJson("/categories", input);
@@ -197,6 +260,18 @@ export async function updateCategory(id: string, input: CategoryInput): Promise<
 
 export async function deleteCategory(id: string): Promise<void> {
   return del(`/categories/${id}`);
+}
+
+export async function createCategoryMapping(input: CategoryMappingInput): Promise<CategoryMapping> {
+  return postJson("/category-mappings", input);
+}
+
+export async function updateCategoryMapping(id: string, input: CategoryMappingInput): Promise<CategoryMapping> {
+  return patchJson(`/category-mappings/${id}`, input);
+}
+
+export async function deleteCategoryMapping(id: string): Promise<void> {
+  return del(`/category-mappings/${id}`);
 }
 
 export async function deleteLiability(id: string): Promise<void> {

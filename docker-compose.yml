@@ -1,49 +1,52 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: family-finance-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: family_finance
-      POSTGRES_PASSWORD: family_finance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
       POSTGRES_DB: family_finance
-    ports:
-      - "5433:5432"
     volumes:
-      - family-finance-postgres:/var/lib/postgresql/data
+      - ${POSTGRES_DATA_PATH:-./.data/postgres}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U family_finance -d family_finance"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: family-finance-api
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       API_PORT: 4000
-      DATABASE_URL: postgresql://family_finance:family_finance@postgres:5432/family_finance?schema=public
-    ports:
-      - "4000:4000"
+      DATABASE_URL: "postgresql://family_finance:${POSTGRES_PASSWORD}@postgres:5432/family_finance?schema=public"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:4000/api/family-members').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:4000/api
-    container_name: family-finance-web
+        VITE_API_BASE_URL: /api
     restart: unless-stopped
     ports:
-      - "5173:4173"
+      - "${WEB_PORT:-5173}:80"
     depends_on:
-      - api
-
-volumes:
-  family-finance-postgres:
+      api:
+        condition: service_healthy

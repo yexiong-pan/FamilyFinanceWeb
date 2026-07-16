@@ -1,16 +1,22 @@
 import type {
   Account,
   AccountSnapshotRecord,
+  AccountTypeOption,
   AssetTrendPoint,
   Budget,
   FamilyMemberInfo,
   FinanceTransaction,
   InvestmentHolding,
   Liability,
+  MonthlyReviewStatus,
+  MonthlySnapshotData,
   MoneyAmount
 } from "@family-finance/shared";
 import type {
+  AccountTypeInput,
   Category,
+  CategoryMapping,
+  CategoryMappingInput,
   CategoryInput,
   CreateAccountInput,
   UpdateAccountInput,
@@ -22,6 +28,7 @@ import type {
   MemberInput,
   RepayLiabilityInput
 } from "./finance.types";
+import type { YearlySnapshotInput } from "./yearly-report";
 
 export const FINANCE_REPOSITORY = Symbol.for("family-finance.repository");
 
@@ -32,22 +39,33 @@ export interface FinanceRepository {
   createMember(input: MemberInput): Promise<FamilyMemberInfo>;
   updateMember(id: string, input: MemberInput): Promise<FamilyMemberInfo>;
   deleteMember(id: string): Promise<void>;
+  listAccountTypes(): Promise<AccountTypeOption[]>;
+  createAccountType(input: AccountTypeInput): Promise<AccountTypeOption>;
+  updateAccountType(id: string, input: AccountTypeInput): Promise<AccountTypeOption>;
+  deleteAccountType(id: string): Promise<void>;
   listCategories(): Promise<Category[]>;
   createCategory(input: CategoryInput): Promise<Category>;
   updateCategory(id: string, input: CategoryInput): Promise<Category>;
   deleteCategory(id: string): Promise<void>;
+  listCategoryMappings(): Promise<CategoryMapping[]>;
+  createCategoryMapping(input: CategoryMappingInput): Promise<CategoryMapping>;
+  updateCategoryMapping(id: string, input: CategoryMappingInput): Promise<CategoryMapping>;
+  deleteCategoryMapping(id: string): Promise<void>;
   listAccounts(): Promise<Account[]>;
+  listAccountsForMonth(month: string): Promise<Account[]>;
   listAssetTrend(): Promise<AssetTrendPoint[]>;
   createAccount(input: CreateAccountInput): Promise<Account>;
   updateAccount(id: string, input: UpdateAccountInput): Promise<Account>;
-  snapshotAllAccounts(): Promise<{ date: string; count: number }>;
+  snapshotAllAccounts(month?: string): Promise<{ date: string; count: number }>;
   listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]>;
   listAllSnapshots(filter?: { accountId?: string; from?: string; to?: string }): Promise<AccountSnapshotRecord[]>;
   deleteSnapshot(id: string): Promise<void>;
   deleteAccount(id: string): Promise<void>;
   listTransactions(filter?: { month?: string }): Promise<FinanceTransaction[]>;
+  listTransactionsForYear(year: string): Promise<FinanceTransaction[]>;
   createTransaction(input: CreateTransactionInput): Promise<FinanceTransaction>;
   updateTransaction(id: string, input: CreateTransactionInput): Promise<FinanceTransaction>;
+  confirmTransaction(id: string): Promise<FinanceTransaction>;
   deleteTransaction(id: string): Promise<void>;
   importTransactions(input: ImportTransactionsInput): Promise<{ imported: number }>;
   listBudgets(month?: string): Promise<Budget[]>;
@@ -55,10 +73,18 @@ export interface FinanceRepository {
   updateBudget(id: string, input: CreateBudgetInput): Promise<Budget>;
   deleteBudget(id: string): Promise<void>;
   listHoldings(): Promise<InvestmentHolding[]>;
+  listHoldingsForMonth(month: string): Promise<InvestmentHolding[]>;
+  snapshotAllInvestments(month: string): Promise<{ month: string; count: number }>;
   createHolding(input: CreateInvestmentHoldingInput): Promise<InvestmentHolding>;
   updateHolding(id: string, input: CreateInvestmentHoldingInput): Promise<InvestmentHolding>;
   deleteHolding(id: string): Promise<void>;
   listLiabilities(): Promise<Liability[]>;
+  listLiabilitiesForMonth(month: string): Promise<Liability[]>;
+  snapshotAllLiabilities(month: string): Promise<{ month: string; count: number }>;
+  getMonthlyReview(month: string): Promise<MonthlyReviewStatus>;
+  getMonthlySnapshot(month: string): Promise<MonthlySnapshotData>;
+  listAnnualSnapshotSummaries(year: string): Promise<YearlySnapshotInput[]>;
+  confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus>;
   createLiability(input: CreateLiabilityInput): Promise<Liability>;
   updateLiability(id: string, input: CreateLiabilityInput): Promise<Liability>;
   repayLiability(id: string, input: RepayLiabilityInput): Promise<Liability>;

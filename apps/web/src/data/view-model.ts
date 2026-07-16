@@ -23,48 +23,48 @@ export interface BudgetHighlight {
 }
 
 export interface DashboardViewModel {
-  metrics: MetricViewModel[];
+  cashflowMetrics: MetricViewModel[];
+  supportingMetrics: MetricViewModel[];
   categoryChart: CategoryChartDatum[];
-  budgetHighlights: BudgetHighlight[];
+  topCategories: Array<{ name: string; amount: string; percent: number }>;
+  memberCashflow: Array<{
+    memberName: string;
+    income: string;
+    expense: string;
+    balance: string;
+  }>;
 }
 
-export function buildDashboardViewModel(summary: DashboardSummary): DashboardViewModel {
+export function buildMonthlyReportViewModel(summary: DashboardSummary): DashboardViewModel {
+  const monthlyExpense = toNumber(summary.monthlyExpense);
   return {
-    metrics: [
-      {
-        title: "当前总资产",
-        value: formatMoney(summary.totalAssets),
-        tone: "asset"
-      },
-      {
-        title: "净资产",
-        value: formatMoney(summary.netAssets),
-        trend: `总负债 ${formatMoney(summary.totalLiabilities)}`,
-        tone: "asset"
-      },
-      {
-        title: "本月应还",
-        value: formatMoney(summary.monthlyDebtPayment),
-        trend: "负债月供合计",
-        tone: "expense"
-      },
+    cashflowMetrics: [
       {
         title: "本月收入",
         value: formatMoney(summary.monthlyIncome),
-        trend: "Owner 可见",
         tone: "income"
       },
       {
         title: "本月支出",
         value: formatMoney(summary.monthlyExpense),
-        trend: "按分类追踪",
         tone: "expense"
       },
       {
         title: "本月结余",
         value: formatMoney(summary.monthlyBalance),
-        trend: toNumber(summary.monthlyBalance) >= 0 ? "收支健康" : "需要关注",
         tone: toNumber(summary.monthlyBalance) >= 0 ? "income" : "expense"
+      }
+    ],
+    supportingMetrics: [
+      {
+        title: "家庭净资产",
+        value: formatMoney(summary.netAssets),
+        tone: "asset"
+      },
+      {
+        title: "总负债",
+        value: formatMoney(summary.totalLiabilities),
+        tone: "expense"
       },
       {
         title: "投资收益",
@@ -77,15 +77,28 @@ export function buildDashboardViewModel(summary: DashboardSummary): DashboardVie
       type: item.categoryName,
       value: toNumber(item.amount)
     })),
-    budgetHighlights: summary.budgetUsages.map((budget) => ({
-      id: budget.id,
-      categoryName: budget.categoryName,
-      percent: Math.min(100, Math.round(budget.usageRate * 100)),
-      status: budget.status
+    topCategories: summary.categoryBreakdown.slice(0, 5).map((item) => ({
+      name: item.categoryName,
+      amount: formatMoney(item.amount),
+      percent: monthlyExpense === 0 ? 0 : Math.round((toNumber(item.amount) / monthlyExpense) * 1000) / 10
+    })),
+    memberCashflow: summary.memberBreakdown.map((item) => ({
+      memberName: item.memberName,
+      income: formatMoney(item.income),
+      expense: formatMoney(item.expense),
+      balance: formatMoney(fromCents(toCents(item.income) - toCents(item.expense)))
     }))
   };
 }
 
 function toNumber(value: string): number {
   return Number.parseFloat(value);
+}
+
+function toCents(value: string): number {
+  return Math.round(toNumber(value) * 100);
+}
+
+function fromCents(value: number): string {
+  return (value / 100).toFixed(2);
 }

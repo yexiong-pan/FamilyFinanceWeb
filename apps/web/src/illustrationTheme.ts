@@ -26,42 +26,40 @@ export const illustrationThemeTokens = {
   colorBgContainer: "#FFFFFF"
 } as const;
 
-const useStyles = createStyles(({ css, token }) => {
-  const illustrationBorder = css({
-    border: `${token.lineWidth}px solid ${token.colorBorder}`
-  });
+const useStyles = createStyles(({ css, cssVar }) => {
+  const illustrationBorder = {
+    border: `${cssVar.lineWidth} solid ${cssVar.colorBorder}`
+  };
 
-  const illustrationBox = css({
-    border: `${token.lineWidth}px solid ${token.colorBorder}`,
-    boxShadow: `4px 4px 0 ${token.colorBorder}`
-  });
+  const illustrationBox = {
+    ...illustrationBorder,
+    boxShadow: `4px 4px 0 ${cssVar.colorBorder}`
+  };
 
   return {
     illustrationBorder,
     illustrationBox,
     buttonRoot: css({
-      border: `${token.lineWidth}px solid ${token.colorBorder}`,
-      boxShadow: `4px 4px 0 ${token.colorBorder}`,
+      ...illustrationBox,
+      boxShadow: `4px 4px 0 ${cssVar.colorBorder} !important`,
       fontWeight: 600,
       textTransform: "uppercase",
-      letterSpacing: 0
+      letterSpacing: "0.5px"
     }),
     modalContainer: css({
-      border: `${token.lineWidth}px solid ${token.colorBorder}`,
-      boxShadow: `4px 4px 0 ${token.colorBorder}`
+      ...illustrationBox
     }),
     tooltipRoot: css({
-      padding: token.padding
+      padding: cssVar.padding
     }),
     popupBox: css({
-      border: `${token.lineWidth}px solid ${token.colorBorder}`,
-      boxShadow: `4px 4px 0 ${token.colorBorder}`,
-      borderRadius: token.borderRadiusLG,
-      backgroundColor: token.colorBgContainer
+      ...illustrationBox,
+      borderRadius: cssVar.borderRadiusLG,
+      backgroundColor: cssVar.colorBgContainer
     }),
     progressRail: css({
-      border: `${token.lineWidth}px solid ${token.colorBorder}`,
-      boxShadow: `2px 2px 0 ${token.colorBorder}`
+      border: `${cssVar.lineWidth} solid ${cssVar.colorBorder}`,
+      boxShadow: `2px 2px 0 ${cssVar.colorBorder}`
     }),
     progressTrack: css({
       border: "none"
@@ -107,55 +105,77 @@ const useIllustrationTheme = () => {
             dotActiveBorderColor: "#237804",
             colorPrimaryBorder: "#237804",
             colorPrimaryBorderHover: "#237804"
-          },
-          Layout: {
-            bodyBg: "#FFF9F0",
-            headerBg: "#FFFFFF",
-            siderBg: "#FFFFFF"
-          },
-          Menu: {
-            itemSelectedBg: "#E6F4FF",
-            itemSelectedColor: "#2C2C2C",
-            itemHoverBg: "#FFF0F6"
-          },
-          Table: {
-            headerBg: "#E6F4FF",
-            rowHoverBg: "#FFF9F0"
           }
         }
       },
       button: {
-        className: styles.buttonRoot
+        classNames: {
+          root: styles.buttonRoot
+        }
       },
       modal: {
-        className: styles.modalContainer
+        classNames: {
+          container: styles.modalContainer
+        }
       },
       alert: {
         className: styles.illustrationBorder
       },
       colorPicker: {
-        className: styles.illustrationBox
+        arrow: false,
+        classNames: {
+          root: styles.illustrationBox
+        }
       },
       popover: {
-        className: styles.illustrationBox
+        classNames: {
+          container: styles.illustrationBox
+        }
       },
       tooltip: {
-        className: styles.tooltipRoot
+        arrow: false,
+        classNames: {
+          root: styles.tooltipRoot,
+          container: styles.illustrationBox
+        }
       },
       dropdown: {
-        className: styles.popupBox
+        classNames: {
+          root: styles.popupBox
+        }
       },
       select: {
-        className: styles.illustrationBox
+        classNames: {
+          root: styles.illustrationBox,
+          popup: {
+            root: styles.popupBox
+          }
+        }
       },
       input: {
-        className: styles.illustrationBox
+        classNames: {
+          root: styles.illustrationBox
+        }
       },
       inputNumber: {
-        className: styles.illustrationBox
+        classNames: {
+          root: styles.illustrationBox,
+          actions: styles.inputNumberActions
+        }
       },
       progress: {
-        className: styles.progressRail
+        classNames: {
+          rail: styles.progressRail,
+          track: styles.progressTrack
+        },
+        styles: {
+          rail: {
+            height: 16
+          },
+          track: {
+            height: 10
+          }
+        }
       }
     }),
     [styles]
