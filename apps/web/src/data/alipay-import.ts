@@ -131,9 +131,9 @@ function normalizeAmount(raw: SheetCell): string | null {
 
 function normalizeDate(raw: SheetCell): string | null {
   if (raw instanceof Date && !Number.isNaN(raw.valueOf())) {
-    const year = raw.getFullYear();
-    const month = String(raw.getMonth() + 1).padStart(2, "0");
-    const day = String(raw.getDate()).padStart(2, "0");
+    const year = raw.getUTCFullYear();
+    const month = String(raw.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(raw.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
   const text = cellText(raw);

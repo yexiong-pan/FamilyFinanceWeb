@@ -107,6 +107,15 @@ describe("parseWechatSheetRows", () => {
       }
     ]);
   });
+
+  it("keeps the Excel calendar date for evening transactions", () => {
+    const rows = [
+      ["交易时间", "交易类型", "交易对方", "商品", "收/支", "金额(元)"],
+      [new Date("2026-06-10T22:58:42.000Z"), "零钱提现", "招商银行", "/", "/", 100]
+    ];
+
+    expect(parseWechatSheetRows(rows).items[0]?.date).toBe("2026-06-10");
+  });
 });
 
 describe("parseWechatWorkbook", () => {
