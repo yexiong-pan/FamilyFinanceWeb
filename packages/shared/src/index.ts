@@ -70,6 +70,7 @@ export interface Liability {
   name: string;
   type: LiabilityType;
   ownerName: string;
+  initialBalance?: MoneyAmount;
   currentBalance: MoneyAmount;
   monthlyPayment?: MoneyAmount;
   paymentDay?: number;

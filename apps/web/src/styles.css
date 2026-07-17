@@ -374,8 +374,164 @@ body {
   height: 100%;
 }
 
+.asset-allocation-section {
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 2px solid #2c2c2c;
+}
+
+.asset-allocation-section .ant-typography {
+  margin: 0;
+}
+
+.liability-bullet-chart {
+  display: grid;
+  gap: 18px;
+}
+
+.liability-bullet-row {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.liability-bullet-percent {
+  color: #237804;
+}
+
+.liability-bullet-track {
+  position: relative;
+  height: 24px;
+  overflow: hidden;
+  border: 2px solid #2c2c2c;
+  border-radius: 4px;
+}
+
+.liability-bullet-range,
+.liability-bullet-measure,
+.liability-bullet-target {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.liability-bullet-range.is-low {
+  left: 0;
+  width: 50%;
+  background: #fff1f0;
+}
+
+.liability-bullet-range.is-middle {
+  left: 50%;
+  width: 30%;
+  background: #fff7e6;
+}
+
+.liability-bullet-range.is-high {
+  left: 80%;
+  width: 20%;
+  background: #f6ffed;
+}
+
+.liability-bullet-measure {
+  left: 0;
+  z-index: 1;
+  background: #52c41a;
+}
+
+.liability-bullet-target {
+  right: 3px;
+  z-index: 2;
+  width: 3px;
+  background: #2c2c2c;
+}
+
+.liability-progress-pending {
+  margin-top: 16px;
+}
+
 .annual-report-loading {
   padding: 80px 0;
+}
+
+.cashflow-combo-chart {
+  min-width: 0;
+}
+
+.cashflow-chart-legend {
+  margin: 2px 0 8px;
+  padding-inline: 12px;
+}
+
+.cashflow-legend-item,
+.cashflow-tooltip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cashflow-legend-square,
+.cashflow-tooltip-label i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+}
+
+.cashflow-legend-line {
+  width: 16px;
+  height: 3px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+
+.cashflow-chart-canvas {
+  position: relative;
+  min-width: 0;
+}
+
+.cashflow-chart-canvas svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.cashflow-grid-line {
+  stroke: #e8e8e8;
+  stroke-dasharray: 4 4;
+}
+
+.cashflow-zero-line {
+  stroke: #bfbfbf;
+  stroke-width: 1.5;
+}
+
+.cashflow-axis-label {
+  fill: #8c8c8c;
+  font-size: 13px;
+}
+
+.cashflow-chart-tooltip {
+  position: absolute;
+  top: 16px;
+  z-index: 2;
+  display: grid;
+  gap: 7px;
+  min-width: 190px;
+  padding: 12px;
+  transform: translateX(-50%);
+  border: 2px solid #2c2c2c;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 3px 3px 0 #2c2c2c;
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .cashflow-chart-tooltip {
+    width: 176px;
+    min-width: 176px;
+  }
 }
 
 .annual-summary-card {
@@ -501,9 +657,34 @@ body {
 
 .top-spending-row {
   display: grid;
-  grid-template-columns: minmax(90px, 140px) minmax(160px, 1fr) 64px 120px;
+  grid-template-columns: minmax(90px, 140px) minmax(160px, 1fr) 120px;
   align-items: center;
   gap: 14px;
+}
+
+.ratio-progress {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) 52px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ratio-progress .ant-progress {
+  min-width: 0;
+  line-height: 1;
+}
+
+.ratio-progress-value {
+  color: rgba(44, 44, 44, 0.72);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ratio-progress.is-danger .ratio-progress-value {
+  color: #c92a2a;
 }
 
 .checkup-tabs > .ant-tabs-nav {
@@ -749,17 +930,17 @@ body {
   }
 
   .top-spending-row {
-    grid-template-columns: minmax(72px, 100px) 1fr auto;
+    grid-template-columns: minmax(72px, 1fr) auto;
     gap: 8px;
   }
 
-  .top-spending-row .ant-progress {
+  .top-spending-row .ratio-progress {
     grid-column: 1 / -1;
     grid-row: 2;
   }
 
   .top-spending-row > :last-child {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
   }
 }

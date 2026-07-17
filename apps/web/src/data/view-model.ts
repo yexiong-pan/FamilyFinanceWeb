@@ -73,10 +73,13 @@ export function buildMonthlyReportViewModel(summary: DashboardSummary): Dashboar
         tone: toNumber(summary.investmentProfit) >= 0 ? "income" : "expense"
       }
     ],
-    categoryChart: summary.categoryBreakdown.map((item) => ({
-      type: item.categoryName,
-      value: toNumber(item.amount)
-    })),
+    categoryChart: [...summary.categoryBreakdown]
+      .sort((left, right) => toNumber(right.amount) - toNumber(left.amount))
+      .slice(0, 5)
+      .map((item) => ({
+        type: item.categoryName,
+        value: toNumber(item.amount)
+      })),
     topCategories: summary.categoryBreakdown.slice(0, 5).map((item) => ({
       name: item.categoryName,
       amount: formatMoney(item.amount),

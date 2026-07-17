@@ -66,4 +66,26 @@ describe("buildMonthlyReportViewModel", () => {
       }
     ]);
   });
+
+  it("only includes the five largest expense categories in the pie chart", () => {
+    const model = buildMonthlyReportViewModel({
+      ...summary,
+      categoryBreakdown: [
+        { categoryName: "交通", amount: "300.00" },
+        { categoryName: "住房", amount: "1200.00" },
+        { categoryName: "购物", amount: "500.00" },
+        { categoryName: "餐饮", amount: "900.00" },
+        { categoryName: "医疗", amount: "700.00" },
+        { categoryName: "娱乐", amount: "100.00" }
+      ]
+    });
+
+    expect(model.categoryChart).toEqual([
+      { type: "住房", value: 1200 },
+      { type: "餐饮", value: 900 },
+      { type: "医疗", value: 700 },
+      { type: "购物", value: 500 },
+      { type: "交通", value: 300 }
+    ]);
+  });
 });

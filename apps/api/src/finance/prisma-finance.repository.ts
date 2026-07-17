@@ -571,6 +571,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         name: input.name,
         type: input.type,
         ownerName: input.ownerName,
+        initialBalance: normalizeMoney(input.initialBalance ?? input.currentBalance),
         currentBalance: normalizeMoney(input.currentBalance),
         monthlyPayment:
           input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
@@ -870,6 +871,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         name: input.name,
         type: input.type,
         ownerName: input.ownerName,
+        ...(input.initialBalance === undefined ? {} : { initialBalance: normalizeMoney(input.initialBalance) }),
         currentBalance: normalizeMoney(input.currentBalance),
         monthlyPayment:
           input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
@@ -1334,6 +1336,8 @@ function mapLiability(liability: DbLiability): Liability {
     name: liability.name,
     type: liability.type,
     ownerName: liability.ownerName,
+    initialBalance:
+      liability.initialBalance === null ? undefined : decimalToMoney(liability.initialBalance),
     currentBalance: decimalToMoney(liability.currentBalance),
     monthlyPayment:
       liability.monthlyPayment === null ? undefined : decimalToMoney(liability.monthlyPayment),

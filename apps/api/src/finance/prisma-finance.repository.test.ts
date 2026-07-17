@@ -1,6 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 import { PrismaFinanceRepository } from "./prisma-finance.repository";
 
+describe("PrismaFinanceRepository liability balances", () => {
+  it("stores and returns the initial balance used for repayment progress", async () => {
+    const liabilityCreate = vi.fn(async ({ data }) => ({
+      id: "liability-1",
+      ...data,
+      deletedAt: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-01T00:00:00.000Z")
+    }));
+    const repository = new PrismaFinanceRepository({
+      liability: { create: liabilityCreate }
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    const liability = await repository.createLiability({
+      name: "房贷",
+      type: "mortgage",
+      ownerName: "雄哥",
+      initialBalance: "1000000",
+      currentBalance: "800000"
+    } as never);
+
+    expect(liabilityCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        initialBalance: "1000000.00",
+        currentBalance: "800000.00"
+      })
+    });
+    expect(liability.initialBalance).toBe("1000000.00");
+  });
+});
+
 describe("PrismaFinanceRepository account edits", () => {
   it("updates current value through the normal account edit path without snapshotting", async () => {
     const accountSnapshotUpsert = vi.fn();

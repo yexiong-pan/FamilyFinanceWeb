@@ -60,7 +60,6 @@ import {
   Menu,
   Pagination,
   Popconfirm,
-  Progress,
   Row,
   Segmented,
   Select,
@@ -127,13 +126,23 @@ import {
 } from "./api/client";
 import { buildMonthlyReportViewModel } from "./data/view-model";
 import {
+  buildAnnualCashflowTrend,
+  buildAssetAllocation,
+  buildLiabilityProgress,
+  buildNetWorthTrend
+} from "./data/financial-charts";
+import {
   buildCategoryDrilldown,
   buildMemberCashflowTotals,
   buildSpendingView,
   filterTransactionsByConfirmation,
-  sumCashflowTransactions,
-  type TransactionConfirmationFilter
+  sumCashflowTransactions
 } from "./data/spending";
+import {
+  type CashflowFilters,
+  parseCashflowFilters,
+  writeCashflowFilters
+} from "./data/cashflow-route";
 import { buildIncomeView } from "./data/income";
 import {
   buildInvestmentAmountsFromProfit,
@@ -150,14 +159,16 @@ import {
   type CheckupTabKey,
   type PageKey,
   type ReportTabKey,
+  cashflowFiltersForTransition,
   defaultRouteForPage,
   pageMenuItems,
-  pathForRoute,
   routeForMonthlyReview,
   routeFromPath,
-  shiftMonthKey
+  shiftMonthKey,
+  urlForRoute
 } from "./navigation";
 import { accountTypeOptionsFromSettings, getAccountTypeMeta } from "./accountTypes";
+import { RatioProgress } from "./RatioProgress";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -172,13 +183,6 @@ function periodFromLocation(route: AppRoute): Dayjs {
   }
   const month = params.get("month");
   return month && /^\d{4}-\d{2}$/.test(month) ? dayjs(`${month}-01`) : dayjs().startOf("month");
-}
-
-function urlForRoute(route: AppRoute, month: string): string {
-  if (route.page === "report" && route.tab === "yearly") {
-    return `${pathForRoute(route)}?year=${encodeURIComponent(month.slice(0, 4))}`;
-  }
-  return `${pathForRoute(route)}?month=${encodeURIComponent(month)}`;
 }
 
 const pageIcons: Record<PageKey, ReactNode> = {
@@ -242,6 +246,12 @@ function AppShell() {
   const screens = Grid.useBreakpoint();
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => routeFromPath(window.location.pathname));
   const [month, setMonth] = useState<Dayjs>(() => periodFromLocation(routeFromPath(window.location.pathname)));
+  const [cashflowFilters, setCashflowFilters] = useState<CashflowFilters>(() => {
+    const route = routeFromPath(window.location.pathname);
+    return route.page === "spending" || route.page === "income"
+      ? parseCashflowFilters(new URLSearchParams(window.location.search))
+      : {};
+  });
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -253,9 +263,13 @@ function AppShell() {
     const handlePopState = () => {
       const route = routeFromPath(window.location.pathname);
       const routeMonth = periodFromLocation(route);
+      const routeFilters = route.page === "spending" || route.page === "income"
+        ? parseCashflowFilters(new URLSearchParams(window.location.search))
+        : {};
       setActiveRoute(route);
       setMonth(routeMonth);
-      const canonicalUrl = urlForRoute(route, routeMonth.format("YYYY-MM"));
+      setCashflowFilters(routeFilters);
+      const canonicalUrl = urlForRoute(route, routeMonth.format("YYYY-MM"), routeFilters);
       if (`${window.location.pathname}${window.location.search}` !== canonicalUrl) {
         window.history.replaceState(null, "", canonicalUrl);
       }
@@ -305,13 +319,29 @@ function AppShell() {
   };
 
   const activePage = activeRoute.page;
-  const navigateToRoute = useCallback((route: AppRoute) => {
+  const navigateToRoute = useCallback((route: AppRoute, suppliedFilters?: CashflowFilters) => {
+    const nextFilters = cashflowFiltersForTransition(
+      activeRoute,
+      route,
+      cashflowFilters,
+      suppliedFilters
+    );
     setActiveRoute(route);
-    const nextUrl = urlForRoute(route, month.format("YYYY-MM"));
+    setCashflowFilters(nextFilters);
+    const nextUrl = urlForRoute(route, month.format("YYYY-MM"), nextFilters);
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.pushState(null, "", nextUrl);
     }
-  }, [month]);
+  }, [activeRoute, cashflowFilters, month]);
+
+  const replaceCashflowFilters = useCallback((filters: CashflowFilters) => {
+    const normalized = parseCashflowFilters(writeCashflowFilters(new URLSearchParams(), filters));
+    setCashflowFilters(normalized);
+    const nextUrl = urlForRoute(activeRoute, month.format("YYYY-MM"), normalized);
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [activeRoute, month]);
 
   const navigateToPage = useCallback((page: PageKey) => {
     navigateToRoute(defaultRouteForPage(page));
@@ -321,14 +351,15 @@ function AppShell() {
     const route: AppRoute = { page: "report", tab: "monthly" };
     setMonth(dayjs(`${monthKey}-01`));
     setActiveRoute(route);
+    setCashflowFilters({});
     window.history.pushState(null, "", urlForRoute(route, monthKey));
   }, []);
 
   const changeMonthBy = useCallback((offset: -1 | 1) => {
     const nextMonthKey = shiftMonthKey(monthKey, offset);
     setMonth(dayjs(`${nextMonthKey}-01`));
-    window.history.pushState(null, "", urlForRoute(activeRoute, nextMonthKey));
-  }, [activeRoute, monthKey]);
+    window.history.pushState(null, "", urlForRoute(activeRoute, nextMonthKey, cashflowFilters));
+  }, [activeRoute, cashflowFilters, monthKey]);
 
   return (
     <Layout className="app-shell">
@@ -397,7 +428,11 @@ function AppShell() {
                   onChange={(value) => {
                     const nextMonth = value ?? dayjs();
                     setMonth(nextMonth);
-                    window.history.pushState(null, "", urlForRoute(activeRoute, nextMonth.format("YYYY-MM")));
+                    window.history.pushState(
+                      null,
+                      "",
+                      urlForRoute(activeRoute, nextMonth.format("YYYY-MM"), cashflowFilters)
+                    );
                   }}
                 />
                 {!isYearlyReport ? (
@@ -440,14 +475,18 @@ function AppShell() {
                 <TransactionsPage
                   {...commonProps}
                   view={activeRoute.tab}
-                  onViewChange={(tab) => navigateToRoute({ page: "spending", tab })}
+                  filters={cashflowFilters}
+                  onFiltersChange={replaceCashflowFilters}
+                  onViewChange={(tab, filters) => navigateToRoute({ page: "spending", tab }, filters)}
                 />
               ) : null}
               {activeRoute.page === "income" ? (
                 <IncomePage
                   {...commonProps}
                   view={activeRoute.tab}
-                  onViewChange={(tab) => navigateToRoute({ page: "income", tab })}
+                  filters={cashflowFilters}
+                  onFiltersChange={replaceCashflowFilters}
+                  onViewChange={(tab, filters) => navigateToRoute({ page: "income", tab }, filters)}
                 />
               ) : null}
               {activeRoute.page === "checkup" ? (
@@ -529,6 +568,7 @@ function MonthlyReportPage({
   );
   const incomeCount = data.transactions.filter((item) => item.kind === "income").length;
   const expenseCount = data.transactions.filter((item) => item.kind === "expense").length;
+
   const completionItems = [
     { key: "spending", label: "支出账单", complete: data.monthlyReview.spending, route: routeForMonthlyReview("spending") },
     {
@@ -665,8 +705,7 @@ function MonthlyReportPage({
                 {model.topCategories.map((item) => (
                   <div className="top-spending-row" key={item.name}>
                     <Text strong>{item.name}</Text>
-                    <Progress percent={item.percent} showInfo={false} />
-                    <Text type="secondary">{item.percent}%</Text>
+                    <RatioProgress percent={item.percent} />
                     <Text strong>{item.amount}</Text>
                   </div>
                 ))}
@@ -683,8 +722,7 @@ function MonthlyReportPage({
                 {incomeView.categoryRows.slice(0, 5).map((item) => (
                   <div className="top-spending-row" key={item.categoryName}>
                     <Text strong>{item.categoryName}</Text>
-                    <Progress percent={item.percent} showInfo={false} strokeColor="#389e0d" />
-                    <Text type="secondary">{item.percent}%</Text>
+                    <RatioProgress percent={item.percent} />
                     <Text strong>{formatMoney(item.amount)}</Text>
                   </div>
                 ))}
@@ -733,15 +771,9 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
   }
   if (!report) return null;
 
-  const cashflowTrend = report.months.flatMap((item) => [
-    { month: dayjs(`${item.month}-01`).format("M月"), type: "收入", amount: Number(item.income) },
-    { month: dayjs(`${item.month}-01`).format("M月"), type: "支出", amount: Number(item.expense) }
-  ]);
-  const financeTrend = report.months.flatMap((item) => [
-    ...(item.totalAssets === undefined ? [] : [{ month: dayjs(`${item.month}-01`).format("M月"), type: "总资产", amount: Number(item.totalAssets) }]),
-    ...(item.totalLiabilities === undefined ? [] : [{ month: dayjs(`${item.month}-01`).format("M月"), type: "总负债", amount: Number(item.totalLiabilities) }]),
-    ...(item.netAssets === undefined ? [] : [{ month: dayjs(`${item.month}-01`).format("M月"), type: "净资产", amount: Number(item.netAssets) }])
-  ]);
+  const cashflowTrend = buildAnnualCashflowTrend(report.months);
+  const financeTrend = buildNetWorthTrend(report.months);
+  const hasFinanceTrend = financeTrend.some((item) => item.amount !== null);
   const completedMonths = report.months.filter((item) => (
     item.review.spending && item.review.assets && item.review.liabilities && item.review.investments
   )).length;
@@ -758,7 +790,7 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
   const categoryColumns: ColumnsType<YearlyReportData["categories"][number]> = [
     { title: "支出分类", dataIndex: "categoryName", width: 140, render: renderCategoryTag },
     { title: "金额", dataIndex: "amount", width: 130, align: "right", render: (value: string) => formatMoney(value) },
-    { title: "占比", dataIndex: "percent", width: 180, render: (value: number) => <Progress percent={value} /> },
+    { title: "占比", dataIndex: "percent", width: 200, render: (value: number) => <RatioProgress percent={value} /> },
     {
       title: "同比",
       dataIndex: "changeRate",
@@ -797,40 +829,32 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
         ))}
       </Row>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={15}>
-          <Card title="月度收支趋势" className="report-section-card">
-            <Column
-              data={cashflowTrend}
-              xField="month"
-              yField="amount"
-              colorField="type"
-              group
-              height={isMobile ? 240 : 300}
-              legend={{ color: { position: "top" } }}
-              axis={{ y: { labelFormatter: (value: number) => Number(value).toLocaleString("zh-CN") } }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} xl={9}>
-          <Card title="资产与负债趋势" className="report-section-card">
-            {financeTrend.length ? (
-              <Line
-                data={financeTrend}
-                xField="month"
-                yField="amount"
-                colorField="type"
-                height={isMobile ? 240 : 300}
-                point={{ size: 5 }}
-                legend={{ color: { position: "top" } }}
-                axis={{ y: { labelFormatter: (value: number) => Number(value).toLocaleString("zh-CN") } }}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="保存月度快照后显示资产与负债趋势" />
-            )}
-          </Card>
-        </Col>
-      </Row>
+      <Card title="净资产趋势" className="report-section-card" extra={<Text type="secondary">数据来自月度快照</Text>}>
+        {hasFinanceTrend ? (
+          <Line
+            data={financeTrend}
+            xField="month"
+            yField="amount"
+            colorField="type"
+            height={isMobile ? 260 : 340}
+            point={{ size: 4 }}
+            legend={{ color: { position: "top" } }}
+            scale={{
+              color: {
+                domain: ["总资产", "总负债", "净资产"],
+                range: ["#52c41a", "#ff4d4f", "#1677ff"]
+              }
+            }}
+            axis={{ y: { labelFormatter: (value: number) => Number(value).toLocaleString("zh-CN") } }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="保存月度快照后显示净资产趋势" />
+        )}
+      </Card>
+
+      <Card title="月度收支与结余趋势" className="report-section-card">
+        <CashflowComboChart data={cashflowTrend} compact={isMobile} />
+      </Card>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
@@ -904,6 +928,150 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
   );
 }
 
+type AnnualCashflowTrend = ReturnType<typeof buildAnnualCashflowTrend>;
+
+function CashflowComboChart({ data, compact }: { data: AnnualCashflowTrend; compact: boolean }) {
+  const [activeMonth, setActiveMonth] = useState<number | null>(null);
+  const width = compact ? 720 : 1000;
+  const height = compact ? 400 : 340;
+  const padding = { top: 22, right: 24, bottom: 38, left: compact ? 58 : 76 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const amounts = [...data.columns, ...data.balance].map((item) => item.amount);
+  const maxAmount = niceChartBound(Math.max(0, ...amounts));
+  const minAmount = -niceChartBound(Math.abs(Math.min(0, ...amounts)));
+  const range = Math.max(1, maxAmount - minAmount);
+  const xForPosition = (position: number) => padding.left + ((position - 0.5) / 12) * plotWidth;
+  const yForAmount = (amount: number) => padding.top + ((maxAmount - amount) / range) * plotHeight;
+  const zeroY = yForAmount(0);
+  const pointsByMonth = data.balance.map((balance) => {
+    const monthNumber = balance.position;
+    return {
+      monthNumber,
+      month: balance.month,
+      income: data.columns.find((item) => item.month === balance.month && item.type === "收入")?.amount ?? 0,
+      expense: data.columns.find((item) => item.month === balance.month && item.type === "支出")?.amount ?? 0,
+      balance: balance.amount
+    };
+  });
+  const balancePath = pointsByMonth
+    .map((item, index) => `${index === 0 ? "M" : "L"} ${xForPosition(item.monthNumber)} ${yForAmount(item.balance)}`)
+    .join(" ");
+  const activePoint = activeMonth === null ? null : pointsByMonth[activeMonth - 1];
+  const tickCount = 5;
+
+  return (
+    <div className="cashflow-combo-chart">
+      <Flex gap={14} wrap className="cashflow-chart-legend">
+        <ChartLegend color="#52c41a" label="收入" />
+        <ChartLegend color="#ff4d4f" label="支出" />
+        <ChartLegend color="#1677ff" label="结余" line />
+      </Flex>
+      <div className="cashflow-chart-canvas">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="每月收入、支出和结余趋势图">
+          {Array.from({ length: tickCount + 1 }, (_, index) => {
+            const amount = minAmount + ((maxAmount - minAmount) * index) / tickCount;
+            const y = yForAmount(amount);
+            return (
+              <g key={amount}>
+                <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} className="cashflow-grid-line" />
+                <text x={padding.left - 10} y={y + 4} textAnchor="end" className="cashflow-axis-label">
+                  {Math.round(amount).toLocaleString("zh-CN")}
+                </text>
+              </g>
+            );
+          })}
+          <line x1={padding.left} x2={width - padding.right} y1={zeroY} y2={zeroY} className="cashflow-zero-line" />
+          {data.columns.map((item) => {
+            const x = xForPosition(item.position);
+            const y = yForAmount(item.amount);
+            return (
+              <rect
+                key={`${item.month}-${item.type}`}
+                x={x - 13}
+                y={Math.min(y, zeroY)}
+                width={26}
+                height={Math.max(0, Math.abs(zeroY - y))}
+                rx={2}
+                fill={item.type === "收入" ? "#52c41a" : "#ff4d4f"}
+              />
+            );
+          })}
+          <path d={balancePath} fill="none" stroke="#1677ff" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+          {pointsByMonth.map((item) => (
+            <circle
+              key={item.month}
+              cx={xForPosition(item.monthNumber)}
+              cy={yForAmount(item.balance)}
+              r={4}
+              fill="#1677ff"
+              stroke="#ffffff"
+              strokeWidth={2}
+            />
+          ))}
+          {pointsByMonth.map((item) => {
+            const x = xForPosition(item.monthNumber);
+            return (
+              <g key={`hit-${item.month}`}>
+                <rect
+                  x={x - plotWidth / 24}
+                  y={padding.top}
+                  width={plotWidth / 12}
+                  height={plotHeight}
+                  fill="transparent"
+                  tabIndex={0}
+                  aria-label={`${item.month}，收入${formatMoney(String(item.income))}，支出${formatMoney(String(item.expense))}，结余${formatMoney(String(item.balance))}`}
+                  onMouseEnter={() => setActiveMonth(item.monthNumber)}
+                  onMouseLeave={() => setActiveMonth(null)}
+                  onClick={() => setActiveMonth(item.monthNumber)}
+                  onFocus={() => setActiveMonth(item.monthNumber)}
+                  onBlur={() => setActiveMonth(null)}
+                />
+                <text x={x} y={height - 10} textAnchor="middle" className="cashflow-axis-label">{item.month}</text>
+              </g>
+            );
+          })}
+        </svg>
+        {activePoint ? (
+          <div
+            className="cashflow-chart-tooltip"
+            style={{ left: `${Math.min(90, Math.max(10, (activePoint.monthNumber / 12) * 100))}%` }}
+          >
+            <Text strong>{activePoint.month}</Text>
+            <ChartTooltipRow color="#52c41a" label="收入" value={activePoint.income} />
+            <ChartTooltipRow color="#ff4d4f" label="支出" value={activePoint.expense} />
+            <ChartTooltipRow color="#1677ff" label="结余" value={activePoint.balance} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ChartLegend({ color, label, line = false }: { color: string; label: string; line?: boolean }) {
+  return (
+    <span className="cashflow-legend-item">
+      <span className={line ? "cashflow-legend-line" : "cashflow-legend-square"} style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  );
+}
+
+function ChartTooltipRow({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <Flex justify="space-between" gap={16}>
+      <span className="cashflow-tooltip-label"><i style={{ backgroundColor: color }} />{label}</span>
+      <Text>{formatMoney(String(value))}</Text>
+    </Flex>
+  );
+}
+
+function niceChartBound(value: number): number {
+  if (value <= 0) return 0;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  return Math.ceil(value / magnitude) * magnitude;
+}
+
 function CheckupPage(props: PageProps & { tab: CheckupTabKey; onTabChange: (tab: CheckupTabKey) => void }) {
   return (
     <Space orientation="vertical" size={16} className="page-stack checkup-page">
@@ -936,24 +1104,29 @@ function IncomePage(props: PageProps & CashflowRouteProps) {
 
 interface CashflowRouteProps {
   view: CashflowTabKey;
-  onViewChange: (view: CashflowTabKey) => void;
+  filters: CashflowFilters;
+  onFiltersChange: (filters: CashflowFilters) => void;
+  onViewChange: (view: CashflowTabKey, filters?: CashflowFilters) => void;
 }
 
 function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" | "income" }) {
   const screens = Grid.useBreakpoint();
   const isMobile = screens.md === false;
   const isExpense = props.kind === "expense";
-  const [category, setCategory] = useState<string | undefined>(undefined);
-  const [member, setMember] = useState<string | undefined>(undefined);
-  const [confirmationStatus, setConfirmationStatus] = useState<TransactionConfirmationFilter | undefined>(undefined);
-  const [amountMin, setAmountMin] = useState<number | null>(null);
-  const [amountMax, setAmountMax] = useState<number | null>(null);
+  const category = props.filters.category;
+  const member = props.filters.member;
+  const confirmationStatus = props.filters.status;
+  const amountMin = props.filters.min;
+  const amountMax = props.filters.max;
   const [mobilePage, setMobilePage] = useState(1);
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<FinanceTransaction | null>(null);
   const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
   const [form] = Form.useForm();
+  const updateFilters = (updates: Partial<CashflowFilters>) => {
+    props.onFiltersChange({ ...props.filters, ...updates });
+  };
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue(
@@ -995,8 +1168,8 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
       if (category && transaction.categoryName !== category) return false;
       if (member && transaction.memberName !== member) return false;
       const amount = Number(transaction.amount);
-      if (amountMin != null && amount < amountMin) return false;
-      if (amountMax != null && amount > amountMax) return false;
+      if (amountMin !== undefined && amount < amountMin) return false;
+      if (amountMax !== undefined && amount > amountMax) return false;
       return true;
     }),
     [amountMax, amountMin, cashflow.transactions, category, confirmationStatus, member]
@@ -1024,8 +1197,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
         onClick={() => {
           const drilldown = buildCategoryDrilldown(props.kind, categoryName);
           if (!drilldown) return;
-          setCategory(drilldown.category);
-          props.onViewChange(drilldown.view);
+          props.onViewChange(drilldown.view, { ...props.filters, category: drilldown.category });
           setMobilePage(1);
         }}
       >
@@ -1192,7 +1364,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                 placeholder="全部分类"
                 style={{ minWidth: 140 }}
                 value={category}
-                onChange={(value) => setCategory(value)}
+                onChange={(value) => updateFilters({ category: value })}
                 options={categoryOptions}
               />
               <Select
@@ -1200,7 +1372,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                 placeholder="全部成员"
                 style={{ minWidth: 120 }}
                 value={member}
-                onChange={(value) => setMember(value)}
+                onChange={(value) => updateFilters({ member: value })}
                 options={props.data.members.map((item) => ({ label: item, value: item }))}
               />
               <Select
@@ -1208,7 +1380,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                 placeholder="全部状态"
                 style={{ minWidth: 120 }}
                 value={confirmationStatus}
-                onChange={(value) => setConfirmationStatus(value)}
+                onChange={(value) => updateFilters({ status: value })}
                 options={[
                   { label: "待确认", value: "pending" },
                   { label: "已确认", value: "confirmed" }
@@ -1219,16 +1391,16 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                   placeholder="最低金额"
                   min={0}
                   style={{ width: 120 }}
-                  value={amountMin}
-                  onChange={(value) => setAmountMin(value ?? null)}
+                  value={amountMin ?? null}
+                  onChange={(value) => updateFilters({ min: value ?? undefined })}
                 />
                 <span>—</span>
                 <InputNumber
                   placeholder="最高金额"
                   min={0}
                   style={{ width: 120 }}
-                  value={amountMax}
-                  onChange={(value) => setAmountMax(value ?? null)}
+                  value={amountMax ?? null}
+                  onChange={(value) => updateFilters({ max: value ?? undefined })}
                 />
               </Space>
             </>
@@ -1252,7 +1424,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                     <Tag color={isExpense ? "red" : "green"}>{formatMoney(row.amount)}</Tag>
                   </Flex>
                   <Text type="secondary" className="mobile-record-note">{row.note || "—"}</Text>
-                  <Progress percent={row.percent} />
+                  <RatioProgress percent={row.percent} />
                 </div>
               ))}
             </MobileRecordList>
@@ -1279,7 +1451,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                   title: "占比",
                   dataIndex: "percent",
                   width: 240,
-                  render: (value: number) => <Progress percent={value} />
+                  render: (value: number) => <RatioProgress percent={value} />
                 },
                 {
                   title: "金额",
@@ -1534,6 +1706,7 @@ function AccountsPage(props: PageProps) {
     (sum, a) => sum + Number(a.currentValue),
     0
   );
+  const assetAllocation = useMemo(() => buildAssetAllocation(filteredAccounts), [filteredAccounts]);
   const editingManagedByHoldings = Boolean(
     editing && props.data.investments.some((holding) => holding.accountId === editing.id)
   );
@@ -1590,6 +1763,25 @@ function AccountsPage(props: PageProps) {
         </Space>
       }
     >
+      <section className="asset-allocation-section">
+        <Flex justify="space-between" align="center" gap={8} wrap>
+          <Title level={4}>资产配置</Title>
+          <Text type="secondary">按账户类型统计，不重复叠加关联投资持仓</Text>
+        </Flex>
+        {assetAllocation.length ? (
+          <Pie
+            data={assetAllocation}
+            angleField="value"
+            colorField="type"
+            height={isMobile ? 240 : 280}
+            innerRadius={0.62}
+            label={{ text: "type", position: "outside" }}
+            legend={{ color: { position: isMobile ? "bottom" : "right" } }}
+          />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="录入资产账户后显示配置结构" />
+        )}
+      </section>
       {isMobile ? (
         <MobileRecordList empty={filteredAccounts.length === 0}>
           {filteredAccounts.map((account) => (
@@ -1700,6 +1892,46 @@ function AccountsPage(props: PageProps) {
   );
 }
 
+type LiabilityProgressItem = ReturnType<typeof buildLiabilityProgress>[number];
+
+function LiabilityBulletChart({ items }: { items: LiabilityProgressItem[] }) {
+  return (
+    <div className="liability-bullet-chart" role="list" aria-label="还款进度">
+      {items.map((item) => {
+        const percent = item.percent ?? 0;
+        return (
+          <div key={item.id} className="liability-bullet-row" role="listitem">
+            <Flex justify="space-between" align="center" gap={8} wrap>
+              <Text strong>{item.name}</Text>
+              <Text strong className="liability-bullet-percent">已还 {percent}%</Text>
+            </Flex>
+            <div
+              className="liability-bullet-track"
+              role="progressbar"
+              aria-label={`${item.name}已还${percent}%`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent}
+            >
+              <span className="liability-bullet-range is-low" />
+              <span className="liability-bullet-range is-middle" />
+              <span className="liability-bullet-range is-high" />
+              <span className="liability-bullet-measure" style={{ width: `${percent}%` }} />
+              <span className="liability-bullet-target" />
+            </div>
+            <Flex justify="space-between" gap={8} wrap>
+              <Text type="secondary">
+                已还 {formatMoney(String(item.repaidAmount ?? 0))} / 初始 {formatMoney(String(item.initialBalance ?? 0))}
+              </Text>
+              <Text type="secondary">剩余 {formatMoney(String(item.currentBalance))}</Text>
+            </Flex>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function LiabilitiesPage(props: PageProps) {
   const screens = Grid.useBreakpoint();
   const isMobile = screens.md === false;
@@ -1709,6 +1941,23 @@ function LiabilitiesPage(props: PageProps) {
   const [form] = Form.useForm();
   const [repayForm] = Form.useForm();
   const { summary } = props.data;
+  const liabilityProgress = useMemo(
+    () => buildLiabilityProgress(props.data.liabilities),
+    [props.data.liabilities]
+  );
+  const trackableLiabilityProgress = liabilityProgress.filter((item) => !item.estimated);
+  const pendingLiabilityProgress = liabilityProgress.filter((item) => item.estimated);
+  const totalInitialLiability = trackableLiabilityProgress.reduce(
+    (sum, item) => sum + (item.initialBalance ?? 0),
+    0
+  );
+  const totalRepaidLiability = trackableLiabilityProgress.reduce(
+    (sum, item) => sum + (item.repaidAmount ?? 0),
+    0
+  );
+  const totalRepaymentPercent = totalInitialLiability === 0
+    ? 0
+    : Math.round((totalRepaidLiability / totalInitialLiability) * 1000) / 10;
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue(
@@ -1717,6 +1966,7 @@ function LiabilitiesPage(props: PageProps) {
             name: editing.name,
             type: editing.type,
             ownerName: editing.ownerName,
+            initialBalance: Number(editing.initialBalance ?? editing.currentBalance),
             currentBalance: Number(editing.currentBalance),
             monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
             paymentDay: editing.paymentDay,
@@ -1729,6 +1979,7 @@ function LiabilitiesPage(props: PageProps) {
             name: undefined,
             type: "mortgage",
             ownerName: undefined,
+            initialBalance: undefined,
             currentBalance: undefined,
             monthlyPayment: undefined,
             paymentDay: undefined,
@@ -1764,6 +2015,29 @@ function LiabilitiesPage(props: PageProps) {
           </Card>
         </Col>
       </Row>
+      <Card
+        title="还款进度"
+        className="report-section-card"
+        extra={trackableLiabilityProgress.length ? <Tag color="green">整体已还 {totalRepaymentPercent}%</Tag> : null}
+      >
+        {trackableLiabilityProgress.length ? (
+          <LiabilityBulletChart items={trackableLiabilityProgress} />
+        ) : (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={liabilityProgress.length ? "补充初始负债金额后显示还款进度" : "新增负债后显示还款进度"}
+          />
+        )}
+        {pendingLiabilityProgress.length ? (
+          <Alert
+            className="liability-progress-pending"
+            type="warning"
+            showIcon
+            message={`${pendingLiabilityProgress.length} 笔负债待补充初始金额`}
+            description={`${pendingLiabilityProgress.map((item) => item.name).join("、")}，补充后才会纳入还款进度和整体比例。`}
+          />
+        ) : null}
+      </Card>
       <Card
         title="负债明细"
         extra={
@@ -1802,6 +2076,7 @@ function LiabilitiesPage(props: PageProps) {
                 </Flex>
                 <div className="mobile-record-grid">
                   <MobileField label="债权机构" value={liability.lender || "—"} />
+                  <MobileField label="初始金额" value={liability.initialBalance ? formatMoney(liability.initialBalance) : "待补充"} />
                   <MobileField label="月供" value={liability.monthlyPayment ? formatMoney(liability.monthlyPayment) : "—"} />
                   <MobileField label="还款日" value={liability.paymentDay ? `每月${liability.paymentDay}号` : "—"} />
                   <MobileField label="剩余期数" value={liability.remainingPeriods == null ? "—" : `${liability.remainingPeriods}期`} />
@@ -1831,6 +2106,13 @@ function LiabilitiesPage(props: PageProps) {
             { title: "类型", dataIndex: "type", width: 110, render: renderLiabilityType },
             { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
             { title: "债权机构", dataIndex: "lender", width: 130 },
+            {
+              title: "初始金额",
+              dataIndex: "initialBalance",
+              width: 130,
+              align: "right",
+              render: (value?: string) => (value ? formatMoney(value) : "待补充")
+            },
             {
               title: "月供",
               dataIndex: "monthlyPayment",
@@ -1902,6 +2184,7 @@ function LiabilitiesPage(props: PageProps) {
                   name: editing.name,
                   type: editing.type,
                   ownerName: editing.ownerName,
+                  initialBalance: Number(editing.initialBalance ?? editing.currentBalance),
                   currentBalance: Number(editing.currentBalance),
                   monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
                   paymentDay: editing.paymentDay,
@@ -1917,6 +2200,7 @@ function LiabilitiesPage(props: PageProps) {
               name: values.name,
               type: values.type,
               ownerName: values.ownerName,
+              initialBalance: String(values.initialBalance),
               currentBalance: String(values.currentBalance),
               monthlyPayment:
                 values.monthlyPayment == null ? undefined : String(values.monthlyPayment),
@@ -2017,7 +2301,7 @@ function BudgetsPage(props: PageProps) {
             render: (_, record) => {
               const usage = usageByCategory.get(record.categoryName);
               const percent = usage ? Math.min(100, Math.round(usage.usageRate * 100)) : 0;
-              return <Progress percent={percent} size="small" status={usage?.status === "over" ? "exception" : "active"} />;
+              return <RatioProgress percent={percent} tone={usage?.status === "over" ? "danger" : "normal"} />;
             }
           },
           {
@@ -3470,6 +3754,23 @@ function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmi
       </Form.Item>
       <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
         <Select options={members.map((member) => ({ label: member, value: member }))} />
+      </Form.Item>
+      <Form.Item
+        name="initialBalance"
+        label="初始负债金额"
+        dependencies={["currentBalance"]}
+        rules={[
+          { required: true },
+          ({ getFieldValue }) => ({
+            validator: (_, value) => (
+              value == null || Number(value) >= Number(getFieldValue("currentBalance") ?? 0)
+                ? Promise.resolve()
+                : Promise.reject(new Error("初始负债金额不能小于当前余额"))
+            )
+          })
+        ]}
+      >
+        <InputNumber min={0} precision={2} className="full-width" />
       </Form.Item>
       <Form.Item name="currentBalance" label="当前余额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />

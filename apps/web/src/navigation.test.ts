@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  cashflowFiltersForTransition,
   pageFromPath,
   pathForPage,
   pathForRoute,
   pageMenuItems,
   routeForMonthlyReview,
   routeFromPath,
-  shiftMonthKey
+  shiftMonthKey,
+  urlForRoute
 } from "./navigation";
 
 describe("page navigation paths", () => {
@@ -71,6 +73,42 @@ describe("page navigation paths", () => {
     expect(shiftMonthKey("2026-07", -1)).toBe("2026-06");
     expect(shiftMonthKey("2026-01", -1)).toBe("2025-12");
     expect(shiftMonthKey("2026-12", 1)).toBe("2027-01");
+  });
+
+  it("builds cashflow URLs with the selected month and filters", () => {
+    expect(urlForRoute(
+      { page: "spending", tab: "details" },
+      "2026-06",
+      { category: "餐饮", member: "雄哥", status: "confirmed", min: 10, max: 500 }
+    )).toBe(
+      "/spending/details?month=2026-06&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&min=10&max=500"
+    );
+  });
+
+  it("keeps cashflow filters across months and tabs on the same page", () => {
+    const filters = { category: "餐饮", status: "pending" as const };
+
+    expect(cashflowFiltersForTransition(
+      { page: "spending", tab: "details" },
+      { page: "spending", tab: "summary" },
+      filters
+    )).toEqual(filters);
+  });
+
+  it("clears filters when moving to another main page unless explicitly supplied", () => {
+    const filters = { category: "餐饮" };
+
+    expect(cashflowFiltersForTransition(
+      { page: "spending", tab: "details" },
+      { page: "income", tab: "details" },
+      filters
+    )).toEqual({});
+    expect(cashflowFiltersForTransition(
+      { page: "report", tab: "monthly" },
+      { page: "income", tab: "details" },
+      {},
+      { category: "工资薪酬" }
+    )).toEqual({ category: "工资薪酬" });
   });
 });
 

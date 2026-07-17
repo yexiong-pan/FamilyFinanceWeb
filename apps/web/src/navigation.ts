@@ -1,3 +1,5 @@
+import { type CashflowFilters, writeCashflowFilters } from "./data/cashflow-route";
+
 export type PageKey = "report" | "spending" | "income" | "checkup" | "settings";
 export type CashflowTabKey = "summary" | "details";
 export type CheckupTabKey = "assets" | "liabilities" | "investments" | "history";
@@ -76,6 +78,31 @@ export function shiftMonthKey(month: string, offset: -1 | 1): string {
   const [yearPart, monthPart] = month.split("-");
   const date = new Date(Date.UTC(Number(yearPart), Number(monthPart) - 1 + offset, 1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export function urlForRoute(route: AppRoute, month: string, filters: CashflowFilters = {}): string {
+  const params = new URLSearchParams();
+  if (route.page === "report" && route.tab === "yearly") {
+    params.set("year", month.slice(0, 4));
+  } else {
+    params.set("month", month);
+  }
+
+  const routeParams = route.page === "spending" || route.page === "income"
+    ? writeCashflowFilters(params, filters)
+    : params;
+  return `${pathForRoute(route)}?${routeParams.toString()}`;
+}
+
+export function cashflowFiltersForTransition(
+  currentRoute: AppRoute,
+  nextRoute: AppRoute,
+  currentFilters: CashflowFilters,
+  suppliedFilters?: CashflowFilters
+): CashflowFilters {
+  if (nextRoute.page !== "spending" && nextRoute.page !== "income") return {};
+  if (suppliedFilters) return suppliedFilters;
+  return currentRoute.page === nextRoute.page ? currentFilters : {};
 }
 
 export function pageFromPath(pathname: string): PageKey {

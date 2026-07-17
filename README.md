@@ -137,11 +137,9 @@ PostgreSQL 数据保存在 `POSTGRES_DATA_PATH`，停止、重建或升级容器
 
 ### 2.5 更新版本
 
-1. 替换 NAS `app` 目录中的项目文件，保留 `.env`。
-2. 在 Container Manager 的项目详情中重新构建并启动。
-3. 确认三个服务均正常，再打开页面检查。
+NAS 当前无法稳定访问 Docker Hub，因此不要在 NAS 上重新构建镜像。统一在 Mac 上构建 `linux/amd64` API/Web 镜像，离线传输到 NAS 后使用 `--no-build --pull never` 启动。
 
-API 容器启动时会运行 `prisma db push`，自动将生产数据库结构同步到当前版本。
+普通代码更新、数据库表结构变更、检查及回滚的完整命令见 [NAS 离线发布流程](docs/nas-release.md)。API 容器启动时会运行 `prisma db push`；涉及删除、重命名或类型转换等破坏性结构变更时，必须先设计兼容的数据迁移步骤，不能直接依赖 `db push`。
 
 ## 3. 目录结构
 

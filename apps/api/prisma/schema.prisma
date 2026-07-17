@@ -217,6 +217,7 @@ model Liability {
   name             String
   type             LiabilityType
   ownerName        String
+  initialBalance   Decimal?            @db.Decimal(18, 2)
   currentBalance   Decimal             @db.Decimal(18, 2)
   monthlyPayment   Decimal?            @db.Decimal(18, 2)
   paymentDay       Int?
