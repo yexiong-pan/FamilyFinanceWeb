@@ -173,6 +173,10 @@ export class FinanceService {
     return this.repository.listTransactions(filter);
   }
 
+  async listTransactionsPage(filter: import("@family-finance/shared").TransactionPageFilter) {
+    return this.repository.listTransactionsPage(filter);
+  }
+
   async createTransaction(input: CreateTransactionInput): Promise<FinanceTransaction> {
     return this.repository.createTransaction(input);
   }

@@ -132,6 +132,9 @@ function createEmptyRepository(): FinanceRepository {
     async listTransactions() {
       return [];
     },
+    async listTransactionsPage() {
+      return { items: [], total: 0, totalAmount: "0.00" };
+    },
     async listTransactionsForYear() {
       return [];
     },

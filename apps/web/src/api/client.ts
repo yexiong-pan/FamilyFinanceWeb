@@ -1,12 +1,10 @@
 import type {
   Account,
-  AccountSnapshotRecord,
   AccountTypeOption,
-  AssetTrendPoint,
-  Budget,
   DashboardSummary,
   FamilyMemberInfo,
   FinanceTransaction,
+  TransactionPage,
   ImportTransactionItem,
   InvestmentHolding,
   Liability,
@@ -15,8 +13,6 @@ import type {
   YearlyReportData
 } from "@family-finance/shared";
 import type { TransactionSource } from "@family-finance/shared";
-
-export type { AssetTrendPoint };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 
@@ -47,14 +43,12 @@ export interface AppData {
   categoryMappings: CategoryMapping[];
   accounts: Account[];
   transactions: FinanceTransaction[];
-  budgets: Budget[];
   investments: InvestmentHolding[];
   liabilities: Liability[];
-  assetTrend: AssetTrendPoint[];
   monthlyReview: MonthlyReviewStatus;
 }
 
-export async function loadAppData(month: string): Promise<AppData> {
+export async function loadAppData(month: string, options: { includeTransactions?: boolean } = {}): Promise<AppData> {
   const [summary, familyMembers, accountTypes, categories, categoryMappings, accounts, transactions, investments, liabilities, monthlyReview] =
     await Promise.all([
       getJson<DashboardSummary>(`/dashboard/summary?month=${month}`),
@@ -63,7 +57,9 @@ export async function loadAppData(month: string): Promise<AppData> {
       getJson<Category[]>("/categories"),
       getJson<CategoryMapping[]>("/category-mappings"),
       getJson<Account[]>(`/accounts?month=${month}`),
-      getJson<FinanceTransaction[]>(`/transactions?month=${month}`),
+      options.includeTransactions === false
+        ? Promise.resolve([] as FinanceTransaction[])
+        : getJson<FinanceTransaction[]>(`/transactions?month=${month}`),
       getJson<InvestmentHolding[]>(`/investments?month=${month}`),
       getJson<Liability[]>(`/liabilities?month=${month}`),
       getJson<MonthlyReviewStatus>(`/monthly-review?month=${month}`)
@@ -78,12 +74,14 @@ export async function loadAppData(month: string): Promise<AppData> {
     categoryMappings,
     accounts,
     transactions,
-    budgets: [],
     investments,
     liabilities,
-    assetTrend: [],
     monthlyReview
   };
+}
+
+export async function getTransactionPage(query: string): Promise<TransactionPage> {
+  return getJson<TransactionPage>(`/transactions/page?${query}`);
 }
 
 export async function createMember(input: { name: string; icon?: string }): Promise<FamilyMemberInfo> {
@@ -179,44 +177,8 @@ export async function getYearlyReport(year: string): Promise<YearlyReportData> {
   return getJson(`/reports/yearly?year=${encodeURIComponent(year)}`);
 }
 
-export interface AccountSnapshotPoint {
-  date: string;
-  value: string;
-}
-
-export async function listAccountSnapshots(accountId: string): Promise<AccountSnapshotPoint[]> {
-  return getJson(`/accounts/${accountId}/snapshots`);
-}
-
-export async function listAllSnapshots(
-  filter?: { accountId?: string; from?: string; to?: string }
-): Promise<AccountSnapshotRecord[]> {
-  const params = new URLSearchParams();
-  if (filter?.accountId) params.set("accountId", filter.accountId);
-  if (filter?.from) params.set("from", filter.from);
-  if (filter?.to) params.set("to", filter.to);
-  const query = params.toString();
-  return getJson(`/accounts/snapshots${query ? `?${query}` : ""}`);
-}
-
-export async function deleteSnapshot(id: string): Promise<void> {
-  return del(`/accounts/snapshots/${id}`);
-}
-
 export async function deleteAccount(id: string): Promise<void> {
   return del(`/accounts/${id}`);
-}
-
-export async function createBudget(input: Omit<Budget, "id">): Promise<Budget> {
-  return postJson("/budgets", input);
-}
-
-export async function updateBudget(id: string, input: Omit<Budget, "id">): Promise<Budget> {
-  return patchJson(`/budgets/${id}`, input);
-}
-
-export async function deleteBudget(id: string): Promise<void> {
-  return del(`/budgets/${id}`);
 }
 
 export async function createInvestment(input: Omit<InvestmentHolding, "id">): Promise<InvestmentHolding> {

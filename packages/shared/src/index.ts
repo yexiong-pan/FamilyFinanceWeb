@@ -38,6 +38,24 @@ export interface FinanceTransaction {
   confirmedAt?: string;
 }
 
+export interface TransactionPageFilter {
+  month: string;
+  kind: "expense" | "income";
+  page: number;
+  pageSize: number;
+  category?: string;
+  member?: string;
+  status?: "pending" | "confirmed";
+  min?: number;
+  max?: number;
+}
+
+export interface TransactionPage {
+  items: FinanceTransaction[];
+  total: number;
+  totalAmount: MoneyAmount;
+}
+
 export interface Budget {
   id: string;
   month: string;
@@ -55,6 +73,8 @@ export interface InvestmentHolding {
   investedAmount?: MoneyAmount;
   profit: MoneyAmount;
   note?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MonthlyReviewStatus {
@@ -78,6 +98,8 @@ export interface Liability {
   lender?: string;
   status: LiabilityStatus;
   note?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CategoryBreakdownItem {

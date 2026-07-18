@@ -362,6 +362,14 @@ function createRepository(): FinanceRepository {
     async listTransactions(filter = {}) {
       return filter.month ? transactions.filter((item) => item.date.slice(0, 7) === filter.month) : transactions;
     },
+    async listTransactionsPage(filter) {
+      const items = transactions.filter((item) => item.date.slice(0, 7) === filter.month && item.kind === filter.kind);
+      return {
+        items: items.slice((filter.page - 1) * filter.pageSize, filter.page * filter.pageSize),
+        total: items.length,
+        totalAmount: items.reduce((sum, item) => sum + Number(item.amount), 0).toFixed(2)
+      };
+    },
     async listTransactionsForYear(year: string) {
       return transactions.filter((item) => item.date.startsWith(year));
     },

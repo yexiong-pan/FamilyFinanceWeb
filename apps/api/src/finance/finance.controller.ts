@@ -179,6 +179,31 @@ export class FinanceController {
     return this.financeService.listTransactions({ month });
   }
 
+  @Get("transactions/page")
+  listTransactionsPage(
+    @Query("month") month: string,
+    @Query("kind") kind: "expense" | "income",
+    @Query("page") page = "1",
+    @Query("pageSize") pageSize = "20",
+    @Query("category") category?: string,
+    @Query("member") member?: string,
+    @Query("status") status?: "pending" | "confirmed",
+    @Query("min") min?: string,
+    @Query("max") max?: string
+  ) {
+    return this.financeService.listTransactionsPage({
+      month,
+      kind,
+      page: Math.max(1, Number(page) || 1),
+      pageSize: Math.min(100, Math.max(1, Number(pageSize) || 20)),
+      category,
+      member,
+      status,
+      ...(min === undefined ? {} : { min: Number(min) }),
+      ...(max === undefined ? {} : { max: Number(max) })
+    });
+  }
+
   @Post("transactions")
   createTransaction(@Body() input: CreateTransactionInput): Promise<FinanceTransaction> {
     return this.financeService.createTransaction(input);

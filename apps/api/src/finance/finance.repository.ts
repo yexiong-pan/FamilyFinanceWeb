@@ -10,7 +10,9 @@ import type {
   Liability,
   MonthlyReviewStatus,
   MonthlySnapshotData,
-  MoneyAmount
+  MoneyAmount,
+  TransactionPage,
+  TransactionPageFilter
 } from "@family-finance/shared";
 import type {
   AccountTypeInput,
@@ -62,6 +64,7 @@ export interface FinanceRepository {
   deleteSnapshot(id: string): Promise<void>;
   deleteAccount(id: string): Promise<void>;
   listTransactions(filter?: { month?: string }): Promise<FinanceTransaction[]>;
+  listTransactionsPage(filter: TransactionPageFilter): Promise<TransactionPage>;
   listTransactionsForYear(year: string): Promise<FinanceTransaction[]>;
   createTransaction(input: CreateTransactionInput): Promise<FinanceTransaction>;
   updateTransaction(id: string, input: CreateTransactionInput): Promise<FinanceTransaction>;

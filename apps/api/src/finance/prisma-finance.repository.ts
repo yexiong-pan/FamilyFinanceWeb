@@ -383,6 +383,42 @@ export class PrismaFinanceRepository implements FinanceRepository {
     return transactions.map(mapTransaction);
   }
 
+  async listTransactionsPage(filter: import("@family-finance/shared").TransactionPageFilter) {
+    await this.ensureBaseData();
+    const where: Prisma.FinanceTransactionWhereInput = {
+      familyId: DEFAULT_FAMILY_ID,
+      deletedAt: null,
+      ...monthDateWhere(filter.month),
+      kind: filter.kind,
+      ...(filter.category ? { categoryName: filter.category } : {}),
+      ...(filter.member ? { memberName: filter.member } : {}),
+      ...(filter.status === "pending" ? { confirmedAt: null } : {}),
+      ...(filter.status === "confirmed" ? { confirmedAt: { not: null } } : {}),
+      ...(filter.min !== undefined || filter.max !== undefined ? {
+        amount: {
+          ...(filter.min === undefined ? {} : { gte: normalizeMoney(String(filter.min)) }),
+          ...(filter.max === undefined ? {} : { lte: normalizeMoney(String(filter.max)) })
+        }
+      } : {})
+    };
+    const [items, total, aggregate] = await Promise.all([
+      this.prisma.financeTransaction.findMany({
+        where,
+        include: { category: { select: { name: true } } },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        skip: (filter.page - 1) * filter.pageSize,
+        take: filter.pageSize
+      }),
+      this.prisma.financeTransaction.count({ where }),
+      this.prisma.financeTransaction.aggregate({ where, _sum: { amount: true } })
+    ]);
+    return {
+      items: items.map(mapTransaction),
+      total,
+      totalAmount: aggregate._sum.amount === null ? "0.00" : decimalToMoney(aggregate._sum.amount)
+    };
+  }
+
   async listTransactionsForYear(year: string): Promise<FinanceTransaction[]> {
     await this.ensureBaseData();
     const start = new Date(`${year}-01-01T00:00:00.000Z`);
@@ -1326,7 +1362,9 @@ function mapHolding(holding: DbHolding): InvestmentHolding {
     marketValue,
     investedAmount,
     profit: decimalToMoney(holding.profit),
-    note: holding.note ?? undefined
+    note: holding.note ?? undefined,
+    createdAt: holding.createdAt.toISOString(),
+    updatedAt: holding.updatedAt.toISOString()
   };
 }
 
@@ -1345,7 +1383,9 @@ function mapLiability(liability: DbLiability): Liability {
     remainingPeriods: liability.remainingPeriods ?? undefined,
     lender: liability.lender ?? undefined,
     status: liability.status,
-    note: liability.note ?? undefined
+    note: liability.note ?? undefined,
+    createdAt: liability.createdAt.toISOString(),
+    updatedAt: liability.updatedAt.toISOString()
   };
 }
 

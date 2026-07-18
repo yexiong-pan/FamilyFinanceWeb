@@ -19,11 +19,13 @@
     "nas:down": "docker compose -p family-finance-nas -f docker-compose.yml down",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run prisma:generate -w @family-finance/api",
     "db:migrate": "npm run prisma:migrate -w @family-finance/api"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

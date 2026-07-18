@@ -1,6 +1,62 @@
 import { describe, expect, it, vi } from "vitest";
 import { PrismaFinanceRepository } from "./prisma-finance.repository";
 
+describe("PrismaFinanceRepository transaction paging", () => {
+  it("filters and aggregates transactions in the database", async () => {
+    const rows = [{
+      id: "transaction-1",
+      familyId: "default-family",
+      accountId: null,
+      categoryId: null,
+      date: new Date("2026-06-18T00:00:00.000Z"),
+      kind: "expense",
+      categoryName: "餐饮",
+      memberName: "雄哥",
+      amount: "88.00",
+      note: null,
+      source: "wechat",
+      sourceCategory: "餐饮美食",
+      confirmedAt: null,
+      deletedAt: null,
+      createdAt: new Date("2026-06-18T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-18T00:00:00.000Z"),
+      category: { name: "餐饮" }
+    }];
+    const findMany = vi.fn(async () => rows);
+    const count = vi.fn(async () => 21);
+    const aggregate = vi.fn(async () => ({ _sum: { amount: "1688.00" } }));
+    const repository = new PrismaFinanceRepository({
+      financeTransaction: { findMany, count, aggregate }
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    const page = await repository.listTransactionsPage({
+      month: "2026-06",
+      kind: "expense",
+      page: 2,
+      pageSize: 20,
+      category: "餐饮",
+      member: "雄哥",
+      status: "pending",
+      min: 10,
+      max: 500
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      skip: 20,
+      take: 20,
+      where: expect.objectContaining({
+        kind: "expense",
+        categoryName: "餐饮",
+        memberName: "雄哥",
+        confirmedAt: null,
+        amount: { gte: "10.00", lte: "500.00" }
+      })
+    }));
+    expect(page).toEqual({ items: [expect.objectContaining({ id: "transaction-1" })], total: 21, totalAmount: "1688.00" });
+  });
+});
+
 describe("PrismaFinanceRepository liability balances", () => {
   it("stores and returns the initial balance used for repayment progress", async () => {
     const liabilityCreate = vi.fn(async ({ data }) => ({

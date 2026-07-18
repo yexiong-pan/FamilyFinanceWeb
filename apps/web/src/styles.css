@@ -183,6 +183,13 @@ body {
   width: 100%;
 }
 
+.chart-loading {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: #6b7280;
+}
+
 .metric-card,
 .chart-card,
 .list-card {
@@ -192,6 +199,7 @@ body {
 .metric-card .ant-statistic-content {
   color: #2c2c2c;
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .metric-card--asset {
@@ -306,8 +314,20 @@ body {
   text-overflow: ellipsis;
 }
 
+.ant-table-thead > tr > th,
+.ant-table-tbody > tr > td {
+  border-bottom-width: 1px !important;
+}
+
 .ant-tag {
   font-weight: 500;
+}
+
+.app-shell .ant-btn-link {
+  padding-inline: 6px;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .mobile-nav {
@@ -372,6 +392,19 @@ body {
 
 .report-section-card {
   height: 100%;
+}
+
+.compact-insight-card,
+.compact-chart-card {
+  height: 100%;
+}
+
+.compact-insight-card .ant-statistic-content {
+  font-size: 20px;
+}
+
+.asset-insight-row {
+  margin-bottom: 16px;
 }
 
 .asset-allocation-section {
@@ -448,6 +481,11 @@ body {
 
 .liability-progress-pending {
   margin-top: 16px;
+}
+
+.liability-payoff-note {
+  display: block;
+  margin-top: 12px;
 }
 
 .annual-report-loading {
@@ -576,6 +614,26 @@ body {
   background: #fafafa;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
+}
+
+.cashflow-bulk-actions {
+  padding: 10px 12px;
+  border: 1px solid #b7d9a8;
+  border-radius: 8px;
+  background: #f6ffed;
+}
+
+.mobile-member-totals {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.mobile-member-totals .ant-tag {
+  flex: 0 0 auto;
+  margin-inline-end: 0;
 }
 
 .cashflow-filter-summary .ant-tag {
@@ -799,18 +857,18 @@ body {
   }
 
   .app-content {
-    padding: 8px 10px 88px;
+    padding: 8px 10px 70px;
   }
 
   .app-content .ant-card-head {
-    min-height: 52px;
-    padding: 0 14px;
+    min-height: 46px;
+    padding: 0 12px;
   }
 
   .app-content .ant-card-head-wrapper {
     align-items: flex-start;
     gap: 8px;
-    padding: 10px 0;
+    padding: 8px 0;
   }
 
   .app-content .ant-card-extra > .ant-space {
@@ -819,7 +877,7 @@ body {
   }
 
   .app-content .ant-card-body {
-    padding: 14px;
+    padding: 12px;
   }
 
   .snapshot-metric-card .ant-card-body {
@@ -833,6 +891,10 @@ body {
 
   .snapshot-metric-card .ant-statistic-content {
     font-size: 16px;
+  }
+
+  .checkup-page .metric-card .ant-statistic-content {
+    font-size: 22px;
   }
 
   .annual-summary-card .ant-card-body {
@@ -853,6 +915,20 @@ body {
     max-width: 100%;
   }
 
+  .monthly-report-page > .ant-flex:first-child {
+    gap: 8px;
+  }
+
+  .monthly-report-page > .ant-flex:first-child .ant-btn {
+    height: 36px;
+    padding-inline: 12px;
+  }
+
+  .report-heading {
+    font-size: 26px !important;
+    line-height: 32px !important;
+  }
+
   .monthly-cashflow-card .ant-card-body {
     padding: 10px;
   }
@@ -864,6 +940,20 @@ body {
 
   .monthly-cashflow-card .ant-statistic-content {
     font-size: 18px;
+  }
+
+  .monthly-supporting-row .ant-card-body {
+    padding: 9px 7px;
+  }
+
+  .monthly-supporting-row .ant-statistic-title,
+  .monthly-supporting-row .ant-typography {
+    font-size: 11px;
+  }
+
+  .monthly-supporting-row .ant-statistic-content {
+    font-size: 16px;
+    white-space: normal;
   }
 
   .annual-month-grid {
@@ -884,6 +974,40 @@ body {
 
   .cashflow-filters .ant-space-item {
     flex: 1;
+  }
+
+  .cashflow-card > .ant-card-head .ant-card-head-wrapper {
+    align-items: center;
+  }
+
+  .cashflow-card > .ant-card-head .ant-card-extra > .ant-space {
+    flex-wrap: nowrap;
+    gap: 6px !important;
+  }
+
+  .cashflow-card > .ant-card-head .ant-card-extra .ant-btn {
+    width: 36px;
+    height: 36px;
+    padding-inline: 0;
+  }
+
+  .cashflow-view-switcher {
+    justify-content: space-between;
+  }
+
+  .cashflow-view-switcher .ant-segmented {
+    flex: 1;
+  }
+
+  .cashflow-bulk-actions .ant-select {
+    flex: 1 1 140px;
+  }
+
+  .mobile-record-card {
+    gap: 8px;
+    padding: 10px;
+    content-visibility: auto;
+    contain-intrinsic-size: 190px;
   }
 
   .ant-drawer-content-wrapper {
@@ -911,15 +1035,15 @@ body {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 2px;
-    padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    padding: 4px max(6px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
     background: #fff;
     border-top: 1px solid #d9dde5;
   }
 
   .mobile-nav .ant-btn {
     height: auto;
-    min-height: 48px;
-    padding: 6px 4px;
+    min-height: 44px;
+    padding: 4px 3px;
     white-space: normal;
     font-size: 11px;
   }
