@@ -8,6 +8,7 @@ import type {
   DashboardSummary,
   FamilyMemberInfo,
   FinanceTransaction,
+  ImportTransactionsResult,
   InvestmentHolding,
   Liability,
   MonthlyReviewStatus,
@@ -193,7 +194,7 @@ export class FinanceService {
     return this.repository.deleteTransaction(id);
   }
 
-  async importTransactions(input: ImportTransactionsInput): Promise<{ imported: number }> {
+  async importTransactions(input: ImportTransactionsInput): Promise<ImportTransactionsResult> {
     return this.repository.importTransactions(input);
   }
 

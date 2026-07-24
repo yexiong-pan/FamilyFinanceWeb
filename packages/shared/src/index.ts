@@ -229,11 +229,19 @@ export interface YearlyReportData {
 
 export interface ImportTransactionItem {
   date: string;
+  occurredAt?: string;
   kind: TransactionKind;
   categoryName: string;
   amount: MoneyAmount;
   note?: string;
   sourceCategory?: string;
+  sourceRecordId?: string;
+  sourceAccount?: string;
+}
+
+export interface ImportTransactionsResult {
+  imported: number;
+  duplicates: number;
 }
 
 export interface FamilyMemberInfo {

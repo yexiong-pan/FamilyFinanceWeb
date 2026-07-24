@@ -4,6 +4,7 @@ import type {
   DashboardSummary,
   FamilyMemberInfo,
   FinanceTransaction,
+  ImportTransactionsResult,
   TransactionPage,
   ImportTransactionItem,
   InvestmentHolding,
@@ -139,7 +140,7 @@ export async function importTransactions(payload: {
   memberName: string;
   source: Exclude<TransactionSource, "manual">;
   items: ImportTransactionItem[];
-}): Promise<{ imported: number }> {
+}): Promise<ImportTransactionsResult> {
   return postJson("/transactions/import", payload);
 }
 

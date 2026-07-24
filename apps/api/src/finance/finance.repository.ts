@@ -6,6 +6,7 @@ import type {
   Budget,
   FamilyMemberInfo,
   FinanceTransaction,
+  ImportTransactionsResult,
   InvestmentHolding,
   Liability,
   MonthlyReviewStatus,
@@ -70,7 +71,7 @@ export interface FinanceRepository {
   updateTransaction(id: string, input: CreateTransactionInput): Promise<FinanceTransaction>;
   confirmTransaction(id: string): Promise<FinanceTransaction>;
   deleteTransaction(id: string): Promise<void>;
-  importTransactions(input: ImportTransactionsInput): Promise<{ imported: number }>;
+  importTransactions(input: ImportTransactionsInput): Promise<ImportTransactionsResult>;
   listBudgets(month?: string): Promise<Budget[]>;
   createBudget(input: CreateBudgetInput): Promise<Budget>;
   updateBudget(id: string, input: CreateBudgetInput): Promise<Budget>;

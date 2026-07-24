@@ -57,6 +57,130 @@ describe("PrismaFinanceRepository transaction paging", () => {
   });
 });
 
+describe("PrismaFinanceRepository transaction imports", () => {
+  it("serializes imports and filters existing platform record keys", async () => {
+    const createMany = vi.fn(async ({ data }) => ({ count: data.length }));
+    const findMany = vi.fn(async ({ where }) => (
+      where.sourceRecordKey?.in
+        ? [{ sourceRecordKey: "wechat:id:transaction-1" }]
+        : []
+    ));
+    const executeRaw = vi.fn(async (..._args: unknown[]) => 1);
+    const client = {
+      category: {
+        findFirst: vi.fn(async () => ({ id: "category-food", name: "餐饮" }))
+      },
+      financeTransaction: {
+        findMany,
+        createMany
+      },
+      $executeRaw: executeRaw
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    const result = await repository.importTransactions({
+      memberName: "雄哥",
+      source: "wechat",
+      items: [
+        {
+          date: "2026-06-27",
+          occurredAt: "2026-06-27T13:05:26",
+          kind: "expense",
+          categoryName: "餐饮",
+          sourceCategory: "商户消费",
+          amount: "38.83",
+          note: "美团",
+          sourceRecordId: "transaction-1"
+        },
+        {
+          date: "2026-06-28",
+          occurredAt: "2026-06-28T13:05:26",
+          kind: "expense",
+          categoryName: "餐饮",
+          sourceCategory: "商户消费",
+          amount: "28.00",
+          note: "便利店",
+          sourceRecordId: "transaction-2"
+        }
+      ]
+    });
+
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    expect(executeRaw.mock.calls[0]?.[1]).toBe("finance-import:default-family:wechat");
+    expect(createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ sourceRecordKey: "wechat:id:transaction-2" })]
+    });
+    expect(result).toEqual({ imported: 1, duplicates: 1 });
+  });
+
+  it("skips matching legacy rows that were imported before record keys existed", async () => {
+    const createMany = vi.fn(async ({ data }) => ({ count: data.length }));
+    const findMany = vi.fn(async ({ where }) => (
+      where.sourceRecordKey?.in
+        ? []
+        : [{
+            date: new Date("2026-06-27T00:00:00.000Z"),
+            kind: "expense",
+            amount: "38.83",
+            note: "美团",
+            sourceCategory: "商户消费",
+            sourceRecordKey: null
+          }]
+    ));
+    const client = {
+      category: {
+        findFirst: vi.fn(async () => ({ id: "category-food", name: "餐饮" }))
+      },
+      financeTransaction: {
+        findMany,
+        createMany
+      },
+      $executeRaw: vi.fn(async () => 1)
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    const result = await repository.importTransactions({
+      memberName: "雄哥",
+      source: "wechat",
+      items: [
+        {
+          date: "2026-06-27",
+          occurredAt: "2026-06-27T13:05:26",
+          kind: "expense",
+          categoryName: "餐饮",
+          sourceCategory: "商户消费",
+          amount: "38.83",
+          note: "美团",
+          sourceRecordId: "transaction-1"
+        },
+        {
+          date: "2026-06-28",
+          occurredAt: "2026-06-28T13:05:26",
+          kind: "expense",
+          categoryName: "餐饮",
+          sourceCategory: "商户消费",
+          amount: "28.00",
+          note: "便利店",
+          sourceRecordId: "transaction-2"
+        }
+      ]
+    });
+
+    expect(createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ sourceRecordKey: "wechat:id:transaction-2" })]
+    }));
+    expect(result).toEqual({ imported: 1, duplicates: 1 });
+  });
+});
+
 describe("PrismaFinanceRepository liability balances", () => {
   it("stores and returns the initial balance used for repayment progress", async () => {
     const liabilityCreate = vi.fn(async ({ data }) => ({

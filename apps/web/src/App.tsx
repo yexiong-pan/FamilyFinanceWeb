@@ -295,11 +295,14 @@ function AppShell() {
   }, [reload]);
 
   const submit = useCallback(
-    async (run: () => Promise<unknown>, options: { success: string; onSuccess?: () => void }) => {
+    async <T,>(
+      run: () => Promise<T>,
+      options: { success: string | ((result: T) => string); onSuccess?: (result: T) => void }
+    ) => {
       try {
-        await run();
-        message.success(options.success);
-        options.onSuccess?.();
+        const result = await run();
+        message.success(typeof options.success === "function" ? options.success(result) : options.success);
+        options.onSuccess?.(result);
         await reload();
       } catch (caught) {
         message.error(caught instanceof Error ? caught.message : "保存失败，请重试");
@@ -1831,7 +1834,9 @@ function ImportDrawer({
                     items: mapped?.items ?? []
                   }),
                 {
-                  success: `已导入 ${parsed?.items.length ?? 0} 条记录`,
+                  success: (result) => result.duplicates > 0
+                    ? `已导入 ${result.imported} 条，跳过 ${result.duplicates} 条重复记录`
+                    : `已导入 ${result.imported} 条记录`,
                   onSuccess: () => {
                     setParsed(null);
                     setFileName(null);
@@ -3548,9 +3553,9 @@ interface PageProps {
   data: AppData;
   monthKey: string;
   reload: () => Promise<void>;
-  submit: (
-    run: () => Promise<unknown>,
-    options: { success: string; onSuccess?: () => void }
+  submit: <T>(
+    run: () => Promise<T>,
+    options: { success: string | ((result: T) => string); onSuccess?: (result: T) => void }
   ) => Promise<void>;
 }
 

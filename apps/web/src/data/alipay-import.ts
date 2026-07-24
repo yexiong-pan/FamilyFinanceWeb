@@ -41,13 +41,23 @@ export function parseAlipayBill(text: string): ParsedBill {
     const kind = KIND_MAP[(parts[2] ?? "").trim()];
     const amount = normalizeAmount(parts[3] ?? "");
     const note = parts.slice(4, parts.length - 4).join(",").trim();
-    const date = time.slice(0, 10);
+    const occurredAt = normalizeDateTime(time);
+    const date = occurredAt?.slice(0, 10) ?? "";
+    const sourceAccount = optionalCellText(parts[parts.length - 4]);
 
     if (!kind || !/^\d{4}-\d{2}-\d{2}$/.test(date) || amount === null) {
       skipped += 1;
       continue;
     }
-    items.push({ date, kind, categoryName, amount, note: note || undefined });
+    items.push({
+      date,
+      occurredAt: occurredAt ?? undefined,
+      kind,
+      categoryName,
+      amount,
+      note: note || undefined,
+      sourceAccount
+    });
   }
 
   return { source: "alipay", items, total: items.length + skipped, skipped };
@@ -77,12 +87,24 @@ export function parseWechatSheetRows(rows: SheetCell[][]): ParsedBill {
     const kind = KIND_MAP[cellText(row[4])];
     const amount = normalizeAmount(row[5]);
     const note = buildWechatNote(row);
+    const occurredAt = normalizeDateTime(row[0]);
+    const sourceRecordId = optionalCellText(row[8]);
+    const sourceAccount = optionalCellText(row[6]);
 
     if (!kind || !date || amount === null) {
       skipped += 1;
       continue;
     }
-    items.push({ date, kind, categoryName, amount, note: note || undefined });
+    items.push({
+      date,
+      occurredAt: occurredAt ?? undefined,
+      kind,
+      categoryName,
+      amount,
+      note: note || undefined,
+      sourceRecordId,
+      sourceAccount
+    });
   }
 
   return { source: "wechat", items, total: items.length + skipped, skipped };
@@ -148,6 +170,24 @@ function normalizeDate(raw: SheetCell): string | null {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function normalizeDateTime(raw: SheetCell): string | null {
+  if (raw instanceof Date && !Number.isNaN(raw.valueOf())) {
+    return raw.toISOString().slice(0, 19);
+  }
+  const text = cellText(raw);
+  const match = text.match(
+    /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
+  );
+  if (!match) {
+    return null;
+  }
+  const [, year, month, day, hour = "00", minute = "00", second = "00"] = match;
+  if (!year || !month || !day) {
+    return null;
+  }
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}`;
+}
+
 function buildWechatNote(row: SheetCell[]): string {
   const parts = [row[2], row[3], row[6], row[7], row[10]].map(cellText).filter((value) => value && value !== "/");
   return [...new Set(parts)].join(" · ");
@@ -161,4 +201,9 @@ function cellText(value: SheetCell): string {
     return normalizeDate(value) ?? "";
   }
   return String(value).replace(/^﻿/, "").trim();
+}
+
+function optionalCellText(value: SheetCell): string | undefined {
+  const text = cellText(value);
+  return text && text !== "/" ? text : undefined;
 }

@@ -408,7 +408,7 @@ function createRepository(): FinanceRepository {
           note: item.note
         });
       }
-      return { imported: input.items.length };
+      return { imported: input.items.length, duplicates: 0 };
     },
     async listBudgets(month?: string) {
       return month ? budgets.filter((item) => item.month === month) : budgets;

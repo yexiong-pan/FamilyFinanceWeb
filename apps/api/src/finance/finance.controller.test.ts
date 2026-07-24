@@ -159,7 +159,7 @@ function createEmptyRepository(): FinanceRepository {
       return undefined;
     },
     async importTransactions() {
-      return { imported: 0 };
+      return { imported: 0, duplicates: 0 };
     },
     async listBudgets() {
       return [];

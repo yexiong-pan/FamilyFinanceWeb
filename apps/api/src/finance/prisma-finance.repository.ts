@@ -9,6 +9,7 @@ import type {
   Budget,
   FamilyMemberInfo,
   FinanceTransaction,
+  ImportTransactionsResult,
   InvestmentHolding,
   Liability,
   MonthlyReviewStatus,
@@ -35,6 +36,7 @@ import type {
 import type { FinanceRepository } from "./finance.repository";
 import { expenseCategoryDefinitions, incomeCategoryDefinitions } from "./category-rules";
 import { defaultCategoryMappings } from "./default-category-mappings";
+import { buildImportRecordKey, buildLegacyImportKey } from "./import-deduplication";
 import type { YearlySnapshotInput } from "./yearly-report";
 
 const DEFAULT_FAMILY_ID = "default-family";
@@ -748,16 +750,78 @@ export class PrismaFinanceRepository implements FinanceRepository {
 
   // Bulk import (e.g. an Alipay bill). Missing expense/income categories are
   // created on the fly so the imported categories become reusable.
-  async importTransactions(input: ImportTransactionsInput): Promise<{ imported: number }> {
+  async importTransactions(input: ImportTransactionsInput): Promise<ImportTransactionsResult> {
     await this.ensureBaseData();
-    const imported = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
+      const importLockKey = `finance-import:${DEFAULT_FAMILY_ID}:${input.source}`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${importLockKey}))`;
       if (input.accountId) {
         await tx.account.findFirstOrThrow({
           where: { id: input.accountId, familyId: DEFAULT_FAMILY_ID, deletedAt: null }
         });
       }
-      let count = 0;
+
+      const dates = input.items.map((item) => parseDate(item.date));
+      const recordKeys = input.items.map((item) => buildImportRecordKey(input.source, item));
+      const existingKeyRows = recordKeys.length === 0
+        ? []
+        : await tx.financeTransaction.findMany({
+            where: {
+              familyId: DEFAULT_FAMILY_ID,
+              sourceRecordKey: { in: recordKeys }
+            },
+            select: { sourceRecordKey: true }
+          });
+      const existingKeys = new Set(
+        existingKeyRows
+          .map((row) => row.sourceRecordKey)
+          .filter((key): key is string => Boolean(key))
+      );
+      const legacyRows = dates.length === 0
+        ? []
+        : await tx.financeTransaction.findMany({
+            where: {
+              familyId: DEFAULT_FAMILY_ID,
+              source: input.source,
+              sourceRecordKey: null,
+              date: {
+                gte: new Date(Math.min(...dates.map((date) => date.valueOf()))),
+                lt: new Date(Math.max(...dates.map((date) => date.valueOf())) + 24 * 60 * 60 * 1000)
+              }
+            },
+            select: {
+              date: true,
+              kind: true,
+              amount: true,
+              note: true,
+              sourceCategory: true
+            }
+          });
+      const legacyCounts = new Map<string, number>();
+      for (const row of legacyRows) {
+        const key = buildLegacyImportKey(row);
+        legacyCounts.set(key, (legacyCounts.get(key) ?? 0) + 1);
+      }
+
+      const rows: Prisma.FinanceTransactionCreateManyInput[] = [];
+      const seenKeys = new Set<string>();
+      let duplicates = 0;
       for (const item of input.items) {
+        const sourceRecordKey = buildImportRecordKey(input.source, item);
+        if (existingKeys.has(sourceRecordKey) || seenKeys.has(sourceRecordKey)) {
+          duplicates += 1;
+          continue;
+        }
+        seenKeys.add(sourceRecordKey);
+
+        const legacyKey = buildLegacyImportKey(item);
+        const legacyCount = legacyCounts.get(legacyKey) ?? 0;
+        if (legacyCount > 0) {
+          legacyCounts.set(legacyKey, legacyCount - 1);
+          duplicates += 1;
+          continue;
+        }
+
         let categoryId: string | undefined;
         let categoryName = item.categoryName;
         if (item.kind === "expense" || item.kind === "income") {
@@ -780,27 +844,31 @@ export class PrismaFinanceRepository implements FinanceRepository {
           categoryId = fallback.id;
           categoryName = fallback.name;
         }
-        await tx.financeTransaction.create({
-          data: {
-            familyId: DEFAULT_FAMILY_ID,
-            accountId: input.accountId ?? null,
-            categoryId,
-            date: parseDate(item.date),
-            kind: item.kind,
-            categoryName,
-            memberName: input.memberName,
-            amount: normalizeMoney(item.amount),
-            note: item.note,
-            source: input.source,
-            sourceCategory: item.sourceCategory ?? item.categoryName,
-            confirmedAt: null
-          }
+        rows.push({
+          familyId: DEFAULT_FAMILY_ID,
+          accountId: input.accountId ?? null,
+          categoryId,
+          date: parseDate(item.date),
+          kind: item.kind,
+          categoryName,
+          memberName: input.memberName,
+          amount: normalizeMoney(item.amount),
+          note: item.note,
+          source: input.source,
+          sourceCategory: item.sourceCategory ?? item.categoryName,
+          sourceRecordKey,
+          confirmedAt: null
         });
-        count += 1;
       }
-      return count;
+
+      const created = rows.length === 0
+        ? { count: 0 }
+        : await tx.financeTransaction.createMany({ data: rows });
+      return {
+        imported: created.count,
+        duplicates
+      };
     });
-    return { imported };
   }
 
   async updateBudget(id: string, input: CreateBudgetInput): Promise<Budget> {

@@ -7,6 +7,7 @@ import type {
   Budget,
   FamilyMemberInfo,
   FinanceTransaction,
+  ImportTransactionsResult,
   InvestmentHolding,
   Liability,
   MonthlyReviewStatus,
@@ -210,7 +211,7 @@ export class FinanceController {
   }
 
   @Post("transactions/import")
-  importTransactions(@Body() input: ImportTransactionsInput): Promise<{ imported: number }> {
+  importTransactions(@Body() input: ImportTransactionsInput): Promise<ImportTransactionsResult> {
     return this.financeService.importTransactions(input);
   }
 

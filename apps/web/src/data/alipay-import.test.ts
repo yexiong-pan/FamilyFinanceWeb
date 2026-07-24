@@ -29,10 +29,42 @@ describe("parseAlipayBill", () => {
     expect(parseAlipayBill(sample).source).toBe("alipay");
     expect(skipped).toBe(1);
     expect(items).toEqual([
-      { date: "2026-06-26", kind: "expense", categoryName: "餐饮", amount: "11.00", note: "臻选好货" },
-      { date: "2026-06-26", kind: "income", categoryName: "投资理财", amount: "0.35", note: "余额宝-攒着-收益发放" },
-      { date: "2026-06-25", kind: "transfer", categoryName: "投资理财", amount: "2000.00", note: "余-转入到招商卡" },
-      { date: "2026-06-25", kind: "expense", categoryName: "餐饮", amount: "26.00", note: "黄记煌,备注里,带逗号的" }
+      {
+        date: "2026-06-26",
+        occurredAt: "2026-06-26T13:55:13",
+        kind: "expense",
+        categoryName: "餐饮",
+        amount: "11.00",
+        note: "臻选好货",
+        sourceAccount: "招商银行"
+      },
+      {
+        date: "2026-06-26",
+        occurredAt: "2026-06-26T05:49:22",
+        kind: "income",
+        categoryName: "投资理财",
+        amount: "0.35",
+        note: "余额宝-攒着-收益发放",
+        sourceAccount: "余额宝"
+      },
+      {
+        date: "2026-06-25",
+        occurredAt: "2026-06-25T09:56:49",
+        kind: "transfer",
+        categoryName: "投资理财",
+        amount: "2000.00",
+        note: "余-转入到招商卡",
+        sourceAccount: "招商银行|余"
+      },
+      {
+        date: "2026-06-25",
+        occurredAt: "2026-06-25T18:39:41",
+        kind: "expense",
+        categoryName: "餐饮",
+        amount: "26.00",
+        note: "黄记煌,备注里,带逗号的",
+        sourceAccount: "招商银行"
+      }
     ]);
   });
 
@@ -86,24 +118,32 @@ describe("parseWechatSheetRows", () => {
     expect(items).toEqual([
       {
         date: "2026-06-27",
+        occurredAt: "2026-06-27T05:05:26",
         kind: "expense",
         categoryName: "商户消费",
         amount: "38.83",
-        note: "美团 · 美团订单 · 银行卡 · 支付成功 · 已优惠¥0.17"
+        note: "美团 · 美团订单 · 银行卡 · 支付成功 · 已优惠¥0.17",
+        sourceRecordId: "1",
+        sourceAccount: "银行卡"
       },
       {
         date: "2026-06-21",
+        occurredAt: "2026-06-21T23:24:52",
         kind: "income",
         categoryName: "群收款",
         amount: "96.17",
-        note: "新西兰原住民 · 已存入零钱"
+        note: "新西兰原住民 · 已存入零钱",
+        sourceRecordId: "3"
       },
       {
         date: "2026-06-29",
+        occurredAt: "2026-06-29T10:57:55",
         kind: "transfer",
         categoryName: "零钱充值",
         amount: "100.00",
-        note: "上海农商银行(3440) · 银行卡 · 充值完成"
+        note: "上海农商银行(3440) · 银行卡 · 充值完成",
+        sourceRecordId: "4",
+        sourceAccount: "银行卡"
       }
     ]);
   });
@@ -123,10 +163,13 @@ describe("parseWechatWorkbook", () => {
     expect((await parseWechatWorkbook(base64ToArrayBuffer(wechatWorkbookFixture))).items).toEqual([
       {
         date: "2026-06-27",
+        occurredAt: "2026-06-27T13:05:26",
         kind: "expense",
         categoryName: "商户消费",
         amount: "38.83",
-        note: "美团 · 美团订单 · 银行卡 · 支付成功"
+        note: "美团 · 美团订单 · 银行卡 · 支付成功",
+        sourceRecordId: "1",
+        sourceAccount: "银行卡"
       }
     ]);
   });
