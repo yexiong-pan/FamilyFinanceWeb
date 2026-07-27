@@ -150,7 +150,15 @@ function reportMonth(
     income: "0",
     expense: "0",
     balance: "0",
-    review: { month, spending: false, assets: false, liabilities: false, investments: false },
+    review: {
+      month,
+      spending: false,
+      income: false,
+      assets: false,
+      liabilities: false,
+      investments: false,
+      review: false
+    },
     ...values
   };
 }

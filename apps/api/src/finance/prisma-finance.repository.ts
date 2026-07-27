@@ -194,10 +194,15 @@ export class PrismaFinanceRepository implements FinanceRepository {
         name: input.name,
         kind: input.kind,
         note: input.note,
+        expenseNature: input.kind === "expense" ? input.expenseNature ?? null : null,
         isDefault: false,
         isActive: true
       },
-      update: { isActive: true, note: input.note }
+      update: {
+        isActive: true,
+        note: input.note,
+        expenseNature: input.kind === "expense" ? input.expenseNature ?? null : null
+      }
     });
     return mapCategory(category);
   }
@@ -207,7 +212,12 @@ export class PrismaFinanceRepository implements FinanceRepository {
     const category = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.category.update({
         where: { id },
-        data: { name: input.name, kind: input.kind, note: input.note ?? null }
+        data: {
+          name: input.name,
+          kind: input.kind,
+          note: input.note ?? null,
+          expenseNature: input.kind === "expense" ? input.expenseNature ?? null : null
+        }
       });
       await Promise.all([
         tx.financeTransaction.updateMany({
@@ -309,6 +319,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         familyId: DEFAULT_FAMILY_ID,
         name: input.name,
         type: normalizeLegacyAccountType(input.type),
+        purpose: input.purpose ?? inferAssetPurpose(input.type),
         ownerName: input.ownerName,
         currentValue: normalizeMoney(input.currentValue),
         note: input.note
@@ -396,6 +407,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
       ...(filter.member ? { memberName: filter.member } : {}),
       ...(filter.status === "pending" ? { confirmedAt: null } : {}),
       ...(filter.status === "confirmed" ? { confirmedAt: { not: null } } : {}),
+      ...(filter.expenseNature ? { category: { expenseNature: filter.expenseNature } } : {}),
       ...(filter.min !== undefined || filter.max !== undefined ? {
         amount: {
           ...(filter.min === undefined ? {} : { gte: normalizeMoney(String(filter.min)) }),
@@ -630,6 +642,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
       data: {
         name: input.name,
         type: normalizeLegacyAccountType(input.type),
+        purpose: input.purpose ?? inferAssetPurpose(input.type),
         ownerName: input.ownerName,
         currentValue: normalizeMoney(input.currentValue),
         note: input.note ?? null
@@ -1070,7 +1083,9 @@ export class PrismaFinanceRepository implements FinanceRepository {
       spending: Boolean(review?.spendingConfirmedAt),
       assets: Boolean(review?.assetsConfirmedAt),
       liabilities: Boolean(review?.liabilitiesConfirmedAt),
-      investments: Boolean(review?.investmentsConfirmedAt)
+      investments: Boolean(review?.investmentsConfirmedAt),
+      income: Boolean(review?.incomeConfirmedAt),
+      review: Boolean(review?.reviewCompletedAt)
     };
   }
 
@@ -1193,9 +1208,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
       review: {
         month,
         spending: Boolean(review?.spendingConfirmedAt),
+        income: Boolean(review?.incomeConfirmedAt),
         assets: Boolean(review?.assetsConfirmedAt),
         liabilities: Boolean(review?.liabilitiesConfirmedAt),
-        investments: Boolean(review?.investmentsConfirmedAt)
+        investments: Boolean(review?.investmentsConfirmedAt),
+        review: Boolean(review?.reviewCompletedAt)
       },
       summary: {
         totalAssets,
@@ -1253,9 +1270,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
           review: {
             month,
             spending: Boolean(review?.spendingConfirmedAt),
+            income: Boolean(review?.incomeConfirmedAt),
             assets: Boolean(review?.assetsConfirmedAt),
             liabilities: Boolean(review?.liabilitiesConfirmedAt),
-            investments: Boolean(review?.investmentsConfirmedAt)
+            investments: Boolean(review?.investmentsConfirmedAt),
+            review: Boolean(review?.reviewCompletedAt)
           }
         }),
         ...(assetsAvailable ? { totalAssets } : {}),
@@ -1344,9 +1363,21 @@ export class PrismaFinanceRepository implements FinanceRepository {
             name: category.name,
             kind: category.kind,
             note: category.note,
+            expenseNature: "expenseNature" in category ? category.expenseNature : null,
             isDefault: true,
             isActive: true
           }))
+        });
+      }
+      for (const category of expenseCategoryDefinitions) {
+        await tx.category.updateMany({
+          where: {
+            familyId: DEFAULT_FAMILY_ID,
+            name: category.name,
+            kind: "expense",
+            expenseNature: null
+          },
+          data: { expenseNature: category.expenseNature }
         });
       }
 
@@ -1381,12 +1412,20 @@ function mapAccount(account: DbAccount): Account {
     id: account.id,
     name: account.name,
     type: account.type,
+    purpose: account.purpose ?? inferAssetPurpose(account.type),
     ownerName: account.ownerName,
     currentValue: decimalToMoney(account.currentValue),
     note: account.note ?? undefined,
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString()
   };
+}
+
+function inferAssetPurpose(type: string): NonNullable<Account["purpose"]> {
+  const normalizedType = normalizeLegacyAccountType(type);
+  return ["基金", "股票", "证券", "券商理财", "理财"].some((keyword) => normalizedType.includes(keyword))
+    ? "investment"
+    : "daily";
 }
 
 function mapTransaction(
@@ -1463,6 +1502,7 @@ function mapCategory(category: DbCategory): Category {
     name: category.name,
     kind: category.kind,
     note: category.note ?? undefined,
+    expenseNature: category.expenseNature ?? undefined,
     isDefault: category.isDefault,
     isActive: category.isActive
   };

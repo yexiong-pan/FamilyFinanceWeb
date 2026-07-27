@@ -1,20 +1,20 @@
 export const expenseCategoryDefinitions = [
-  { name: "房贷", note: "住房贷款本金、利息" },
-  { name: "居住家居", note: "房租、物业、水电燃气、家具、收纳、维修、家装" },
-  { name: "餐饮", note: "买菜、外卖、餐馆、饮品" },
-  { name: "交通出行", note: "公交、打车、加油、停车、车辆维护" },
-  { name: "服饰美容", note: "衣服、鞋包、理发、美甲、护肤" },
-  { name: "日用消耗", note: "纸品、清洁、洗护及其他消耗品" },
-  { name: "医疗健康", note: "药品、挂号、体检、健身" },
-  { name: "育儿教育", note: "儿童用品、学费、培训、书籍文具" },
-  { name: "休闲娱乐", note: "电影、游戏、会员、聚会、兴趣" },
-  { name: "旅行", note: "住宿、机票、景点及旅行消费" },
-  { name: "通讯数码", note: "话费、宽带、电子设备、软件服务" },
-  { name: "宠物", note: "宠物食品、用品、医疗" },
-  { name: "人情家庭", note: "红包、礼物、赡养及家庭往来" },
-  { name: "保险税费", note: "保险、税费及证照费用" },
-  { name: "其他", note: "低频且确实无法归类的支出" },
-  { name: "待分类支出", note: "导入后尚未确认用途的临时分类" }
+  { name: "房贷", note: "住房贷款本金、利息", expenseNature: "fixed" },
+  { name: "居住家居", note: "房租、物业、水电燃气、家具、收纳、维修、家装", expenseNature: "necessary" },
+  { name: "餐饮", note: "买菜、外卖、餐馆、饮品", expenseNature: "necessary" },
+  { name: "交通出行", note: "公交、打车、加油、停车、车辆维护", expenseNature: "necessary" },
+  { name: "服饰美容", note: "衣服、鞋包、理发、美甲、护肤", expenseNature: "flexible" },
+  { name: "日用消耗", note: "纸品、清洁、洗护及其他消耗品", expenseNature: "necessary" },
+  { name: "医疗健康", note: "药品、挂号、体检、健身", expenseNature: "necessary" },
+  { name: "育儿教育", note: "儿童用品、学费、培训、书籍文具", expenseNature: "necessary" },
+  { name: "休闲娱乐", note: "电影、游戏、会员、聚会、兴趣", expenseNature: "flexible" },
+  { name: "旅行", note: "住宿、机票、景点及旅行消费", expenseNature: "goal" },
+  { name: "通讯数码", note: "话费、宽带、电子设备、软件服务", expenseNature: "necessary" },
+  { name: "宠物", note: "宠物食品、用品、医疗", expenseNature: "necessary" },
+  { name: "人情家庭", note: "红包、礼物、赡养及家庭往来", expenseNature: "flexible" },
+  { name: "保险税费", note: "保险、税费及证照费用", expenseNature: "fixed" },
+  { name: "其他", note: "低频且确实无法归类的支出", expenseNature: "flexible" },
+  { name: "待分类支出", note: "导入后尚未确认用途的临时分类", expenseNature: "flexible" }
 ] as const;
 
 export const incomeCategoryDefinitions = [

@@ -13,16 +13,17 @@ export function buildTransactionPageQuery(input: {
     page: String(input.page),
     pageSize: String(input.pageSize)
   });
-  const { category, member, status, min, max } = input.filters;
+  const { category, member, status, expenseNature, min, max } = input.filters;
   if (category) params.set("category", category);
   if (member) params.set("member", member);
   if (status) params.set("status", status);
+  if (expenseNature) params.set("expenseNature", expenseNature);
   if (min !== undefined) params.set("min", String(min));
   if (max !== undefined) params.set("max", String(max));
   return params.toString();
 }
 
 export function countActiveCashflowFilters(filters: CashflowFilters): number {
-  return [filters.category, filters.member, filters.status, filters.min, filters.max]
+  return [filters.category, filters.member, filters.status, filters.expenseNature, filters.min, filters.max]
     .filter((value) => value !== undefined && value !== "").length;
 }

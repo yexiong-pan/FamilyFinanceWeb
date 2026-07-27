@@ -1,14 +1,17 @@
+import type { ExpenseNature } from "@family-finance/shared";
+
 export type CashflowConfirmationStatus = "pending" | "confirmed";
 
 export interface CashflowFilters {
   category?: string;
   member?: string;
   status?: CashflowConfirmationStatus;
+  expenseNature?: ExpenseNature;
   min?: number;
   max?: number;
 }
 
-const filterKeys = ["category", "member", "status", "min", "max"] as const;
+const filterKeys = ["category", "member", "status", "expenseNature", "min", "max"] as const;
 
 function parseText(value: string | null): string | undefined {
   const normalized = value?.trim();
@@ -26,6 +29,13 @@ export function parseCashflowFilters(params: URLSearchParams): CashflowFilters {
   const member = parseText(params.get("member"));
   const rawStatus = params.get("status");
   const status = rawStatus === "pending" || rawStatus === "confirmed" ? rawStatus : undefined;
+  const rawExpenseNature = params.get("expenseNature");
+  const expenseNature = (
+    rawExpenseNature === "fixed"
+    || rawExpenseNature === "necessary"
+    || rawExpenseNature === "flexible"
+    || rawExpenseNature === "goal"
+  ) ? rawExpenseNature : undefined;
   const min = parseAmount(params.get("min"));
   const max = parseAmount(params.get("max"));
 
@@ -33,6 +43,7 @@ export function parseCashflowFilters(params: URLSearchParams): CashflowFilters {
     ...(category ? { category } : {}),
     ...(member ? { member } : {}),
     ...(status ? { status } : {}),
+    ...(expenseNature ? { expenseNature } : {}),
     ...(min !== undefined ? { min } : {}),
     ...(max !== undefined ? { max } : {})
   };
@@ -48,6 +59,7 @@ export function writeCashflowFilters(
   if (filters.category?.trim()) next.set("category", filters.category.trim());
   if (filters.member?.trim()) next.set("member", filters.member.trim());
   if (filters.status === "pending" || filters.status === "confirmed") next.set("status", filters.status);
+  if (filters.expenseNature) next.set("expenseNature", filters.expenseNature);
   if (filters.min !== undefined && Number.isFinite(filters.min) && filters.min >= 0) next.set("min", String(filters.min));
   if (filters.max !== undefined && Number.isFinite(filters.max) && filters.max >= 0) next.set("max", String(filters.max));
 

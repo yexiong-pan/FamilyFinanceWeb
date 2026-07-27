@@ -472,12 +472,12 @@ function createRepository(): FinanceRepository {
       return { month, count: liabilities.length };
     },
     async getMonthlyReview(month: string) {
-      return { month, spending: false, assets: false, liabilities: false, investments: false };
+      return { month, spending: false, income: false, assets: false, liabilities: false, investments: false, review: false };
     },
     async getMonthlySnapshot(month: string) {
       return {
         month,
-        review: { month, spending: false, assets: false, liabilities: false, investments: false },
+        review: { month, spending: false, income: false, assets: false, liabilities: false, investments: false, review: false },
         summary: {
           totalAssets: "0.00",
           totalLiabilities: "0.00",
@@ -494,7 +494,7 @@ function createRepository(): FinanceRepository {
       return [];
     },
     async confirmMonthlySpending(month: string) {
-      return { month, spending: true, assets: false, liabilities: false, investments: false };
+      return { month, spending: true, income: false, assets: false, liabilities: false, investments: false, review: false };
     },
     async createLiability(input: CreateLiabilityInput) {
       const liability: Liability = {

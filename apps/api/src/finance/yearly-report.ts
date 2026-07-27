@@ -125,7 +125,15 @@ export function buildYearlyReport(input: {
 }
 
 function emptyReview(month: string): MonthlyReviewStatus {
-  return { month, spending: false, assets: false, liabilities: false, investments: false };
+  return {
+    month,
+    spending: false,
+    income: false,
+    assets: false,
+    liabilities: false,
+    investments: false,
+    review: false
+  };
 }
 
 function sumTransactions(transactions: FinanceTransaction[], kind: "income" | "expense"): MoneyAmount {

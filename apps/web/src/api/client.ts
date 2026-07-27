@@ -4,16 +4,27 @@ import type {
   DashboardSummary,
   FamilyMemberInfo,
   FinanceTransaction,
+  FinancialSafetyData,
+  FinancialSafetySettings,
   ImportTransactionsResult,
   TransactionPage,
   ImportTransactionItem,
   InvestmentHolding,
   Liability,
   MonthlyReviewStatus,
+  MonthlyReviewAction,
+  MonthlyReviewContent,
+  MonthlyReviewDetail,
   MonthlySnapshotData,
+  RecurringCashflow,
   YearlyReportData
 } from "@family-finance/shared";
 import type { TransactionSource } from "@family-finance/shared";
+import type {
+  ExpenseNature,
+  MonthlyActionStatus,
+  RecurringCashflowKind
+} from "@family-finance/shared";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 
@@ -22,6 +33,7 @@ export interface Category {
   name: string;
   kind: "expense" | "income" | "transfer" | "adjustment";
   note?: string;
+  expenseNature?: ExpenseNature;
   isDefault: boolean;
   isActive: boolean;
 }
@@ -47,10 +59,19 @@ export interface AppData {
   investments: InvestmentHolding[];
   liabilities: Liability[];
   monthlyReview: MonthlyReviewStatus;
+  monthlyReviewDetail: MonthlyReviewDetail;
+  financialSafety: FinancialSafetyData;
 }
 
-export async function loadAppData(month: string, options: { includeTransactions?: boolean } = {}): Promise<AppData> {
-  const [summary, familyMembers, accountTypes, categories, categoryMappings, accounts, transactions, investments, liabilities, monthlyReview] =
+export async function loadAppData(
+  month: string,
+  options: {
+    includeTransactions?: boolean;
+    includeMonthlyReviewDetail?: boolean;
+    includeFinancialSafety?: boolean;
+  } = {}
+): Promise<AppData> {
+  const [summary, familyMembers, accountTypes, categories, categoryMappings, accounts, transactions, investments, liabilities, monthlyReview, monthlyReviewDetail, financialSafety] =
     await Promise.all([
       getJson<DashboardSummary>(`/dashboard/summary?month=${month}`),
       getJson<FamilyMemberInfo[]>("/family-members"),
@@ -63,7 +84,13 @@ export async function loadAppData(month: string, options: { includeTransactions?
         : getJson<FinanceTransaction[]>(`/transactions?month=${month}`),
       getJson<InvestmentHolding[]>(`/investments?month=${month}`),
       getJson<Liability[]>(`/liabilities?month=${month}`),
-      getJson<MonthlyReviewStatus>(`/monthly-review?month=${month}`)
+      getJson<MonthlyReviewStatus>(`/monthly-review?month=${month}`),
+      options.includeMonthlyReviewDetail
+        ? getJson<MonthlyReviewDetail>(`/monthly-review/detail?month=${month}`)
+        : Promise.resolve(emptyMonthlyReviewDetail(month)),
+      options.includeFinancialSafety
+        ? getJson<FinancialSafetyData>(`/financial-safety?month=${month}`)
+        : Promise.resolve(emptyFinancialSafety(month))
     ]);
 
   return {
@@ -77,7 +104,54 @@ export async function loadAppData(month: string, options: { includeTransactions?
     transactions,
     investments,
     liabilities,
-    monthlyReview
+    monthlyReview,
+    monthlyReviewDetail,
+    financialSafety
+  };
+}
+
+function emptyMonthlyReviewDetail(month: string): MonthlyReviewDetail {
+  return {
+    month,
+    state: "draft",
+    status: {
+      income: false,
+      spending: false,
+      assets: false,
+      liabilities: false,
+      investments: false,
+      review: false
+    },
+    content: {},
+    checks: [],
+    changes: [],
+    actions: []
+  };
+}
+
+function emptyFinancialSafety(month: string): FinancialSafetyData {
+  return {
+    settings: {
+      emergencyReserve: "0.00",
+      plannedMonthlySavings: "0.00",
+      liquidAccountIds: []
+    },
+    recurringCashflows: [],
+    summary: {
+      month,
+      asOfDate: `${month}-01`,
+      liquidAmount: "0.00",
+      expectedIncome: "0.00",
+      requiredExpenses: "0.00",
+      debtPayments: "0.00",
+      plannedSavings: "0.00",
+      emergencyReserve: "0.00",
+      safeToSpend: "0.00",
+      shortfall: "0.00",
+      confidence: "insufficient",
+      confidenceIssues: [],
+      upcomingObligations: []
+    }
   };
 }
 
@@ -170,6 +244,51 @@ export async function confirmMonthlySpending(month: string): Promise<MonthlyRevi
   return postJson("/monthly-review/spending", { month });
 }
 
+export async function confirmMonthlyIncome(month: string): Promise<MonthlyReviewStatus> {
+  return postJson("/monthly-review/income", { month });
+}
+
+export async function updateMonthlyReviewContent(
+  month: string,
+  input: MonthlyReviewContent
+): Promise<MonthlyReviewDetail> {
+  return patchJson("/monthly-review/content", { month, ...input });
+}
+
+export async function completeMonthlyReview(month: string): Promise<MonthlyReviewDetail> {
+  return postJson("/monthly-review/complete", { month });
+}
+
+export async function reopenMonthlyReview(month: string): Promise<MonthlyReviewDetail> {
+  return postJson("/monthly-review/reopen", { month });
+}
+
+export type MonthlyReviewActionInput = {
+  title: string;
+  ownerName?: string;
+  dueDate?: string;
+  targetAmount?: string;
+  status?: MonthlyActionStatus;
+};
+
+export async function createMonthlyReviewAction(
+  month: string,
+  input: MonthlyReviewActionInput
+): Promise<MonthlyReviewAction> {
+  return postJson("/monthly-review/actions", { month, ...input });
+}
+
+export async function updateMonthlyReviewAction(
+  id: string,
+  input: MonthlyReviewActionInput
+): Promise<MonthlyReviewAction> {
+  return patchJson(`/monthly-review/actions/${id}`, input);
+}
+
+export async function deleteMonthlyReviewAction(id: string): Promise<void> {
+  return del(`/monthly-review/actions/${id}`);
+}
+
 export async function getMonthlySnapshot(month: string): Promise<MonthlySnapshotData> {
   return getJson(`/monthly-snapshots?month=${encodeURIComponent(month)}`);
 }
@@ -209,7 +328,12 @@ export async function repayLiability(id: string, input: { amount: string }): Pro
   return postJson(`/liabilities/${id}/repay`, input);
 }
 
-export type CategoryInput = { name: string; kind: Category["kind"]; note?: string };
+export type CategoryInput = {
+  name: string;
+  kind: Category["kind"];
+  note?: string;
+  expenseNature?: ExpenseNature;
+};
 
 export type CategoryMappingInput = Omit<CategoryMapping, "id" | "targetCategoryName">;
 
@@ -241,6 +365,43 @@ export async function deleteLiability(id: string): Promise<void> {
   return del(`/liabilities/${id}`);
 }
 
+export type RecurringCashflowInput = {
+  name: string;
+  kind: RecurringCashflowKind;
+  amount: string;
+  dayOfMonth: number;
+  memberName?: string;
+  accountId?: string;
+  categoryId?: string;
+  expenseNature?: ExpenseNature;
+  startMonth?: string;
+  endMonth?: string;
+  isActive?: boolean;
+};
+
+export async function updateFinancialSafetySettings(
+  input: FinancialSafetySettings
+): Promise<FinancialSafetySettings> {
+  return patchJson("/financial-safety/settings", input);
+}
+
+export async function createRecurringCashflow(
+  input: RecurringCashflowInput
+): Promise<RecurringCashflow> {
+  return postJson("/recurring-cashflows", input);
+}
+
+export async function updateRecurringCashflow(
+  id: string,
+  input: RecurringCashflowInput
+): Promise<RecurringCashflow> {
+  return patchJson(`/recurring-cashflows/${id}`, input);
+}
+
+export async function deleteRecurringCashflow(id: string): Promise<void> {
+  return del(`/recurring-cashflows/${id}`);
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`);
   if (!response.ok) {
@@ -266,7 +427,7 @@ async function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknown
     body: JSON.stringify(body)
   });
   if (!response.ok) {
-    throw new Error(`${method} ${path} failed with ${response.status}`);
+    throw new Error(await readError(response, `${method} ${path} failed with ${response.status}`));
   }
   return response.json() as Promise<T>;
 }
@@ -274,6 +435,16 @@ async function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknown
 async function del(path: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}${path}`, { method: "DELETE" });
   if (!response.ok) {
-    throw new Error(`DELETE ${path} failed with ${response.status}`);
+    throw new Error(await readError(response, `DELETE ${path} failed with ${response.status}`));
+  }
+}
+
+async function readError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { message?: string | string[] };
+    if (Array.isArray(data.message)) return data.message.join("；");
+    return data.message || fallback;
+  } catch {
+    return fallback;
   }
 }

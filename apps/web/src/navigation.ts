@@ -2,9 +2,9 @@ import { type CashflowFilters, writeCashflowFilters } from "./data/cashflow-rout
 
 export type PageKey = "report" | "spending" | "income" | "checkup" | "settings";
 export type CashflowTabKey = "summary" | "details";
-export type CheckupTabKey = "assets" | "liabilities" | "investments" | "history";
+export type CheckupTabKey = "assets" | "safety" | "liabilities" | "investments" | "history";
 export type ReportTabKey = "monthly" | "yearly";
-export type MonthlyReviewItemKey = "spending" | "assets" | "liabilities" | "investments";
+export type MonthlyReviewItemKey = "income" | "spending" | "assets" | "liabilities" | "investments";
 
 export type AppRoute =
   | { page: "report"; tab: ReportTabKey }
@@ -36,6 +36,7 @@ const routePaths = new Map<string, AppRoute>([
   ["/income/details", { page: "income", tab: "details" }],
   ["/checkup", { page: "checkup", tab: "assets" }],
   ["/checkup/assets", { page: "checkup", tab: "assets" }],
+  ["/checkup/safety", { page: "checkup", tab: "safety" }],
   ["/checkup/liabilities", { page: "checkup", tab: "liabilities" }],
   ["/checkup/investments", { page: "checkup", tab: "investments" }],
   ["/checkup/history", { page: "checkup", tab: "history" }],
@@ -66,6 +67,7 @@ export function pathForPage(page: PageKey): string {
 }
 
 export function routeForMonthlyReview(item: MonthlyReviewItemKey): AppRoute {
+  if (item === "income") return { page: "income", tab: "details" };
   if (item === "spending") return { page: "spending", tab: "details" };
   return { page: "checkup", tab: item };
 }

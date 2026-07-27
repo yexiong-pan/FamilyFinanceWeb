@@ -1,4 +1,4 @@
-import type { InvestmentHoldingType } from "@family-finance/shared";
+import type { AssetPurpose, InvestmentHoldingType } from "@family-finance/shared";
 
 const holdingTypeLabels: Record<InvestmentHoldingType, string> = {
   fund: "基金",
@@ -9,11 +9,11 @@ const holdingTypeLabels: Record<InvestmentHoldingType, string> = {
 const liquidAccountTypes = new Set(["银行卡", "现金", "支付宝", "微信", "活期", "货币基金"]);
 
 export function buildAssetInsights(
-  accounts: Array<{ type: string; currentValue: string; updatedAt?: string }>
+  accounts: Array<{ type: string; purpose?: AssetPurpose; currentValue: string; updatedAt?: string }>
 ): { liquidAmount: number; liquidPercent: number; latestUpdatedAt?: string } {
   const total = accounts.reduce((sum, item) => sum + Number(item.currentValue), 0);
   const liquidAmount = accounts
-    .filter((item) => liquidAccountTypes.has(item.type))
+    .filter((item) => item.purpose === "daily" || (!item.purpose && liquidAccountTypes.has(item.type)))
     .reduce((sum, item) => sum + Number(item.currentValue), 0);
   const latestUpdatedAt = accounts
     .map((item) => item.updatedAt)

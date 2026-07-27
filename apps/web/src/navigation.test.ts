@@ -46,6 +46,7 @@ describe("page navigation paths", () => {
     expect(pathForRoute({ page: "income", tab: "summary" })).toBe("/income/summary");
     expect(pathForRoute({ page: "income", tab: "details" })).toBe("/income/details");
     expect(pathForRoute({ page: "checkup", tab: "assets" })).toBe("/checkup/assets");
+    expect(pathForRoute({ page: "checkup", tab: "safety" })).toBe("/checkup/safety");
     expect(pathForRoute({ page: "checkup", tab: "liabilities" })).toBe("/checkup/liabilities");
     expect(pathForRoute({ page: "checkup", tab: "investments" })).toBe("/checkup/investments");
     expect(pathForRoute({ page: "checkup", tab: "history" })).toBe("/checkup/history");
@@ -53,6 +54,7 @@ describe("page navigation paths", () => {
     expect(routeFromPath("/spending")).toEqual({ page: "spending", tab: "summary" });
     expect(routeFromPath("/report/yearly")).toEqual({ page: "report", tab: "yearly" });
     expect(routeFromPath("/income/details")).toEqual({ page: "income", tab: "details" });
+    expect(routeFromPath("/checkup/safety")).toEqual({ page: "checkup", tab: "safety" });
     expect(routeFromPath("/checkup/history")).toEqual({ page: "checkup", tab: "history" });
     expect(routeFromPath("/accounts")).toEqual({ page: "checkup", tab: "assets" });
   });
@@ -63,6 +65,7 @@ describe("page navigation paths", () => {
   });
 
   it("routes each monthly review item to its matching detail page", () => {
+    expect(routeForMonthlyReview("income")).toEqual({ page: "income", tab: "details" });
     expect(routeForMonthlyReview("spending")).toEqual({ page: "spending", tab: "details" });
     expect(routeForMonthlyReview("assets")).toEqual({ page: "checkup", tab: "assets" });
     expect(routeForMonthlyReview("liabilities")).toEqual({ page: "checkup", tab: "liabilities" });

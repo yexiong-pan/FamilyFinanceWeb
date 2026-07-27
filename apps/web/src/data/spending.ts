@@ -1,9 +1,16 @@
-import type { FinanceTransaction, MoneyAmount } from "@family-finance/shared";
+import type { ExpenseNature, FinanceTransaction, MoneyAmount } from "@family-finance/shared";
+
+export interface ExpenseNatureRow {
+  nature: ExpenseNature;
+  amount: MoneyAmount;
+  percent: number;
+}
 
 export interface SpendingView {
   transactions: FinanceTransaction[];
   total: MoneyAmount;
   categoryRows: Array<{ categoryName: string; note?: string; amount: MoneyAmount; percent: number }>;
+  natureRows: ExpenseNatureRow[];
 }
 
 export type TransactionConfirmationFilter = "pending" | "confirmed";
@@ -51,7 +58,7 @@ export function filterTransactionsByConfirmation(
 
 export function buildSpendingView(
   transactions: FinanceTransaction[],
-  categories: Array<{ name: string; note?: string }> = []
+  categories: Array<{ name: string; note?: string; expenseNature?: ExpenseNature }> = []
 ): SpendingView {
   return buildCashflowView(transactions, "expense", categories);
 }
@@ -59,19 +66,27 @@ export function buildSpendingView(
 export function buildCashflowView(
   transactions: FinanceTransaction[],
   kind: "expense" | "income",
-  categories: Array<{ name: string; note?: string }> = []
+  categories: Array<{ name: string; note?: string; expenseNature?: ExpenseNature }> = []
 ): SpendingView {
   const matching = transactions.filter((transaction) => transaction.kind === kind);
   const totalCents = matching.reduce((sum, transaction) => sum + toCents(transaction.amount), 0);
   const total = fromCents(totalCents);
   const amountByCategory = new Map<string, number>();
   const noteByCategory = new Map(categories.map((category) => [category.name, category.note]));
+  const natureByCategory = new Map(
+    categories.map((category) => [category.name, category.expenseNature ?? "flexible"] as const)
+  );
+  const amountByNature = new Map<ExpenseNature, number>();
 
   for (const transaction of matching) {
     amountByCategory.set(
       transaction.categoryName,
       (amountByCategory.get(transaction.categoryName) ?? 0) + toCents(transaction.amount)
     );
+    if (kind === "expense") {
+      const nature = natureByCategory.get(transaction.categoryName) ?? "flexible";
+      amountByNature.set(nature, (amountByNature.get(nature) ?? 0) + toCents(transaction.amount));
+    }
   }
 
   const categoryRows = [...amountByCategory.entries()]
@@ -83,7 +98,18 @@ export function buildCashflowView(
     }))
     .sort((left, right) => toCents(right.amount) - toCents(left.amount));
 
-  return { transactions: matching, total, categoryRows };
+  const natureRows = kind === "expense"
+    ? (["fixed", "necessary", "flexible", "goal"] as const).map((nature) => {
+        const cents = amountByNature.get(nature) ?? 0;
+        return {
+          nature,
+          amount: fromCents(cents),
+          percent: totalCents === 0 ? 0 : Math.round((cents / totalCents) * 1000) / 10
+        };
+      })
+    : [];
+
+  return { transactions: matching, total, categoryRows, natureRows };
 }
 
 function toCents(value: MoneyAmount): number {

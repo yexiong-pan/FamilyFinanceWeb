@@ -189,6 +189,7 @@ export class FinanceController {
     @Query("category") category?: string,
     @Query("member") member?: string,
     @Query("status") status?: "pending" | "confirmed",
+    @Query("expenseNature") expenseNature?: "fixed" | "necessary" | "flexible" | "goal",
     @Query("min") min?: string,
     @Query("max") max?: string
   ) {
@@ -200,6 +201,7 @@ export class FinanceController {
       category,
       member,
       status,
+      expenseNature,
       ...(min === undefined ? {} : { min: Number(min) }),
       ...(max === undefined ? {} : { max: Number(max) })
     });

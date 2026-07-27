@@ -4,9 +4,16 @@ import { buildAssetInsights, buildInvestmentInsights, buildLiabilityRisk } from 
 describe("financial checkup insights", () => {
   it("estimates liquid assets and reports the latest balance update", () => {
     expect(buildAssetInsights([
-      { type: "银行卡", currentValue: "8000.00", updatedAt: "2026-07-17T08:00:00.000Z" },
-      { type: "基金", currentValue: "2000.00", updatedAt: "2026-07-16T08:00:00.000Z" }
+      { type: "银行卡", purpose: "daily", currentValue: "8000.00", updatedAt: "2026-07-17T08:00:00.000Z" },
+      { type: "银行卡", purpose: "emergency", currentValue: "2000.00", updatedAt: "2026-07-16T08:00:00.000Z" }
     ])).toEqual({ liquidAmount: 8000, liquidPercent: 80, latestUpdatedAt: "2026-07-17T08:00:00.000Z" });
+  });
+
+  it("keeps the legacy type fallback for accounts without a saved purpose", () => {
+    expect(buildAssetInsights([
+      { type: "银行卡", currentValue: "8000.00" },
+      { type: "基金", currentValue: "2000.00" }
+    ])).toMatchObject({ liquidAmount: 8000, liquidPercent: 80 });
   });
 
   it("calculates investment allocation and concentration", () => {

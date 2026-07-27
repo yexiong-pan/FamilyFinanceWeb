@@ -201,7 +201,7 @@ function createEmptyRepository(): FinanceRepository {
       return { month, count: 0 };
     },
     async getMonthlyReview(month) {
-      return { month, spending: false, assets: false, liabilities: false, investments: false };
+      return { month, spending: false, income: false, assets: false, liabilities: false, investments: false, review: false };
     },
     async getMonthlySnapshot(month) {
       return emptyMonthlySnapshot(month);
@@ -210,7 +210,7 @@ function createEmptyRepository(): FinanceRepository {
       return [];
     },
     async confirmMonthlySpending(month) {
-      return { month, spending: true, assets: false, liabilities: false, investments: false };
+      return { month, spending: true, income: false, assets: false, liabilities: false, investments: false, review: false };
     },
     async createLiability(input) {
       return { id: "liability-1", ...input, status: input.status ?? "active" };
@@ -237,7 +237,15 @@ function createEmptyRepository(): FinanceRepository {
 function emptyMonthlySnapshot(month: string) {
   return {
     month,
-    review: { month, spending: false, assets: false, liabilities: false, investments: false },
+    review: {
+      month,
+      spending: false,
+      income: false,
+      assets: false,
+      liabilities: false,
+      investments: false,
+      review: false
+    },
     summary: {
       totalAssets: "0.00",
       totalLiabilities: "0.00",

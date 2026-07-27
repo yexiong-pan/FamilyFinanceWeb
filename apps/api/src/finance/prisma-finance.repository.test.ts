@@ -38,6 +38,7 @@ describe("PrismaFinanceRepository transaction paging", () => {
       category: "餐饮",
       member: "雄哥",
       status: "pending",
+      expenseNature: "necessary",
       min: 10,
       max: 500
     });
@@ -50,6 +51,7 @@ describe("PrismaFinanceRepository transaction paging", () => {
         categoryName: "餐饮",
         memberName: "雄哥",
         confirmedAt: null,
+        category: { expenseNature: "necessary" },
         amount: { gte: "10.00", lte: "500.00" }
       })
     }));
@@ -221,6 +223,7 @@ describe("PrismaFinanceRepository account edits", () => {
       familyId: "default-family",
       name: data.name,
       type: data.type,
+      purpose: data.purpose,
       ownerName: data.ownerName,
       currentValue: data.currentValue,
       note: data.note,
@@ -237,6 +240,7 @@ describe("PrismaFinanceRepository account edits", () => {
     const account = await repository.updateAccount("account-1", {
       name: "招商银行卡",
       type: "bankCard",
+      purpose: "emergency",
       ownerName: "家庭共同",
       currentValue: "1500",
       note: "更新余额"
@@ -247,12 +251,14 @@ describe("PrismaFinanceRepository account edits", () => {
       data: {
         name: "招商银行卡",
         type: "银行卡",
+        purpose: "emergency",
         ownerName: "家庭共同",
         currentValue: "1500.00",
         note: "更新余额"
       }
     });
     expect(account.currentValue).toBe("1500.00");
+    expect(account.purpose).toBe("emergency");
     expect(accountSnapshotUpsert).not.toHaveBeenCalled();
   });
 });
@@ -284,7 +290,8 @@ describe("PrismaFinanceRepository category edits", () => {
     const category = await repository.updateCategory("category-food", {
       name: "日常餐饮",
       kind: "expense",
-      note: "买菜、外卖、餐馆、饮品"
+      note: "买菜、外卖、餐馆、饮品",
+      expenseNature: "necessary"
     } as never);
 
     expect(runTransaction).toHaveBeenCalledOnce();
@@ -301,7 +308,8 @@ describe("PrismaFinanceRepository category edits", () => {
       data: {
         name: "日常餐饮",
         kind: "expense",
-        note: "买菜、外卖、餐馆、饮品"
+        note: "买菜、外卖、餐馆、饮品",
+        expenseNature: "necessary"
       }
     });
     expect(category.name).toBe("日常餐饮");
@@ -616,9 +624,11 @@ describe("PrismaFinanceRepository snapshot queries", () => {
       monthlyReview: {
         findUnique: vi.fn(async () => ({
           spendingConfirmedAt: new Date(),
+          incomeConfirmedAt: new Date(),
           assetsConfirmedAt: new Date(),
           liabilitiesConfirmedAt: new Date(),
-          investmentsConfirmedAt: new Date()
+          investmentsConfirmedAt: new Date(),
+          reviewCompletedAt: new Date()
         }))
       },
       accountSnapshot: { findMany: accountFindMany },
@@ -629,7 +639,15 @@ describe("PrismaFinanceRepository snapshot queries", () => {
 
     await expect((repository as any).getMonthlySnapshot("2026-07")).resolves.toEqual({
       month: "2026-07",
-      review: { month: "2026-07", spending: true, assets: true, liabilities: true, investments: true },
+      review: {
+        month: "2026-07",
+        spending: true,
+        income: true,
+        assets: true,
+        liabilities: true,
+        investments: true,
+        review: true
+      },
       summary: {
         totalAssets: "1000.00",
         totalLiabilities: "300.00",

@@ -7,6 +7,7 @@ import type {
   ImportTransactionItem,
   InvestmentHolding,
   Liability,
+  ExpenseNature,
   MoneyAmount,
   TransactionKind
 } from "@family-finance/shared";
@@ -24,6 +25,7 @@ export interface Category {
   name: string;
   kind: TransactionKind;
   note?: string;
+  expenseNature?: ExpenseNature;
   isDefault: boolean;
   isActive: boolean;
 }
@@ -32,6 +34,7 @@ export interface CategoryInput {
   name: string;
   kind: TransactionKind;
   note?: string;
+  expenseNature?: ExpenseNature;
 }
 
 export interface CategoryMapping {

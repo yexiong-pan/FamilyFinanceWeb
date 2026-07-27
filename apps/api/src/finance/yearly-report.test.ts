@@ -21,7 +21,15 @@ describe("buildYearlyReport", () => {
         { month: "2025-12", totalAssets: "80000.00", totalLiabilities: "20000.00", netAssets: "60000.00" },
         {
           month: "2026-01",
-          review: { month: "2026-01", spending: true, assets: true, liabilities: true, investments: true },
+          review: {
+            month: "2026-01",
+            spending: true,
+            income: true,
+            assets: true,
+            liabilities: true,
+            investments: true,
+            review: true
+          },
           totalAssets: "85000.00",
           totalLiabilities: "19000.00",
           netAssets: "66000.00",

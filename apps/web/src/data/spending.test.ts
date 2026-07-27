@@ -18,8 +18,8 @@ const transactions: FinanceTransaction[] = [
 describe("buildSpendingView", () => {
   it("keeps income and transfers out of the simplified spending experience", () => {
     const view = buildSpendingView(transactions, [
-      { name: "餐饮", note: "买菜、外卖、餐馆、饮品" },
-      { name: "交通", note: "公交、打车、加油" }
+      { name: "餐饮", note: "买菜、外卖、餐馆、饮品", expenseNature: "necessary" },
+      { name: "交通", note: "公交、打车、加油", expenseNature: "fixed" }
     ]);
 
     expect(view.transactions.map((item) => item.id)).toEqual(["1", "4"]);
@@ -27,6 +27,12 @@ describe("buildSpendingView", () => {
     expect(view.categoryRows).toEqual([
       { categoryName: "餐饮", note: "买菜、外卖、餐馆、饮品", amount: "25.50", percent: 63.8 },
       { categoryName: "交通", note: "公交、打车、加油", amount: "14.50", percent: 36.3 }
+    ]);
+    expect(view.natureRows).toEqual([
+      { nature: "fixed", amount: "14.50", percent: 36.3 },
+      { nature: "necessary", amount: "25.50", percent: 63.8 },
+      { nature: "flexible", amount: "0.00", percent: 0 },
+      { nature: "goal", amount: "0.00", percent: 0 }
     ]);
   });
 });

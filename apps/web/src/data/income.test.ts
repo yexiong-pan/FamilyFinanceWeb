@@ -11,6 +11,7 @@ it("builds income totals and category notes without including expenses", () => {
   expect(buildIncomeView(transactions, [{ name: "工资薪酬", note: "工资、奖金、劳务报酬" }])).toEqual({
     transactions: [transactions[0]],
     total: "100.00",
+    natureRows: [],
     categoryRows: [
       { categoryName: "工资薪酬", note: "工资、奖金、劳务报酬", amount: "100.00", percent: 100 }
     ]

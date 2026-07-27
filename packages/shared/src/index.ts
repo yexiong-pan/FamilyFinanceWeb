@@ -1,6 +1,11 @@
+import type { ExpenseNature } from "./financial-planning.js";
+
 export type MoneyAmount = string;
 
+export * from "./financial-planning.js";
+
 export type AccountType = string;
+export type AssetPurpose = "daily" | "emergency" | "goal" | "investment" | "restricted";
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
 export type TransactionSource = "manual" | "alipay" | "wechat";
 export type InvestmentHoldingType = "fund" | "stock" | "etf";
@@ -17,6 +22,7 @@ export interface Account {
   id: string;
   name: string;
   type: AccountType;
+  purpose?: AssetPurpose;
   ownerName: string;
   currentValue: MoneyAmount;
   note?: string;
@@ -46,6 +52,7 @@ export interface TransactionPageFilter {
   category?: string;
   member?: string;
   status?: "pending" | "confirmed";
+  expenseNature?: ExpenseNature;
   min?: number;
   max?: number;
 }
@@ -79,10 +86,12 @@ export interface InvestmentHolding {
 
 export interface MonthlyReviewStatus {
   month: string;
+  income: boolean;
   spending: boolean;
   assets: boolean;
   liabilities: boolean;
   investments: boolean;
+  review: boolean;
 }
 
 export interface Liability {

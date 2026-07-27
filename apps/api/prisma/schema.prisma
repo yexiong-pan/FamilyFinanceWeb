@@ -45,6 +45,27 @@ enum LiabilityStatus {
   closed
 }
 
+enum ExpenseNature {
+  fixed
+  necessary
+  flexible
+  goal
+}
+
+enum AssetPurpose {
+  daily
+  emergency
+  goal
+  investment
+  restricted
+}
+
+enum MonthlyActionStatus {
+  pending
+  completed
+  cancelled
+}
+
 model User {
   id          String         @id @default(uuid())
   email       String         @unique
@@ -56,7 +77,7 @@ model User {
 }
 
 model Family {
-  id                  String               @id @default(uuid())
+  id                  String                   @id @default(uuid())
   name                String
   members             FamilyMember[]
   accounts            Account[]
@@ -73,8 +94,11 @@ model Family {
   auditLogs           AuditLog[]
   importJobs          ImportJob[]
   categoryMappings    CategoryMapping[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  recurringCashflows  RecurringCashflow[]
+  safetySettings      FinancialSafetySettings?
+  monthlyActions      MonthlyReviewAction[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 }
 
 model FamilyMember {
@@ -93,20 +117,22 @@ model FamilyMember {
 }
 
 model Account {
-  id           String               @id @default(uuid())
-  familyId     String
-  name         String
-  type         String
-  ownerName    String
-  currentValue Decimal              @db.Decimal(18, 2)
-  note         String?
-  deletedAt    DateTime?
-  family       Family               @relation(fields: [familyId], references: [id])
-  transactions FinanceTransaction[]
-  holdings     InvestmentHolding[]
-  snapshots    AccountSnapshot[]
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id                 String               @id @default(uuid())
+  familyId           String
+  name               String
+  type               String
+  purpose            AssetPurpose?
+  ownerName          String
+  currentValue       Decimal              @db.Decimal(18, 2)
+  note               String?
+  deletedAt          DateTime?
+  family             Family               @relation(fields: [familyId], references: [id])
+  transactions       FinanceTransaction[]
+  holdings           InvestmentHolding[]
+  recurringCashflows RecurringCashflow[]
+  snapshots          AccountSnapshot[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 }
 
 model AccountTypeOption {
@@ -123,19 +149,21 @@ model AccountTypeOption {
 }
 
 model Category {
-  id             String               @id @default(uuid())
-  familyId       String
-  name           String
-  kind           TransactionKind
-  note           String?
-  isDefault      Boolean              @default(false)
-  isActive       Boolean              @default(true)
-  family         Family               @relation(fields: [familyId], references: [id])
-  transactions   FinanceTransaction[]
-  budgets        Budget[]
-  sourceMappings CategoryMapping[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id                 String               @id @default(uuid())
+  familyId           String
+  name               String
+  kind               TransactionKind
+  note               String?
+  expenseNature      ExpenseNature?
+  isDefault          Boolean              @default(false)
+  isActive           Boolean              @default(true)
+  family             Family               @relation(fields: [familyId], references: [id])
+  transactions       FinanceTransaction[]
+  budgets            Budget[]
+  sourceMappings     CategoryMapping[]
+  recurringCashflows RecurringCashflow[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@unique([familyId, name, kind])
 }
@@ -267,18 +295,79 @@ model InvestmentSnapshot {
 }
 
 model MonthlyReview {
-  id                     String    @id @default(uuid())
+  id                     String                @id @default(uuid())
   familyId               String
   month                  String
+  incomeConfirmedAt      DateTime?
   spendingConfirmedAt    DateTime?
   assetsConfirmedAt      DateTime?
   liabilitiesConfirmedAt DateTime?
   investmentsConfirmedAt DateTime?
-  family                 Family    @relation(fields: [familyId], references: [id])
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  reviewCompletedAt      DateTime?
+  summary                String?
+  good                   String?
+  improve                String?
+  nextFocus              String?
+  family                 Family                @relation(fields: [familyId], references: [id])
+  actions                MonthlyReviewAction[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@unique([familyId, month])
+}
+
+model RecurringCashflow {
+  id            String          @id @default(uuid())
+  familyId      String
+  name          String
+  kind          TransactionKind
+  amount        Decimal         @db.Decimal(18, 2)
+  dayOfMonth    Int
+  memberName    String?
+  accountId     String?
+  categoryId    String?
+  expenseNature ExpenseNature?
+  startMonth    String?
+  endMonth      String?
+  isActive      Boolean         @default(true)
+  family        Family          @relation(fields: [familyId], references: [id])
+  account       Account?        @relation(fields: [accountId], references: [id])
+  category      Category?       @relation(fields: [categoryId], references: [id])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([familyId, isActive])
+  @@index([familyId, kind])
+}
+
+model FinancialSafetySettings {
+  id                    String   @id @default(uuid())
+  familyId              String   @unique
+  emergencyReserve      Decimal  @default(0) @db.Decimal(18, 2)
+  plannedMonthlySavings Decimal  @default(0) @db.Decimal(18, 2)
+  liquidAccountIds      String[] @default([])
+  family                Family   @relation(fields: [familyId], references: [id])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model MonthlyReviewAction {
+  id              String              @id @default(uuid())
+  familyId        String
+  monthlyReviewId String
+  month           String
+  title           String
+  ownerName       String?
+  dueDate         DateTime?
+  targetAmount    Decimal?            @db.Decimal(18, 2)
+  status          MonthlyActionStatus @default(pending)
+  family          Family              @relation(fields: [familyId], references: [id])
+  monthlyReview   MonthlyReview       @relation(fields: [monthlyReviewId], references: [id], onDelete: Cascade)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([familyId, month])
+  @@index([monthlyReviewId, status])
 }
 
 model AccountSnapshot {

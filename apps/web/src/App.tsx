@@ -91,6 +91,7 @@ import {
   createLiability,
   createMember,
   createTransaction,
+  confirmMonthlyIncome,
   confirmMonthlySpending,
   deleteAccount,
   deleteAccountType,
@@ -164,7 +165,17 @@ import {
   urlForRoute
 } from "./navigation";
 import { accountTypeOptionsFromSettings, getAccountTypeMeta } from "./accountTypes";
+import { assetPurposeOptions, renderAssetPurpose } from "./assetPurpose";
 import { RatioProgress } from "./RatioProgress";
+import { FinancialSafetyPage } from "./FinancialSafetyPage";
+import { MonthlyReviewPanel } from "./MonthlyReviewPanel";
+import {
+  ExpenseNatureHelp,
+  expenseNatureColor,
+  expenseNatureLabel,
+  expenseNatureOptions,
+  renderExpenseNature
+} from "./expenseNature";
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -221,9 +232,50 @@ const emptyData: AppData = {
   monthlyReview: {
     month: dayjs().format("YYYY-MM"),
     spending: false,
+    income: false,
     assets: false,
     liabilities: false,
-    investments: false
+    investments: false,
+    review: false
+  },
+  monthlyReviewDetail: {
+    month: dayjs().format("YYYY-MM"),
+    state: "draft",
+    status: {
+      income: false,
+      spending: false,
+      assets: false,
+      liabilities: false,
+      investments: false,
+      review: false
+    },
+    content: {},
+    checks: [],
+    changes: [],
+    actions: []
+  },
+  financialSafety: {
+    settings: {
+      emergencyReserve: "0.00",
+      plannedMonthlySavings: "0.00",
+      liquidAccountIds: []
+    },
+    recurringCashflows: [],
+    summary: {
+      month: dayjs().format("YYYY-MM"),
+      asOfDate: dayjs().format("YYYY-MM-DD"),
+      liquidAmount: "0.00",
+      expectedIncome: "0.00",
+      requiredExpenses: "0.00",
+      debtPayments: "0.00",
+      plannedSavings: "0.00",
+      emergencyReserve: "0.00",
+      safeToSpend: "0.00",
+      shortfall: "0.00",
+      confidence: "insufficient",
+      confidenceIssues: [],
+      upcomingObligations: []
+    }
   }
 };
 
@@ -278,17 +330,24 @@ function AppShell() {
   const includeTransactions = (
     activeRoute.page === "report" && activeRoute.tab === "monthly"
   ) || ((activeRoute.page === "spending" || activeRoute.page === "income") && activeRoute.tab === "summary");
+  const includeMonthlyReviewDetail = activeRoute.page === "report" && activeRoute.tab === "monthly";
+  const includeFinancialSafety = includeMonthlyReviewDetail
+    || (activeRoute.page === "checkup" && activeRoute.tab === "safety");
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await loadAppData(monthKey, { includeTransactions }));
+      setData(await loadAppData(monthKey, {
+        includeTransactions,
+        includeMonthlyReviewDetail,
+        includeFinancialSafety
+      }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [includeTransactions, monthKey]);
+  }, [includeFinancialSafety, includeMonthlyReviewDetail, includeTransactions, monthKey]);
 
   useEffect(() => {
     void reload();
@@ -463,7 +522,7 @@ function AppShell() {
             <Spin spinning={loading}>
               {activeRoute.page === "report" ? (
                 <ReportPage
-                  data={data}
+                  {...commonProps}
                   month={month}
                   tab={activeRoute.tab}
                   navigateToRoute={navigateToRoute}
@@ -518,13 +577,15 @@ function AppShell() {
 
 function ReportPage({
   data,
+  monthKey,
+  reload,
+  submit,
   month,
   tab,
   navigateToRoute,
   onOpenMonth,
   onTabChange
-}: {
-  data: AppData;
+}: PageProps & {
   month: Dayjs;
   tab: ReportTabKey;
   navigateToRoute: (route: AppRoute) => void;
@@ -540,7 +601,16 @@ function ReportPage({
         {
           key: "monthly",
           label: "月报",
-          children: <MonthlyReportPage data={data} month={month} navigateToRoute={navigateToRoute} />
+          children: (
+            <MonthlyReportPage
+              data={data}
+              monthKey={monthKey}
+              reload={reload}
+              submit={submit}
+              month={month}
+              navigateToRoute={navigateToRoute}
+            />
+          )
         },
         {
           key: "yearly",
@@ -554,10 +624,10 @@ function ReportPage({
 
 function MonthlyReportPage({
   data,
+  submit,
   month,
   navigateToRoute
-}: {
-  data: AppData;
+}: PageProps & {
   month: Dayjs;
   navigateToRoute: (route: AppRoute) => void;
 }) {
@@ -566,10 +636,15 @@ function MonthlyReportPage({
     data.transactions,
     data.categories.filter((item) => item.kind === "income")
   );
+  const expenseView = buildSpendingView(
+    data.transactions,
+    data.categories.filter((item) => item.kind === "expense")
+  );
   const incomeCount = data.transactions.filter((item) => item.kind === "income").length;
   const expenseCount = data.transactions.filter((item) => item.kind === "expense").length;
 
   const completionItems = [
+    { key: "income", label: "收入账单", complete: data.monthlyReview.income, route: routeForMonthlyReview("income") },
     { key: "spending", label: "支出账单", complete: data.monthlyReview.spending, route: routeForMonthlyReview("spending") },
     {
       key: "accounts",
@@ -652,6 +727,25 @@ function MonthlyReportPage({
         })}
       </Row>
 
+      <Card className="report-section-card safety-overview-card">
+        <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
+          <div>
+            <Text type="secondary">未来30天安全可支配</Text>
+            <Title level={3} className="safety-overview-value">
+              {formatMoney(data.financialSafety.summary.safeToSpend)}
+            </Title>
+            <Text type="secondary">
+              {Number(data.financialSafety.summary.shortfall) > 0
+                ? `预计资金缺口 ${formatMoney(data.financialSafety.summary.shortfall)}`
+                : "已预留必要支出、还款、储蓄和应急金"}
+            </Text>
+          </div>
+          <Button onClick={() => navigateToRoute({ page: "checkup", tab: "safety" })}>
+            查看资金安全
+          </Button>
+        </Flex>
+      </Card>
+
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={15}>
           <Card title="支出分类占比" className="report-section-card">
@@ -674,7 +768,7 @@ function MonthlyReportPage({
           <Card
             title="本月盘点"
             className="report-section-card checkup-status-card"
-            extra={<Text type="secondary">{completedCount} / 4 已完成</Text>}
+            extra={<Text type="secondary">{completedCount} / {completionItems.length} 已完成</Text>}
           >
             <div className="checkup-list">
               {completionItems.map((item) => (
@@ -751,6 +845,36 @@ function MonthlyReportPage({
           </Card>
         </Col>
       </Row>
+
+      <Card
+        title={<Space size={4}>支出性质结构<ExpenseNatureHelp /></Space>}
+        className="report-section-card"
+      >
+        <div className="expense-nature-grid expense-nature-grid--report">
+          {expenseView.natureRows.map((item) => (
+            <div className={`expense-nature-summary is-${item.nature}`} key={item.nature}>
+              <Flex justify="space-between" align="center" gap={8}>
+                <Text strong>{expenseNatureLabel(item.nature)}支出</Text>
+                <Tag color={expenseNatureColor(item.nature)}>{item.percent}%</Tag>
+              </Flex>
+              <Title level={4}>{formatMoney(item.amount)}</Title>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <MonthlyReviewPanel
+        detail={data.monthlyReviewDetail}
+        members={data.members}
+        submit={submit}
+        onOpenCheck={(key) => {
+          if (key === "income") navigateToRoute({ page: "income", tab: "details" });
+          else if (key === "spending") navigateToRoute({ page: "spending", tab: "details" });
+          else if (key === "assets" || key === "liabilities" || key === "investments") {
+            navigateToRoute({ page: "checkup", tab: key });
+          }
+        }}
+      />
     </Space>
   );
 }
@@ -793,16 +917,23 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
   const financeTrend = buildNetWorthTrend(report.months);
   const hasFinanceTrend = financeTrend.some((item) => item.amount !== null);
   const completedMonths = report.months.filter((item) => (
-    item.review.spending && item.review.assets && item.review.liabilities && item.review.investments
+    item.review.income
+    && item.review.spending
+    && item.review.assets
+    && item.review.liabilities
+    && item.review.investments
+    && item.review.review
   )).length;
   const yearEndMonth = report.summary.yearEndSnapshotMonth;
   const yearEndRow = report.months.find((item) => item.month === yearEndMonth);
   const yearEndComplete = Boolean(
     yearEndRow
+    && yearEndRow.review.income
     && yearEndRow.review.spending
     && yearEndRow.review.assets
     && yearEndRow.review.liabilities
     && yearEndRow.review.investments
+    && yearEndRow.review.review
   );
   const snapshotSuffix = yearEndMonth && !yearEndMonth.endsWith("-12") ? `截至${Number(yearEndMonth.slice(5, 7))}月` : "年末";
   const summaryMetrics = [
@@ -934,10 +1065,12 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
         <div className="annual-month-grid">
           {report.months.map((item) => {
             const statuses = [
+              { label: "收入", complete: item.review.income },
               { label: "支出", complete: item.review.spending },
               { label: "资产", complete: item.review.assets },
               { label: "负债", complete: item.review.liabilities },
-              { label: "投资", complete: item.review.investments }
+              { label: "投资", complete: item.review.investments },
+              { label: "复盘", complete: item.review.review }
             ];
             return (
               <button type="button" className="annual-month-item" key={item.month} onClick={() => onOpenMonth(item.month)}>
@@ -1113,6 +1246,19 @@ function CheckupPage(props: PageProps & { tab: CheckupTabKey; onTabChange: (tab:
         onChange={(key) => props.onTabChange(key as CheckupTabKey)}
         items={[
           { key: "assets", label: "资产", children: <AccountsPage {...props} /> },
+          {
+            key: "safety",
+            label: "资金安全",
+            children: (
+              <FinancialSafetyPage
+                data={props.data.financialSafety}
+                accounts={props.data.accounts}
+                categories={props.data.categories}
+                members={props.data.members}
+                submit={props.submit}
+              />
+            )
+          },
           { key: "liabilities", label: "负债", children: <LiabilitiesPage {...props} /> },
           { key: "investments", label: "投资", children: <InvestmentsPage {...props} /> },
           { key: "history", label: "历史快照", children: <MonthlySnapshotPage {...props} /> }
@@ -1141,7 +1287,12 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
   const screens = Grid.useBreakpoint();
   const isMobile = screens.md === false;
   const isExpense = props.kind === "expense";
+  const monthConfirmed = isExpense
+    ? props.data.monthlyReview.spending
+    : props.data.monthlyReview.income;
+  const cashflowLabel = isExpense ? "支出" : "收入";
   const category = props.filters.category;
+  const expenseNature = props.filters.expenseNature;
   const member = props.filters.member;
   const confirmationStatus = props.filters.status;
   const amountMin = props.filters.min;
@@ -1197,16 +1348,39 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
       .map((item) => ({ label: item.name, value: item.name })),
     [props.data.categories, props.kind]
   );
+  const categoryNatureByName = useMemo(
+    () => new Map(
+      props.data.categories
+        .filter((item) => item.kind === "expense")
+        .map((item) => [item.name, item.expenseNature ?? "flexible"] as const)
+    ),
+    [props.data.categories]
+  );
   const locallyFiltered = useMemo(
     () => filterTransactionsByConfirmation(cashflow.transactions, confirmationStatus).filter((transaction) => {
       if (category && transaction.categoryName !== category) return false;
+      if (
+        isExpense
+        && expenseNature
+        && (categoryNatureByName.get(transaction.categoryName) ?? "flexible") !== expenseNature
+      ) return false;
       if (member && transaction.memberName !== member) return false;
       const amount = Number(transaction.amount);
       if (amountMin !== undefined && amount < amountMin) return false;
       if (amountMax !== undefined && amount > amountMax) return false;
       return true;
     }),
-    [amountMax, amountMin, cashflow.transactions, category, confirmationStatus, member]
+    [
+      amountMax,
+      amountMin,
+      cashflow.transactions,
+      category,
+      categoryNatureByName,
+      confirmationStatus,
+      expenseNature,
+      isExpense,
+      member
+    ]
   );
   const memberTotals = useMemo(
     () => props.data.summary.memberBreakdown.map((item) => ({
@@ -1226,7 +1400,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
   useEffect(() => {
     setDetailPageNumber(1);
     setSelectedTransactionIds([]);
-  }, [amountMax, amountMin, category, confirmationStatus, member, props.monthKey, props.kind]);
+  }, [amountMax, amountMin, category, confirmationStatus, expenseNature, member, props.monthKey, props.kind]);
 
   useEffect(() => {
     if (props.view !== "details") return;
@@ -1402,16 +1576,19 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
       }
       extra={
         <Space>
-          {isExpense ? (
-            <Button
-              icon={<CheckCircleOutlined />}
-              aria-label={props.data.monthlyReview.spending ? "本月支出已确认" : "确认本月支出"}
-              title={props.data.monthlyReview.spending ? "本月支出已确认" : "确认本月支出"}
-              onClick={() => props.submit(() => confirmMonthlySpending(props.monthKey), { success: "本月支出已确认" })}
-            >
-              {isMobile ? null : props.data.monthlyReview.spending ? "已确认" : "确认本月支出"}
-            </Button>
-          ) : null}
+          <Button
+            icon={<CheckCircleOutlined />}
+            aria-label={monthConfirmed ? `本月${cashflowLabel}已确认` : `确认本月${cashflowLabel}`}
+            title={monthConfirmed ? `本月${cashflowLabel}已确认` : `确认本月${cashflowLabel}`}
+            onClick={() => props.submit(
+              () => isExpense
+                ? confirmMonthlySpending(props.monthKey)
+                : confirmMonthlyIncome(props.monthKey),
+              { success: `本月${cashflowLabel}已确认` }
+            )}
+          >
+            {isMobile ? null : monthConfirmed ? "已确认" : `确认本月${cashflowLabel}`}
+          </Button>
           {isExpense ? (
             <Button icon={<UploadOutlined />} aria-label="导入账单" title="导入账单" onClick={() => setImportOpen(true)}>
               {isMobile ? null : "导入账单"}
@@ -1468,6 +1645,16 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                 onChange={(value) => updateFilters({ category: value })}
                 options={categoryOptions}
               />
+              {isExpense ? (
+                <Select
+                  allowClear
+                  placeholder="全部支出性质"
+                  style={{ minWidth: 140 }}
+                  value={expenseNature}
+                  onChange={(value) => updateFilters({ expenseNature: value })}
+                  options={expenseNatureOptions}
+                />
+              ) : null}
               <Select
                 allowClear
                 placeholder="全部成员"
@@ -1547,7 +1734,37 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
           </Flex>
         ) : null}
         {props.view === "summary" ? (
-          isMobile ? (
+          <>
+          {isExpense ? (
+            <>
+            <Flex align="center" gap={4} className="expense-nature-section-heading">
+              <Text strong>支出性质</Text>
+              <ExpenseNatureHelp />
+            </Flex>
+            <div className="expense-nature-grid">
+              {cashflow.natureRows.map((row) => (
+                <button
+                  type="button"
+                  className={`expense-nature-summary is-${row.nature}`}
+                  key={row.nature}
+                  onClick={() => props.onViewChange("details", {
+                    ...props.filters,
+                    category: undefined,
+                    expenseNature: row.nature
+                  })}
+                  aria-label={`查看${expenseNatureLabel(row.nature)}支出明细`}
+                >
+                  <Flex justify="space-between" align="center" gap={8}>
+                    <Text strong>{expenseNatureLabel(row.nature)}支出</Text>
+                    <Tag color={expenseNatureColor(row.nature)}>{row.percent}%</Tag>
+                  </Flex>
+                  <Text className="expense-nature-amount">{formatMoney(row.amount)}</Text>
+                </button>
+              ))}
+            </div>
+            </>
+          ) : null}
+          {isMobile ? (
             <MobileRecordList empty={cashflow.categoryRows.length === 0}>
               {cashflow.categoryRows.map((row) => (
                 <div className="mobile-record-card" key={row.categoryName}>
@@ -1555,6 +1772,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                     {renderSummaryCategory(row.categoryName)}
                     <Tag color={isExpense ? "red" : "green"}>{formatMoney(row.amount)}</Tag>
                   </Flex>
+                  {isExpense ? renderExpenseNature(categoryNatureByName.get(row.categoryName) ?? "flexible") : null}
                   <Text type="secondary" className="mobile-record-note">{row.note || "—"}</Text>
                   <RatioProgress percent={row.percent} />
                 </div>
@@ -1571,6 +1789,15 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                   dataIndex: "categoryName",
                   width: 160,
                   render: (value: string) => renderSummaryCategory(value)
+                },
+                {
+                  title: "性质",
+                  key: "expenseNature",
+                  width: 90,
+                  hidden: !isExpense,
+                  render: (_: unknown, record) => renderExpenseNature(
+                    categoryNatureByName.get(record.categoryName) ?? "flexible"
+                  )
                 },
                 {
                   title: "备注",
@@ -1595,6 +1822,8 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
               ]}
             />
           )
+          }
+          </>
         ) : (
           isMobile ? (
             <Space orientation="vertical" size={12} className="page-stack">
@@ -1882,11 +2111,19 @@ function AccountsPage(props: PageProps) {
         ? {
             name: editing.name,
             type: editing.type,
+            purpose: editing.purpose ?? "daily",
             ownerName: editing.ownerName,
             currentValue: Number(editing.currentValue),
             note: editing.note
           }
-        : { name: undefined, type: "银行卡", ownerName: undefined, currentValue: undefined, note: undefined }
+        : {
+            name: undefined,
+            type: "银行卡",
+            purpose: "daily",
+            ownerName: undefined,
+            currentValue: undefined,
+            note: undefined
+          }
     );
   }, [open, editing, form]);
   return (
@@ -1977,6 +2214,7 @@ function AccountsPage(props: PageProps) {
               </Flex>
               <Flex gap={6} wrap>
                 {renderAccountType(account.type)}
+                {renderAssetPurpose(account.purpose)}
                 {renderOwnerTag(account.ownerName, props.data.members)}
               </Flex>
               {account.note ? <Text className="mobile-record-note">{account.note}</Text> : null}
@@ -1997,6 +2235,7 @@ function AccountsPage(props: PageProps) {
         columns={[
           { title: "账户", dataIndex: "name", width: 180 },
           { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
+          { title: "资金用途", dataIndex: "purpose", width: 120, render: renderAssetPurpose },
           { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
           { title: "当前金额", dataIndex: "currentValue", width: 140, align: "right", sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue), defaultSortOrder: "descend", render: (value: string) => <Tag color="green">{formatMoney(value)}</Tag> },
           { title: "创建时间", dataIndex: "createdAt", width: 150, render: formatDateTime },
@@ -2040,15 +2279,17 @@ function AccountsPage(props: PageProps) {
               ? {
                   name: editing.name,
                   type: editing.type,
+                  purpose: editing.purpose ?? "daily",
                   ownerName: editing.ownerName,
                   note: editing.note
                 }
-              : { type: "银行卡", ownerName: undefined }
+              : { type: "银行卡", purpose: "daily", ownerName: undefined }
           }
           onFinish={(values) => {
             const payload = {
               name: values.name,
               type: values.type,
+              purpose: values.purpose,
               ownerName: values.ownerName,
               currentValue: String(values.currentValue ?? 0),
               note: values.note
@@ -2788,10 +3029,12 @@ function MonthlySnapshotPage(props: PageProps) {
       {snapshot ? (
         <Space orientation="vertical" size={16} className="page-stack monthly-snapshot-page">
           <Flex gap={8} wrap className="snapshot-statuses">
+            <SnapshotStatus label="收入" complete={snapshot.review.income} spending />
             <SnapshotStatus label="支出" complete={snapshot.review.spending} spending />
             <SnapshotStatus label="资产" complete={snapshot.review.assets} />
             <SnapshotStatus label="负债" complete={snapshot.review.liabilities} />
             <SnapshotStatus label="投资" complete={snapshot.review.investments} />
+            <SnapshotStatus label="复盘" complete={snapshot.review.review} review />
           </Flex>
 
           <Card
@@ -2981,10 +3224,22 @@ function MonthlySnapshotPage(props: PageProps) {
   );
 }
 
-function SnapshotStatus({ label, complete, spending = false }: { label: string; complete: boolean; spending?: boolean }) {
+function SnapshotStatus({
+  label,
+  complete,
+  spending = false,
+  review = false
+}: {
+  label: string;
+  complete: boolean;
+  spending?: boolean;
+  review?: boolean;
+}) {
+  const completeLabel = review ? "已完成" : spending ? "已确认" : "已保存快照";
+  const incompleteLabel = review ? "未完成" : spending ? "未确认" : "未保存";
   return (
     <Tag color={complete ? "green" : "default"}>
-      {label}：{complete ? (spending ? "已确认" : "已保存快照") : (spending ? "未确认" : "未保存")}
+      {label}：{complete ? completeLabel : incompleteLabel}
     </Tag>
   );
 }
@@ -3030,8 +3285,18 @@ function SettingsPage(props: PageProps) {
     if (!open) return;
     form.setFieldsValue(
       editing
-        ? { name: editing.name, kind: editing.kind, note: editing.note }
-        : { name: undefined, kind: categoryKind, note: undefined }
+        ? {
+            name: editing.name,
+            kind: editing.kind,
+            note: editing.note,
+            expenseNature: editing.expenseNature
+          }
+        : {
+            name: undefined,
+            kind: categoryKind,
+            note: undefined,
+            expenseNature: categoryKind === "expense" ? "flexible" : undefined
+          }
     );
   }, [open, editing, form, categoryKind]);
   useEffect(() => {
@@ -3258,6 +3523,7 @@ function SettingsPage(props: PageProps) {
                       deleteLabel="停用"
                     />
                   </Flex>
+                  {category.expenseNature ? renderExpenseNature(category.expenseNature) : null}
                   <Text type="secondary" className="mobile-record-note">{category.note || "—"}</Text>
                 </div>
               ))}
@@ -3280,6 +3546,12 @@ function SettingsPage(props: PageProps) {
                     {record.isDefault ? <Tag color="default">默认</Tag> : null}
                   </Space>
                 )
+              },
+              {
+                title: "性质",
+                dataIndex: "expenseNature",
+                width: 90,
+                render: (value?: Category["expenseNature"]) => value ? renderExpenseNature(value) : "—"
               },
               {
                 title: "备注",
@@ -3415,7 +3687,13 @@ function SettingsPage(props: PageProps) {
           layout="vertical"
           initialValues={{ kind: "expense" }}
           onFinish={(values) => {
-            const payload = { name: values.name, kind: editing?.kind ?? categoryKind, note: values.note };
+            const kind = editing?.kind ?? categoryKind;
+            const payload = {
+              name: values.name,
+              kind,
+              note: values.note,
+              expenseNature: kind === "expense" ? values.expenseNature : undefined
+            };
             return props.submit(
               () => (editing ? updateCategory(editing.id, payload) : createCategory(payload)),
               { success: editing ? "分类已更新" : "分类已新增", onSuccess: () => setOpen(false) }
@@ -3425,6 +3703,15 @@ function SettingsPage(props: PageProps) {
           <Form.Item name="name" label="分类名称" rules={[{ required: true }]}>
             <Input placeholder="如：餐饮、工资" />
           </Form.Item>
+          {categoryKind === "expense" || editing?.kind === "expense" ? (
+            <Form.Item
+              name="expenseNature"
+              label={<Space size={4}>支出性质<ExpenseNatureHelp /></Space>}
+              rules={[{ required: true }]}
+            >
+              <Select options={expenseNatureOptions} />
+            </Form.Item>
+          ) : null}
           <Form.Item name="note" label="备注">
             <Input.TextArea
               autoSize={{ minRows: 3, maxRows: 5 }}
@@ -3634,6 +3921,14 @@ function AccountFormFields({
           placeholder="请选择账户类型"
           options={accountTypeOptionsFromSettings(accountTypes)}
         />
+      </Form.Item>
+      <Form.Item
+        name="purpose"
+        label="资金用途"
+        rules={[{ required: true }]}
+        extra="用于区分可消费资金、储备资金、投资资金和受限资产"
+      >
+        <Select options={assetPurposeOptions} />
       </Form.Item>
       <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
         <Select options={members.map((member) => ({ label: member, value: member }))} />

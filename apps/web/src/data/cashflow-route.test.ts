@@ -8,13 +8,14 @@ import {
 describe("cashflow filter route params", () => {
   it("parses every supported filter from the route", () => {
     const params = new URLSearchParams(
-      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&min=10.5&max=500"
+      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&expenseNature=necessary&min=10.5&max=500"
     );
 
     expect(parseCashflowFilters(params)).toEqual({
       category: "餐饮",
       member: "雄哥",
       status: "confirmed",
+      expenseNature: "necessary",
       min: 10.5,
       max: 500
     });
@@ -22,7 +23,7 @@ describe("cashflow filter route params", () => {
 
   it("ignores empty and invalid filter values", () => {
     const params = new URLSearchParams(
-      "category=&member=%20%20&status=unknown&min=-1&max=not-a-number"
+      "category=&member=%20%20&status=unknown&expenseNature=unknown&min=-1&max=not-a-number"
     );
 
     expect(parseCashflowFilters(params)).toEqual({});
@@ -33,12 +34,13 @@ describe("cashflow filter route params", () => {
       category: "餐饮",
       member: "雄哥",
       status: "pending",
+      expenseNature: "necessary",
       min: 0,
       max: 88.8
     });
 
     expect(params.toString()).toBe(
-      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&min=0&max=88.8"
+      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&expenseNature=necessary&min=0&max=88.8"
     );
   });
 
