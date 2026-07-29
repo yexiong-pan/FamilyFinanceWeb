@@ -1,0 +1,112 @@
+import { describe, expect, it } from "vitest";
+import type { BloodGlucoseRecord, BodyMeasurement, MedicationPlan, MemberHealthProfile } from "@family-finance/shared";
+import {
+  buildBodySummary,
+  buildGlucoseSummary,
+  buildMedicationTasks,
+  glucoseStatus,
+  medicationDaysRemaining,
+  toMinuteIso
+} from "./health";
+import dayjs from "dayjs";
+
+const profile: MemberHealthProfile = {
+  memberId: "member-1",
+  weightTrackingEnabled: true,
+  exerciseTrackingEnabled: true,
+  glucoseTrackingEnabled: true,
+  hba1cTrackingEnabled: true,
+  medicationTrackingEnabled: true,
+  targetWeightKg: "70.00",
+  weeklyExerciseMinutesGoal: 150,
+  weeklyStrengthSessionsGoal: 2,
+  dailyStepsGoal: 8000,
+  glucoseIntervalDays: 7,
+  glucoseLowThreshold: "3.90",
+  glucoseTargets: {
+    fasting: { min: 4.4, max: 7 },
+    afterMeal2h: { max: 10 }
+  },
+  hba1cTargetMax: "7.00"
+};
+
+describe("health summaries", () => {
+  it("normalizes manually entered timestamps to minute precision", () => {
+    expect(toMinuteIso(dayjs("2026-07-29T08:15:47.321Z"))).toBe("2026-07-29T08:15:00.000Z");
+  });
+
+  it("compares body changes with records at least 7 and 30 days earlier", () => {
+    const records: BodyMeasurement[] = [
+      body("2026-06-01", "80"),
+      body("2026-06-24", "78"),
+      body("2026-07-01", "77")
+    ];
+    const summary = buildBodySummary(records, profile);
+    expect(summary.change7Days).toBe(-1);
+    expect(summary.change30Days).toBe(-3);
+    expect(summary.targetRemaining).toBe(7);
+  });
+
+  it("compares glucose only with the previous record in the same context", () => {
+    const records: BloodGlucoseRecord[] = [
+      glucose("2026-07-01", "8.00", "fasting"),
+      glucose("2026-07-08", "6.00", "afterMeal2h"),
+      glucose("2026-07-15", "7.50", "fasting")
+    ];
+    const summary = buildGlucoseSummary(records, profile);
+    expect(summary.previousSameContext?.glucoseMmol).toBe("8.00");
+    expect(summary.difference).toBe(-0.5);
+    expect(summary.dueDate).toBe("2026-07-22");
+  });
+
+  it("prioritizes the low-glucose threshold before context targets", () => {
+    expect(glucoseStatus(glucose("2026-07-01", "3.50", "random"), profile)).toBe("low");
+    expect(glucoseStatus(glucose("2026-07-01", "6.00", "fasting"), profile)).toBe("inRange");
+    expect(glucoseStatus(glucose("2026-07-01", "8.00", "fasting"), profile)).toBe("high");
+  });
+
+  it("builds each scheduled medication dose and estimates remaining days", () => {
+    const plan: MedicationPlan = {
+      id: "med-1",
+      memberId: "member-1",
+      name: "测试药",
+      stockUnit: "片",
+      doseQuantity: "1.00",
+      scheduleSlots: [
+        { id: "morning", label: "早餐后", time: "08:00" },
+        { id: "evening", label: "晚餐后", time: "19:00" }
+      ],
+      startDate: "2026-07-01",
+      status: "active",
+      currentStock: "14.00",
+      lowStockDays: 7
+    };
+    expect(buildMedicationTasks([plan], [], "2026-07-10")).toHaveLength(2);
+    expect(medicationDaysRemaining(plan)).toBe(7);
+  });
+});
+
+function body(date: string, weightKg: string): BodyMeasurement {
+  return {
+    id: date,
+    memberId: "member-1",
+    measuredAt: `${date}T08:00:00.000Z`,
+    weightKg,
+    context: "other"
+  };
+}
+
+function glucose(
+  date: string,
+  glucoseMmol: string,
+  context: BloodGlucoseRecord["context"]
+): BloodGlucoseRecord {
+  return {
+    id: `${date}-${context}`,
+    memberId: "member-1",
+    measuredAt: `${date}T08:00:00.000Z`,
+    glucoseMmol,
+    context,
+    source: "manual"
+  };
+}

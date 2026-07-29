@@ -1,0 +1,119 @@
+import type {
+  BodyMeasurementContext,
+  ExerciseIntensity,
+  ExerciseRelation,
+  GlucoseContext,
+  GlucoseSource,
+  GlucoseTargets,
+  HealthFollowupStatus,
+  MealType,
+  MedicationDoseStatus,
+  MedicationPlanStatus,
+  MedicationScheduleSlot
+} from "@family-finance/shared";
+
+export interface HealthProfileInput {
+  weightTrackingEnabled?: boolean;
+  exerciseTrackingEnabled?: boolean;
+  glucoseTrackingEnabled?: boolean;
+  hba1cTrackingEnabled?: boolean;
+  medicationTrackingEnabled?: boolean;
+  targetWeightKg?: string;
+  targetDate?: string;
+  weeklyExerciseMinutesGoal?: number;
+  weeklyStrengthSessionsGoal?: number;
+  dailyStepsGoal?: number;
+  glucoseIntervalDays?: number;
+  glucoseLowThreshold?: string;
+  glucoseTargets?: GlucoseTargets;
+  hba1cTargetMax?: string;
+}
+
+export interface BodyMeasurementInput {
+  measuredAt: string;
+  weightKg: string;
+  waistCm?: string;
+  context?: BodyMeasurementContext;
+  note?: string;
+}
+
+export interface ExerciseLogInput {
+  date: string;
+  type: string;
+  durationMinutes: number;
+  intensity: ExerciseIntensity;
+  isStrengthTraining?: boolean;
+  steps?: number;
+  estimatedCalories?: number;
+  note?: string;
+}
+
+export interface BloodGlucoseInput {
+  measuredAt: string;
+  glucoseMmol: string;
+  context: GlucoseContext;
+  meal?: MealType;
+  exerciseRelation?: ExerciseRelation;
+  medicationTaken?: boolean;
+  symptoms?: string;
+  note?: string;
+  source?: GlucoseSource;
+}
+
+export interface Hba1cInput {
+  measuredAt: string;
+  valuePercent: string;
+  facility?: string;
+  doctorAdvice?: string;
+  nextReviewDate?: string;
+}
+
+export interface WeeklyHealthReviewInput {
+  weekStart: string;
+  good?: string;
+  obstacle?: string;
+  nextAction?: string;
+}
+
+export interface MedicationPlanInput {
+  name: string;
+  specification?: string;
+  stockUnit: string;
+  doseQuantity: string;
+  scheduleSlots: MedicationScheduleSlot[];
+  startDate: string;
+  endDate?: string;
+  purpose?: string;
+  instructions?: string;
+  status?: MedicationPlanStatus;
+  initialStock?: string;
+  lowStockDays?: number;
+}
+
+export interface MedicationDoseInput {
+  scheduledDate: string;
+  slotId: string;
+  status: MedicationDoseStatus;
+  takenAt?: string;
+  note?: string;
+}
+
+export interface MedicationInventoryInput {
+  mode: "restock" | "set";
+  quantity: string;
+  occurredAt: string;
+  note?: string;
+}
+
+export interface HealthFollowupInput {
+  scheduledAt: string;
+  hospital?: string;
+  department?: string;
+  doctor?: string;
+  type: string;
+  tests?: string[];
+  reminderDays?: number;
+  status?: HealthFollowupStatus;
+  resultSummary?: string;
+  doctorAdvice?: string;
+}

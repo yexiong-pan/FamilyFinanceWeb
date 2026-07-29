@@ -1,6 +1,7 @@
 import {
   BankOutlined,
   BarChartOutlined,
+  CalendarOutlined,
   CameraOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -77,7 +78,7 @@ import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
 import { Column, Line, Pie } from "./LazyCharts";
 import dayjs, { type Dayjs } from "dayjs";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AppData,
   type Category,
@@ -152,8 +153,10 @@ import { buildLiabilityCoverage, financialMetricValue, snapshotComparisonRows, y
 import { buildAssetInsights, buildInvestmentInsights, buildLiabilityRisk } from "./data/financial-insights";
 import {
   type AppRoute,
+  type CalendarTabKey,
   type CashflowTabKey,
   type CheckupTabKey,
+  type HealthTabKey,
   type PageKey,
   type ReportTabKey,
   cashflowFiltersForTransition,
@@ -179,12 +182,17 @@ import {
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
+const HealthPage = lazy(async () => ({ default: (await import("./HealthPage")).HealthPage }));
+const CalendarPage = lazy(async () => ({ default: (await import("./CalendarPage")).CalendarPage }));
 const MOBILE_TRANSACTION_PAGE_SIZE = 20;
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "family-finance.sidebar-collapsed";
 
 function periodFromLocation(route: AppRoute): Dayjs {
   const params = new URLSearchParams(window.location.search);
-  if (route.page === "report" && route.tab === "yearly") {
+  if (
+    (route.page === "report" && route.tab === "yearly")
+    || (route.page === "calendar" && route.tab === "year")
+  ) {
     const year = params.get("year");
     return year && /^\d{4}$/.test(year) ? dayjs(`${year}-01-01`) : dayjs().startOf("year");
   }
@@ -197,6 +205,8 @@ const pageIcons: Record<PageKey, ReactNode> = {
   spending: <DatabaseOutlined />,
   income: <BarChartOutlined />,
   checkup: <BankOutlined />,
+  calendar: <CalendarOutlined />,
+  health: <HeartOutlined />,
   settings: <SettingOutlined />
 };
 
@@ -298,6 +308,9 @@ function AppShell() {
       ? parseCashflowFilters(new URLSearchParams(window.location.search))
       : {};
   });
+  const [calendarMember, setCalendarMember] = useState(
+    () => new URLSearchParams(window.location.search).get("member") ?? "all"
+  );
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -312,10 +325,19 @@ function AppShell() {
       const routeFilters = route.page === "spending" || route.page === "income"
         ? parseCashflowFilters(new URLSearchParams(window.location.search))
         : {};
+      const routeCalendarMember = route.page === "calendar"
+        ? new URLSearchParams(window.location.search).get("member") ?? "all"
+        : "all";
       setActiveRoute(route);
       setMonth(routeMonth);
       setCashflowFilters(routeFilters);
-      const canonicalUrl = urlForRoute(route, routeMonth.format("YYYY-MM"), routeFilters);
+      setCalendarMember(routeCalendarMember);
+      const canonicalUrl = urlForRoute(
+        route,
+        routeMonth.format("YYYY-MM"),
+        routeFilters,
+        routeCalendarMember
+      );
       if (`${window.location.pathname}${window.location.search}` !== canonicalUrl) {
         window.history.replaceState(null, "", canonicalUrl);
       }
@@ -326,7 +348,10 @@ function AppShell() {
   }, []);
 
   const monthKey = month.format("YYYY-MM");
-  const isYearlyReport = activeRoute.page === "report" && activeRoute.tab === "yearly";
+  const isYearView = (
+    (activeRoute.page === "report" && activeRoute.tab === "yearly")
+    || (activeRoute.page === "calendar" && activeRoute.tab === "year")
+  );
   const includeTransactions = (
     activeRoute.page === "report" && activeRoute.tab === "monthly"
   ) || ((activeRoute.page === "spending" || activeRoute.page === "income") && activeRoute.tab === "summary");
@@ -387,11 +412,11 @@ function AppShell() {
     );
     setActiveRoute(route);
     setCashflowFilters(nextFilters);
-    const nextUrl = urlForRoute(route, month.format("YYYY-MM"), nextFilters);
+    const nextUrl = urlForRoute(route, month.format("YYYY-MM"), nextFilters, calendarMember);
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.pushState(null, "", nextUrl);
     }
-  }, [activeRoute, cashflowFilters, month]);
+  }, [activeRoute, calendarMember, cashflowFilters, month]);
 
   const replaceCashflowFilters = useCallback((filters: CashflowFilters) => {
     const normalized = parseCashflowFilters(writeCashflowFilters(new URLSearchParams(), filters));
@@ -414,11 +439,22 @@ function AppShell() {
     window.history.pushState(null, "", urlForRoute(route, monthKey));
   }, []);
 
-  const changeMonthBy = useCallback((offset: -1 | 1) => {
-    const nextMonthKey = shiftMonthKey(monthKey, offset);
+  const navigateToMonthCalendar = useCallback((nextMonthKey: string) => {
+    const route: AppRoute = { page: "calendar", tab: "month" };
     setMonth(dayjs(`${nextMonthKey}-01`));
-    window.history.pushState(null, "", urlForRoute(activeRoute, nextMonthKey, cashflowFilters));
-  }, [activeRoute, cashflowFilters, monthKey]);
+    setActiveRoute(route);
+    window.history.pushState(null, "", urlForRoute(route, nextMonthKey, {}, calendarMember));
+  }, [calendarMember]);
+
+  const changePeriodBy = useCallback((offset: -1 | 1) => {
+    const nextMonthKey = shiftMonthKey(monthKey, isYearView ? offset * 12 : offset);
+    setMonth(dayjs(`${nextMonthKey}-01`));
+    window.history.pushState(
+      null,
+      "",
+      urlForRoute(activeRoute, nextMonthKey, cashflowFilters, calendarMember)
+    );
+  }, [activeRoute, calendarMember, cashflowFilters, isYearView, monthKey]);
 
   return (
     <Layout className="app-shell">
@@ -470,18 +506,16 @@ function AppShell() {
             </Title>
             <Space wrap>
               <div className="month-navigation">
-                {!isYearlyReport ? (
-                  <Button
-                    className="month-nav-button"
-                    icon={<LeftOutlined />}
-                    aria-label="上月"
-                    title="上月"
-                    onClick={() => changeMonthBy(-1)}
-                  />
-                ) : null}
+                <Button
+                  className="month-nav-button"
+                  icon={<LeftOutlined />}
+                  aria-label={isYearView ? "上一年" : "上月"}
+                  title={isYearView ? "上一年" : "上月"}
+                  onClick={() => changePeriodBy(-1)}
+                />
                 <DatePicker
-                  picker={isYearlyReport ? "year" : "month"}
-                  format={isYearlyReport ? "YYYY年" : "YYYY年M月"}
+                  picker={isYearView ? "year" : "month"}
+                  format={isYearView ? "YYYY年" : "YYYY年M月"}
                   value={month}
                   allowClear={false}
                   onChange={(value) => {
@@ -490,19 +524,22 @@ function AppShell() {
                     window.history.pushState(
                       null,
                       "",
-                      urlForRoute(activeRoute, nextMonth.format("YYYY-MM"), cashflowFilters)
+                      urlForRoute(
+                        activeRoute,
+                        nextMonth.format("YYYY-MM"),
+                        cashflowFilters,
+                        calendarMember
+                      )
                     );
                   }}
                 />
-                {!isYearlyReport ? (
-                  <Button
-                    className="month-nav-button"
-                    icon={<RightOutlined />}
-                    aria-label="下月"
-                    title="下月"
-                    onClick={() => changeMonthBy(1)}
-                  />
-                ) : null}
+                <Button
+                  className="month-nav-button"
+                  icon={<RightOutlined />}
+                  aria-label={isYearView ? "下一年" : "下月"}
+                  title={isYearView ? "下一年" : "下月"}
+                  onClick={() => changePeriodBy(1)}
+                />
               </div>
               <Button icon={<ReloadOutlined />} onClick={() => void reload()}>
                 刷新
@@ -554,6 +591,58 @@ function AppShell() {
                   tab={activeRoute.tab}
                   onTabChange={(tab) => navigateToRoute({ page: "checkup", tab })}
                 />
+              ) : null}
+              {activeRoute.page === "health" ? (
+                <Suspense fallback={<Spin />}>
+                  <HealthPage
+                    monthKey={monthKey}
+                    members={data.familyMembers}
+                    tab={activeRoute.tab}
+                    onTabChange={(tab: HealthTabKey) => navigateToRoute({ page: "health", tab })}
+                  />
+                </Suspense>
+              ) : null}
+              {activeRoute.page === "calendar" ? (
+                <Suspense fallback={<Spin />}>
+                  <CalendarPage
+                    monthKey={monthKey}
+                    members={data.familyMembers}
+                    tab={activeRoute.tab}
+                    memberId={calendarMember}
+                    onTabChange={(tab: CalendarTabKey) => navigateToRoute({ page: "calendar", tab })}
+                    onMemberChange={(memberId: string) => {
+                      setCalendarMember(memberId);
+                      window.history.replaceState(
+                        null,
+                        "",
+                        urlForRoute(activeRoute, monthKey, {}, memberId)
+                      );
+                    }}
+                    onOpenMonth={navigateToMonthCalendar}
+                    onOpenCashflow={(kind, nextMonth, memberName) => {
+                      const route: AppRoute = {
+                        page: kind === "income" ? "income" : "spending",
+                        tab: "details"
+                      };
+                      const filters = memberName ? { member: memberName } : {};
+                      setMonth(dayjs(`${nextMonth}-01`));
+                      setActiveRoute(route);
+                      setCashflowFilters(filters);
+                      window.history.pushState(null, "", urlForRoute(route, nextMonth, filters));
+                    }}
+                    onOpenHealth={(tab: HealthTabKey, memberId?: string, nextMonth?: string) => {
+                      if (memberId) {
+                        window.localStorage.setItem("family-finance.health-member", memberId);
+                      }
+                      const route: AppRoute = { page: "health", tab };
+                      const healthMonth = nextMonth ?? monthKey;
+                      setMonth(dayjs(`${healthMonth}-01`));
+                      setActiveRoute(route);
+                      setCashflowFilters({});
+                      window.history.pushState(null, "", urlForRoute(route, healthMonth));
+                    }}
+                  />
+                </Suspense>
               ) : null}
               {activePage === "settings" ? <SettingsPage {...commonProps} /> : null}
             </Spin>
@@ -4153,6 +4242,8 @@ function pageTitle(activePage: PageKey): string {
     spending: "支出",
     income: "收入",
     checkup: "财务盘点",
+    calendar: "日历",
+    health: "健康",
     settings: "设置"
   }[activePage];
 }

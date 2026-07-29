@@ -18,6 +18,8 @@ describe("page navigation paths", () => {
       ["spending", "/spending/summary"],
       ["income", "/income/summary"],
       ["checkup", "/checkup/assets"],
+      ["calendar", "/calendar/month"],
+      ["health", "/health/overview"],
       ["settings", "/settings"]
     ]);
   });
@@ -34,6 +36,8 @@ describe("page navigation paths", () => {
     expect(pageFromPath("/asset-history")).toBe("checkup");
     expect(pageFromPath("/liabilities")).toBe("checkup");
     expect(pageFromPath("/investments")).toBe("checkup");
+    expect(pageFromPath("/calendar")).toBe("calendar");
+    expect(pageFromPath("/health")).toBe("health");
     expect(pageFromPath("/budgets")).toBe("report");
     expect(pageFromPath("/settings")).toBe("settings");
   });
@@ -50,12 +54,19 @@ describe("page navigation paths", () => {
     expect(pathForRoute({ page: "checkup", tab: "liabilities" })).toBe("/checkup/liabilities");
     expect(pathForRoute({ page: "checkup", tab: "investments" })).toBe("/checkup/investments");
     expect(pathForRoute({ page: "checkup", tab: "history" })).toBe("/checkup/history");
+    expect(pathForRoute({ page: "calendar", tab: "month" })).toBe("/calendar/month");
+    expect(pathForRoute({ page: "calendar", tab: "year" })).toBe("/calendar/year");
+    expect(pathForRoute({ page: "health", tab: "overview" })).toBe("/health/overview");
+    expect(pathForRoute({ page: "health", tab: "glucose" })).toBe("/health/glucose");
+    expect(pathForRoute({ page: "health", tab: "medication" })).toBe("/health/medication");
+    expect(pathForRoute({ page: "health", tab: "body" })).toBe("/health/body");
 
     expect(routeFromPath("/spending")).toEqual({ page: "spending", tab: "summary" });
     expect(routeFromPath("/report/yearly")).toEqual({ page: "report", tab: "yearly" });
     expect(routeFromPath("/income/details")).toEqual({ page: "income", tab: "details" });
     expect(routeFromPath("/checkup/safety")).toEqual({ page: "checkup", tab: "safety" });
     expect(routeFromPath("/checkup/history")).toEqual({ page: "checkup", tab: "history" });
+    expect(routeFromPath("/calendar/year")).toEqual({ page: "calendar", tab: "year" });
     expect(routeFromPath("/accounts")).toEqual({ page: "checkup", tab: "assets" });
   });
 
@@ -86,6 +97,21 @@ describe("page navigation paths", () => {
     )).toBe(
       "/spending/details?month=2026-06&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&min=10&max=500"
     );
+  });
+
+  it("builds calendar URLs with period and member filters", () => {
+    expect(urlForRoute(
+      { page: "calendar", tab: "month" },
+      "2026-07",
+      {},
+      "member-husband"
+    )).toBe("/calendar/month?month=2026-07&member=member-husband");
+    expect(urlForRoute(
+      { page: "calendar", tab: "year" },
+      "2026-07",
+      {},
+      "all"
+    )).toBe("/calendar/year?year=2026");
   });
 
   it("keeps cashflow filters across months and tabs on the same page", () => {

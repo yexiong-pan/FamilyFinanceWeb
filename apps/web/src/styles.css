@@ -625,6 +625,83 @@ button.expense-nature-summary:focus-visible {
   display: none;
 }
 
+.health-member-select {
+  min-width: 150px;
+}
+
+.health-metric-card {
+  height: 100%;
+}
+
+.health-metric-card .ant-statistic-content {
+  font-size: 24px;
+}
+
+.health-metric-card .ant-progress {
+  margin-top: 8px;
+}
+
+.health-goal-row {
+  margin-bottom: 16px;
+}
+
+.health-record-list {
+  margin-top: 12px;
+}
+
+.health-record-list .ant-list-item {
+  align-items: center;
+  padding-inline: 4px;
+}
+
+.health-record-list .ant-list-item-meta {
+  min-width: 0;
+}
+
+.health-record-list .ant-list-item-meta-description {
+  white-space: normal;
+}
+
+.health-hba1c-summary {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #2c2c2c;
+}
+
+.health-full-width {
+  width: 100%;
+}
+
+.health-settings-alert,
+.health-editor-alert {
+  margin-bottom: 16px;
+}
+
+.medication-task-icon {
+  color: #237804;
+  font-size: 22px;
+}
+
+.medication-task-list .ant-list-item,
+.medication-plan-list .ant-list-item {
+  align-items: center;
+}
+
+.medication-task-list .ant-list-item-meta,
+.medication-plan-list .ant-list-item-meta {
+  min-width: 0;
+}
+
+.medication-slot-label {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.medication-slot-time {
+  width: 110px;
+  margin-bottom: 0;
+}
+
 .report-heading {
   margin: 0 0 4px !important;
   letter-spacing: 0;
@@ -898,6 +975,449 @@ button.expense-nature-summary:focus-visible {
 
 .annual-month-item .ant-tag {
   margin-inline-end: 0;
+}
+
+.calendar-toolbar {
+  padding: 2px 0;
+}
+
+.calendar-member-select {
+  width: 180px;
+}
+
+.calendar-content-filter-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.calendar-content-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  padding-top: 8px;
+  border-top: 1px solid #d9d9d9;
+}
+
+.calendar-content-options .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+}
+
+.calendar-summary-card {
+  height: 100%;
+}
+
+.calendar-month-summary-row > .ant-col {
+  display: flex;
+}
+
+.calendar-month-summary-row .calendar-summary-card {
+  width: 100%;
+}
+
+.calendar-month-summary-row .ant-card-head {
+  min-height: 38px;
+}
+
+.calendar-month-summary-row .ant-card-head-title {
+  padding: 7px 0;
+}
+
+.calendar-month-summary-row .ant-card-body {
+  padding: 10px 12px;
+}
+
+.calendar-summary-list {
+  display: grid;
+  gap: 5px;
+}
+
+.calendar-summary-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.calendar-summary-line > span {
+  overflow: hidden;
+  color: #595959;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-summary-line > strong {
+  white-space: nowrap;
+}
+
+.calendar-summary-line > strong.is-income {
+  color: #237804;
+}
+
+.calendar-summary-line > strong.is-expense {
+  color: #cf1322;
+}
+
+.calendar-summary-line > strong.is-asset {
+  color: #0958d9;
+}
+
+.calendar-summary-line > small {
+  color: #8c8c8c;
+  white-space: nowrap;
+}
+
+.calendar-reminder-total {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+}
+
+.calendar-reminder-total strong {
+  color: #d4380d;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.calendar-reminder-breakdown {
+  display: flex;
+  gap: 4px 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #595959;
+  font-size: 12px;
+}
+
+.calendar-summary-card .ant-statistic-content {
+  font-size: 21px;
+}
+
+.calendar-grid-card .ant-card-body {
+  padding: 0;
+}
+
+.calendar-grid-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.calendar-grid-inner {
+  min-width: 0;
+}
+
+.calendar-weekdays,
+.calendar-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekdays {
+  border-bottom: 3px solid #2c2c2c;
+  background: #f6ffed;
+}
+
+.calendar-weekdays span {
+  padding: 8px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 154px;
+  padding: 9px;
+  color: inherit;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-right: 1px solid #d9d9d9;
+  border-bottom: 1px solid #d9d9d9;
+  cursor: pointer;
+}
+
+.calendar-day.has-content {
+  background: #f0f7ff;
+}
+
+.calendar-day.is-outside-month {
+  background: #fafafa;
+}
+
+.calendar-day.is-outside-month .calendar-day-heading {
+  color: #8c8c8c;
+  font-size: 13px;
+}
+
+.calendar-day:nth-child(7n) {
+  border-right: 0;
+}
+
+.calendar-day:hover,
+.calendar-day:focus-visible,
+.calendar-day.is-selected {
+  position: relative;
+  z-index: 1;
+  background: #f6ffed;
+  box-shadow: inset 0 0 0 3px #52c41a;
+}
+
+.calendar-day.is-today .calendar-day-heading > span {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  color: #fff;
+  background: #237804;
+  border-radius: 50%;
+}
+
+.calendar-day.is-empty {
+  cursor: default;
+  background: #fafafa;
+}
+
+.calendar-day.is-empty:hover {
+  box-shadow: none;
+}
+
+.calendar-day-heading {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 26px;
+  color: #0958d9;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.calendar-day-content {
+  display: grid;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.calendar-entry-row {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr);
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.calendar-entry-icon {
+  display: inline-grid;
+  width: 14px;
+  place-items: center;
+}
+
+.calendar-entry-member {
+  max-width: 4.5em;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-entry-text,
+.calendar-more-entry {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-entry-row.is-income,
+.calendar-year-finance .is-income {
+  color: #237804;
+}
+
+.calendar-entry-row.is-expense,
+.calendar-year-finance .is-expense {
+  color: #cf1322;
+}
+
+.calendar-entry-row.is-glucose {
+  color: #0958d9;
+}
+
+.calendar-entry-row.is-exercise {
+  color: #531dab;
+}
+
+.calendar-entry-row.is-medication {
+  color: #ad6800;
+}
+
+.calendar-entry-row.is-followup {
+  color: #006d75;
+}
+
+.calendar-entry-row.has-warning,
+.calendar-signal.has-warning {
+  color: #d4380d;
+  font-weight: 600;
+}
+
+.calendar-more-entry {
+  padding-left: 19px;
+  color: #8c8c8c;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.calendar-year-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.calendar-year-card {
+  min-width: 0;
+}
+
+.calendar-year-card.is-current {
+  box-shadow: 5px 5px 0 #52c41a;
+}
+
+.calendar-year-card.has-warning {
+  border-color: #d4380d;
+}
+
+.calendar-year-card.is-future {
+  opacity: 0.72;
+}
+
+.calendar-year-card .ant-card-body {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-year-finance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  width: 100%;
+  padding: 0 0 10px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(44, 44, 44, 0.18);
+  cursor: pointer;
+}
+
+.calendar-year-finance span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.calendar-year-finance strong {
+  overflow: hidden;
+  font-size: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-year-signals {
+  display: grid;
+  gap: 5px;
+}
+
+.calendar-signal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.calendar-signal:hover,
+.calendar-signal:focus-visible {
+  color: #237804;
+}
+
+.calendar-signal span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-year-actions .ant-btn {
+  flex: 1;
+}
+
+.calendar-year-note {
+  display: block;
+  text-align: center;
+}
+
+.calendar-day-detail {
+  width: 100%;
+}
+
+.calendar-detail-section {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.calendar-detail-section:last-child {
+  border-bottom: 0;
+}
+
+.calendar-detail-section h5.ant-typography {
+  margin: 0;
+}
+
+.calendar-detail-content {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-quick-actions .ant-btn {
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+.calendar-quick-alert {
+  margin-bottom: 14px;
+}
+
+.calendar-medication-recorder,
+.calendar-medication-task {
+  width: 100%;
+}
+
+.calendar-medication-task .ant-btn {
+  flex: 1;
+}
+
+@media (max-width: 1100px) {
+  .calendar-year-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .cashflow-filter-summary {
@@ -1251,6 +1771,95 @@ button.expense-nature-summary:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .calendar-toolbar {
+    align-items: stretch;
+  }
+
+  .calendar-view-actions,
+  .calendar-filter-actions,
+  .calendar-member-select {
+    width: 100%;
+  }
+
+  .calendar-filter-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .calendar-view-actions .ant-segmented {
+    flex: 1;
+  }
+
+  .calendar-summary-card .ant-card-body {
+    padding: 9px;
+  }
+
+  .calendar-summary-card .ant-statistic-title {
+    min-height: 34px;
+    font-size: 12px;
+  }
+
+  .calendar-summary-card .ant-statistic-content {
+    font-size: 16px;
+  }
+
+  .calendar-weekdays span {
+    padding: 6px 2px;
+    font-size: 12px;
+  }
+
+  .calendar-grid-inner {
+    min-width: 910px;
+  }
+
+  .calendar-day {
+    min-height: 146px;
+    padding: 7px;
+  }
+
+  .calendar-day-heading {
+    min-height: 24px;
+    font-size: 15px;
+  }
+
+  .calendar-day.is-today .calendar-day-heading > span {
+    width: 24px;
+    height: 24px;
+  }
+
+  .calendar-day-content {
+    gap: 3px;
+    margin-top: 5px;
+  }
+
+  .calendar-entry-row {
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .calendar-year-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .calendar-year-card .ant-card-body {
+    gap: 10px;
+  }
+
+  .calendar-detail-section > .ant-flex {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+
+  .calendar-detail-section > .ant-flex > .ant-space:last-child {
+    width: 100%;
+  }
+
+  .calendar-quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .cashflow-filters > * {
     flex: 1 1 100%;
     width: 100%;
@@ -1301,6 +1910,94 @@ button.expense-nature-summary:focus-visible {
     contain-intrinsic-size: 190px;
   }
 
+  .health-page > .ant-flex:first-child {
+    align-items: flex-start;
+  }
+
+  .health-page > .ant-flex:first-child > .ant-space:last-child {
+    width: 100%;
+  }
+
+  .health-page > .ant-flex:first-child > .ant-space:last-child .ant-btn {
+    flex: 1;
+  }
+
+  .health-record-list .ant-list-item {
+    align-items: flex-start;
+  }
+
+  .health-record-list .ant-list-item-action {
+    margin-inline-start: 6px;
+  }
+
+  .health-record-list .ant-list-item-action > li {
+    padding: 0 2px;
+  }
+
+  .health-record-list .ant-list-item-action .ant-btn {
+    width: 34px;
+    overflow: hidden;
+    padding-inline: 7px;
+    font-size: 0;
+  }
+
+  .health-record-list .ant-list-item-action .anticon {
+    font-size: 15px;
+  }
+
+  .medication-task-list .ant-list-item,
+  .medication-plan-list .ant-list-item {
+    display: block;
+  }
+
+  .medication-task-list .ant-list-item-action,
+  .medication-plan-list .ant-list-item-action {
+    display: flex;
+    margin: 10px 0 0;
+  }
+
+  .medication-task-list .ant-list-item-action > li,
+  .medication-plan-list .ant-list-item-action > li {
+    flex: 1;
+    padding: 0 3px;
+  }
+
+  .medication-task-list .ant-list-item-action .ant-btn,
+  .medication-plan-list .ant-list-item-action .ant-btn {
+    width: 100%;
+    padding-inline: 6px;
+  }
+
+  .medication-slot-time {
+    width: 92px;
+  }
+
+  .ant-picker-datetime-panel-container .ant-picker-panel,
+  .ant-picker-datetime-panel-container .ant-picker-datetime-panel {
+    width: calc(100vw - 32px);
+    max-width: 360px;
+  }
+
+  .ant-picker-datetime-panel-container .ant-picker-datetime-panel {
+    flex-direction: column;
+  }
+
+  .ant-picker-datetime-panel-container .ant-picker-date-panel,
+  .ant-picker-datetime-panel-container .ant-picker-time-panel {
+    width: 100%;
+  }
+
+  .ant-picker-datetime-panel-container .ant-picker-time-panel {
+    height: 132px;
+    border-top: 1px solid #d9d9d9;
+    border-inline-start: 0;
+  }
+
+  .ant-picker-datetime-panel-container .ant-picker-time-panel-column {
+    flex: 1;
+    height: 132px;
+  }
+
   .ant-drawer-content-wrapper {
     width: 100% !important;
     max-width: 100%;
@@ -1324,7 +2021,7 @@ button.expense-nature-summary:focus-visible {
     left: 0;
     z-index: 20;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     gap: 2px;
     padding: 4px max(6px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
     background: #fff;
@@ -1332,16 +2029,20 @@ button.expense-nature-summary:focus-visible {
   }
 
   .mobile-nav .ant-btn {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
     height: auto;
     min-height: 44px;
     padding: 4px 3px;
-    white-space: normal;
-    font-size: 11px;
+    white-space: nowrap;
+    font-size: 10px;
   }
 
   .mobile-nav .ant-btn-icon {
     display: block;
-    margin: 0 0 2px !important;
+    margin: 0 !important;
   }
 
   .top-spending-row {

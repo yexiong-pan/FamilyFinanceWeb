@@ -60,6 +60,69 @@ enum AssetPurpose {
   restricted
 }
 
+enum ExerciseIntensity {
+  low
+  moderate
+  high
+}
+
+enum BodyMeasurementContext {
+  morningFasting
+  other
+}
+
+enum GlucoseContext {
+  fasting
+  beforeMeal
+  afterMeal1h
+  afterMeal2h
+  bedtime
+  random
+}
+
+enum MealType {
+  breakfast
+  lunch
+  dinner
+  snack
+}
+
+enum ExerciseRelation {
+  before
+  after
+}
+
+enum GlucoseSource {
+  manual
+  meter
+  cgm
+}
+
+enum MedicationPlanStatus {
+  active
+  paused
+  stopped
+}
+
+enum MedicationDoseStatus {
+  taken
+  missed
+  paused
+}
+
+enum MedicationInventoryEventType {
+  initial
+  restock
+  adjustment
+  consumption
+}
+
+enum HealthFollowupStatus {
+  scheduled
+  completed
+  cancelled
+}
+
 enum MonthlyActionStatus {
   pending
   completed
@@ -77,7 +140,7 @@ model User {
 }
 
 model Family {
-  id                  String                   @id @default(uuid())
+  id                  String                     @id @default(uuid())
   name                String
   members             FamilyMember[]
   accounts            Account[]
@@ -97,21 +160,40 @@ model Family {
   recurringCashflows  RecurringCashflow[]
   safetySettings      FinancialSafetySettings?
   monthlyActions      MonthlyReviewAction[]
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  healthProfiles      MemberHealthProfile[]
+  bodyMeasurements    BodyMeasurement[]
+  exerciseLogs        ExerciseLog[]
+  glucoseRecords      BloodGlucoseRecord[]
+  hba1cRecords        Hba1cRecord[]
+  healthReviews       WeeklyHealthReview[]
+  medicationPlans     MedicationPlan[]
+  medicationDoses     MedicationDoseRecord[]
+  medicationInventory MedicationInventoryEvent[]
+  healthFollowups     HealthFollowup[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
 }
 
 model FamilyMember {
-  id        String   @id @default(uuid())
-  familyId  String
-  userId    String?
-  name      String
-  icon      String?
-  role      UserRole @default(OWNER)
-  family    Family   @relation(fields: [familyId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String                 @id @default(uuid())
+  familyId         String
+  userId           String?
+  name             String
+  icon             String?
+  role             UserRole               @default(OWNER)
+  family           Family                 @relation(fields: [familyId], references: [id])
+  user             User?                  @relation(fields: [userId], references: [id])
+  healthProfile    MemberHealthProfile?
+  bodyMeasurements BodyMeasurement[]
+  exerciseLogs     ExerciseLog[]
+  glucoseRecords   BloodGlucoseRecord[]
+  hba1cRecords     Hba1cRecord[]
+  healthReviews    WeeklyHealthReview[]
+  medicationPlans  MedicationPlan[]
+  medicationDoses  MedicationDoseRecord[]
+  healthFollowups  HealthFollowup[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   @@unique([familyId, name])
 }
@@ -368,6 +450,211 @@ model MonthlyReviewAction {
 
   @@index([familyId, month])
   @@index([monthlyReviewId, status])
+}
+
+model MemberHealthProfile {
+  id                         String       @id @default(uuid())
+  familyId                   String
+  memberId                   String       @unique
+  weightTrackingEnabled      Boolean      @default(true)
+  exerciseTrackingEnabled    Boolean      @default(true)
+  glucoseTrackingEnabled     Boolean      @default(false)
+  hba1cTrackingEnabled       Boolean      @default(false)
+  medicationTrackingEnabled  Boolean      @default(false)
+  targetWeightKg             Decimal?     @db.Decimal(6, 2)
+  targetDate                 DateTime?
+  weeklyExerciseMinutesGoal  Int          @default(150)
+  weeklyStrengthSessionsGoal Int          @default(2)
+  dailyStepsGoal             Int          @default(8000)
+  glucoseIntervalDays        Int          @default(7)
+  glucoseLowThreshold        Decimal      @default(3.9) @db.Decimal(5, 2)
+  glucoseTargets             Json?
+  hba1cTargetMax             Decimal?     @db.Decimal(4, 2)
+  family                     Family       @relation(fields: [familyId], references: [id])
+  member                     FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+}
+
+model BodyMeasurement {
+  id         String       @id @default(uuid())
+  familyId   String
+  memberId   String
+  measuredAt DateTime
+  weightKg   Decimal      @db.Decimal(6, 2)
+  waistCm    Decimal?     @db.Decimal(6, 2)
+  context    BodyMeasurementContext @default(other)
+  note       String?
+  family     Family       @relation(fields: [familyId], references: [id])
+  member     FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([memberId, measuredAt])
+}
+
+model ExerciseLog {
+  id                 String            @id @default(uuid())
+  familyId           String
+  memberId           String
+  date               DateTime
+  type               String
+  durationMinutes    Int
+  intensity          ExerciseIntensity
+  isStrengthTraining Boolean           @default(false)
+  steps              Int?
+  estimatedCalories  Int?
+  note               String?
+  family             Family            @relation(fields: [familyId], references: [id])
+  member             FamilyMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([memberId, date])
+}
+
+model BloodGlucoseRecord {
+  id               String            @id @default(uuid())
+  familyId         String
+  memberId         String
+  measuredAt       DateTime
+  glucoseMmol      Decimal           @db.Decimal(5, 2)
+  context          GlucoseContext
+  meal             MealType?
+  exerciseRelation ExerciseRelation?
+  medicationTaken  Boolean?
+  symptoms         String?
+  note             String?
+  source           GlucoseSource     @default(manual)
+  family           Family            @relation(fields: [familyId], references: [id])
+  member           FamilyMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([memberId, measuredAt])
+  @@index([memberId, context, measuredAt])
+}
+
+model Hba1cRecord {
+  id             String       @id @default(uuid())
+  familyId       String
+  memberId       String
+  measuredAt     DateTime
+  valuePercent   Decimal      @db.Decimal(4, 2)
+  facility       String?
+  doctorAdvice   String?
+  nextReviewDate DateTime?
+  family         Family       @relation(fields: [familyId], references: [id])
+  member         FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([memberId, measuredAt])
+}
+
+model WeeklyHealthReview {
+  id         String       @id @default(uuid())
+  familyId   String
+  memberId   String
+  weekStart  DateTime
+  good       String?
+  obstacle   String?
+  nextAction String?
+  family     Family       @relation(fields: [familyId], references: [id])
+  member     FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([memberId, weekStart])
+  @@index([memberId, weekStart])
+}
+
+model MedicationPlan {
+  id            String                     @id @default(uuid())
+  familyId      String
+  memberId      String
+  name          String
+  specification String?
+  stockUnit     String
+  doseQuantity  Decimal                    @db.Decimal(8, 2)
+  scheduleSlots Json
+  startDate     DateTime
+  endDate       DateTime?
+  purpose       String?
+  instructions  String?
+  status        MedicationPlanStatus       @default(active)
+  currentStock  Decimal                    @default(0) @db.Decimal(10, 2)
+  lowStockDays  Int                        @default(7)
+  family        Family                     @relation(fields: [familyId], references: [id])
+  member        FamilyMember               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  doseRecords   MedicationDoseRecord[]
+  inventory     MedicationInventoryEvent[]
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  @@index([memberId, status])
+}
+
+model MedicationDoseRecord {
+  id             String                    @id @default(uuid())
+  familyId       String
+  memberId       String
+  medicationId   String
+  scheduledDate  DateTime
+  slotId         String
+  scheduledLabel String
+  status         MedicationDoseStatus
+  quantityUsed   Decimal                   @db.Decimal(8, 2)
+  takenAt        DateTime?
+  note           String?
+  family         Family                    @relation(fields: [familyId], references: [id])
+  member         FamilyMember              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  medication     MedicationPlan            @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  inventoryEvent MedicationInventoryEvent?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@unique([medicationId, scheduledDate, slotId])
+  @@index([memberId, scheduledDate])
+}
+
+model MedicationInventoryEvent {
+  id            String                       @id @default(uuid())
+  familyId      String
+  medicationId  String
+  doseRecordId  String?                      @unique
+  type          MedicationInventoryEventType
+  quantityDelta Decimal                      @db.Decimal(10, 2)
+  occurredAt    DateTime
+  note          String?
+  family        Family                       @relation(fields: [familyId], references: [id])
+  medication    MedicationPlan               @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  doseRecord    MedicationDoseRecord?        @relation(fields: [doseRecordId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                     @default(now())
+
+  @@index([medicationId, occurredAt])
+}
+
+model HealthFollowup {
+  id            String               @id @default(uuid())
+  familyId      String
+  memberId      String
+  scheduledAt   DateTime
+  hospital      String?
+  department    String?
+  doctor        String?
+  type          String
+  tests         Json?
+  reminderDays  Int                  @default(7)
+  status        HealthFollowupStatus @default(scheduled)
+  resultSummary String?
+  doctorAdvice  String?
+  family        Family               @relation(fields: [familyId], references: [id])
+  member        FamilyMember         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([memberId, scheduledAt])
 }
 
 model AccountSnapshot {

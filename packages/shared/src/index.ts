@@ -3,6 +3,8 @@ import type { ExpenseNature } from "./financial-planning.js";
 export type MoneyAmount = string;
 
 export * from "./financial-planning.js";
+export * from "./health.js";
+export * from "./calendar.js";
 
 export type AccountType = string;
 export type AssetPurpose = "daily" | "emergency" | "goal" | "investment" | "restricted";

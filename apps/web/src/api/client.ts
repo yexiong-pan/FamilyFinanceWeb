@@ -1,11 +1,32 @@
 import type {
   Account,
   AccountTypeOption,
+  CalendarData,
+  CalendarView,
   DashboardSummary,
   FamilyMemberInfo,
   FinanceTransaction,
   FinancialSafetyData,
   FinancialSafetySettings,
+  BloodGlucoseRecord,
+  BodyMeasurement,
+  ExerciseIntensity,
+  ExerciseLog,
+  ExerciseRelation,
+  GlucoseContext,
+  GlucoseSource,
+  Hba1cRecord,
+  HealthData,
+  HealthFollowup,
+  HealthFollowupStatus,
+  MealType,
+  MedicationDoseRecord,
+  MedicationDoseStatus,
+  MedicationPlan,
+  MedicationPlanStatus,
+  MedicationScheduleSlot,
+  MemberHealthProfile,
+  WeeklyHealthReview,
   ImportTransactionsResult,
   TransactionPage,
   ImportTransactionItem,
@@ -297,6 +318,15 @@ export async function getYearlyReport(year: string): Promise<YearlyReportData> {
   return getJson(`/reports/yearly?year=${encodeURIComponent(year)}`);
 }
 
+export async function getCalendarData(
+  view: CalendarView,
+  period: string,
+  memberId = "all"
+): Promise<CalendarData> {
+  const params = new URLSearchParams({ view, period, memberId });
+  return getJson(`/calendar?${params.toString()}`);
+}
+
 export async function deleteAccount(id: string): Promise<void> {
   return del(`/accounts/${id}`);
 }
@@ -400,6 +430,201 @@ export async function updateRecurringCashflow(
 
 export async function deleteRecurringCashflow(id: string): Promise<void> {
   return del(`/recurring-cashflows/${id}`);
+}
+
+export type HealthProfileInput = Partial<Omit<MemberHealthProfile, "memberId">>;
+export type BodyMeasurementInput =
+  Omit<BodyMeasurement, "id" | "memberId" | "context">
+  & { context?: BodyMeasurement["context"] };
+export type ExerciseLogInput = {
+  date: string;
+  type: string;
+  durationMinutes: number;
+  intensity: ExerciseIntensity;
+  isStrengthTraining?: boolean;
+  steps?: number;
+  estimatedCalories?: number;
+  note?: string;
+};
+export type BloodGlucoseInput = {
+  measuredAt: string;
+  glucoseMmol: string;
+  context: GlucoseContext;
+  meal?: MealType;
+  exerciseRelation?: ExerciseRelation;
+  medicationTaken?: boolean;
+  symptoms?: string;
+  note?: string;
+  source?: GlucoseSource;
+};
+export type Hba1cInput = Omit<Hba1cRecord, "id" | "memberId">;
+export type WeeklyHealthReviewInput = Omit<WeeklyHealthReview, "id" | "memberId">;
+export type MedicationPlanInput = {
+  name: string;
+  specification?: string;
+  stockUnit: string;
+  doseQuantity: string;
+  scheduleSlots: MedicationScheduleSlot[];
+  startDate: string;
+  endDate?: string;
+  purpose?: string;
+  instructions?: string;
+  status?: MedicationPlanStatus;
+  initialStock?: string;
+  lowStockDays?: number;
+};
+export type MedicationDoseInput = {
+  scheduledDate: string;
+  slotId: string;
+  status: MedicationDoseStatus;
+  takenAt?: string;
+  note?: string;
+};
+export type MedicationInventoryInput = {
+  mode: "restock" | "set";
+  quantity: string;
+  occurredAt: string;
+  note?: string;
+};
+export type HealthFollowupInput = {
+  scheduledAt: string;
+  hospital?: string;
+  department?: string;
+  doctor?: string;
+  type: string;
+  tests?: string[];
+  reminderDays?: number;
+  status?: HealthFollowupStatus;
+  resultSummary?: string;
+  doctorAdvice?: string;
+};
+
+export async function getHealthData(memberId: string, month: string): Promise<HealthData> {
+  return getJson(`/health?memberId=${encodeURIComponent(memberId)}&month=${month}`);
+}
+
+export async function updateHealthProfile(
+  memberId: string,
+  input: HealthProfileInput
+): Promise<MemberHealthProfile> {
+  return patchJson(`/health/profiles/${memberId}`, input);
+}
+
+export async function createBodyMeasurement(
+  memberId: string,
+  input: BodyMeasurementInput
+): Promise<BodyMeasurement> {
+  return postJson(`/health/members/${memberId}/body-measurements`, input);
+}
+
+export async function updateBodyMeasurement(
+  id: string,
+  input: BodyMeasurementInput
+): Promise<BodyMeasurement> {
+  return patchJson(`/health/body-measurements/${id}`, input);
+}
+
+export async function deleteBodyMeasurement(id: string): Promise<void> {
+  return del(`/health/body-measurements/${id}`);
+}
+
+export async function createExerciseLog(memberId: string, input: ExerciseLogInput): Promise<ExerciseLog> {
+  return postJson(`/health/members/${memberId}/exercise-logs`, input);
+}
+
+export async function updateExerciseLog(id: string, input: ExerciseLogInput): Promise<ExerciseLog> {
+  return patchJson(`/health/exercise-logs/${id}`, input);
+}
+
+export async function deleteExerciseLog(id: string): Promise<void> {
+  return del(`/health/exercise-logs/${id}`);
+}
+
+export async function createBloodGlucose(
+  memberId: string,
+  input: BloodGlucoseInput
+): Promise<BloodGlucoseRecord> {
+  return postJson(`/health/members/${memberId}/glucose-records`, input);
+}
+
+export async function updateBloodGlucose(
+  id: string,
+  input: BloodGlucoseInput
+): Promise<BloodGlucoseRecord> {
+  return patchJson(`/health/glucose-records/${id}`, input);
+}
+
+export async function deleteBloodGlucose(id: string): Promise<void> {
+  return del(`/health/glucose-records/${id}`);
+}
+
+export async function createHba1c(memberId: string, input: Hba1cInput): Promise<Hba1cRecord> {
+  return postJson(`/health/members/${memberId}/hba1c-records`, input);
+}
+
+export async function updateHba1c(id: string, input: Hba1cInput): Promise<Hba1cRecord> {
+  return patchJson(`/health/hba1c-records/${id}`, input);
+}
+
+export async function deleteHba1c(id: string): Promise<void> {
+  return del(`/health/hba1c-records/${id}`);
+}
+
+export async function saveWeeklyHealthReview(
+  memberId: string,
+  input: WeeklyHealthReviewInput
+): Promise<WeeklyHealthReview> {
+  return postJson(`/health/members/${memberId}/weekly-review`, input);
+}
+
+export async function createMedicationPlan(
+  memberId: string,
+  input: MedicationPlanInput
+): Promise<MedicationPlan> {
+  return postJson(`/health/members/${memberId}/medications`, input);
+}
+
+export async function updateMedicationPlan(
+  id: string,
+  input: MedicationPlanInput
+): Promise<MedicationPlan> {
+  return patchJson(`/health/medications/${id}`, input);
+}
+
+export async function saveMedicationDose(
+  id: string,
+  input: MedicationDoseInput
+): Promise<MedicationDoseRecord> {
+  return postJson(`/health/medications/${id}/doses`, input);
+}
+
+export async function updateMedicationInventory(
+  id: string,
+  input: MedicationInventoryInput
+): Promise<MedicationPlan> {
+  return postJson(`/health/medications/${id}/inventory`, input);
+}
+
+export async function createHealthFollowup(
+  memberId: string,
+  input: HealthFollowupInput
+): Promise<HealthFollowup> {
+  return postJson(`/health/members/${memberId}/followups`, input);
+}
+
+export async function updateHealthFollowup(
+  id: string,
+  input: HealthFollowupInput
+): Promise<HealthFollowup> {
+  return patchJson(`/health/followups/${id}`, input);
+}
+
+export async function deleteHealthFollowup(id: string): Promise<void> {
+  return del(`/health/followups/${id}`);
+}
+
+export function healthExportUrl(memberId: string, from: string, to: string): string {
+  return `${API_BASE_URL}/health/export?memberId=${encodeURIComponent(memberId)}&from=${from}&to=${to}`;
 }
 
 async function getJson<T>(path: string): Promise<T> {
