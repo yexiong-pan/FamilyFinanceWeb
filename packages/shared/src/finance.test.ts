@@ -126,6 +126,7 @@ const liabilities: Liability[] = [
     ownerName: "家庭共同",
     currentBalance: "880000",
     monthlyPayment: "6200",
+    repaymentSchedule: "monthly",
     lender: "招商银行",
     status: "active"
   },
@@ -136,6 +137,7 @@ const liabilities: Liability[] = [
     ownerName: "丈夫",
     currentBalance: "60000",
     monthlyPayment: "1800",
+    repaymentSchedule: "monthly",
     status: "active"
   },
   {
@@ -144,6 +146,7 @@ const liabilities: Liability[] = [
     type: "consumerInstallment",
     ownerName: "妻子",
     currentBalance: "0",
+    repaymentSchedule: "monthly",
     status: "paidOff"
   }
 ];

@@ -114,7 +114,17 @@ WEB_PORT=5173
 http://群晖局域网IP:5173
 ```
 
-系统当前没有登录鉴权。仅允许家庭局域网访问 `WEB_PORT`，不要在路由器上开放该端口到公网。
+系统需要登录后才能访问。首次部署完成后，在 NAS 终端创建首个登录用户并绑定家庭成员：
+
+```bash
+read -s INITIAL_USER_PASSWORD
+export INITIAL_USER_PASSWORD
+docker compose -p family-finance-nas exec -e INITIAL_USER_PASSWORD api \
+  npm run auth:create-user -w @family-finance/api -- your@email.com 雄哥
+unset INITIAL_USER_PASSWORD
+```
+
+首次账号创建后，网站只提供登录；其他成员由已登录用户在“设置 -> 家庭成员”中生成邀请码。生产环境应通过 HTTPS 反向代理访问，不要直接把数据库或 API 端口暴露到公网。
 
 ### 2.4 使用命令行部署
 

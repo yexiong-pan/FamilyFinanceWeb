@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type {
   Account,
   AccountSnapshotRecord,
@@ -247,10 +247,12 @@ export class FinanceService {
   }
 
   async createLiability(input: CreateLiabilityInput): Promise<Liability> {
+    validateLiabilityInput(input);
     return this.repository.createLiability(input);
   }
 
   async updateLiability(id: string, input: CreateLiabilityInput): Promise<Liability> {
+    validateLiabilityInput(input);
     return this.repository.updateLiability(id, input);
   }
 
@@ -287,5 +289,16 @@ export class FinanceService {
 
   async confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus> {
     return this.repository.confirmMonthlySpending(month);
+  }
+}
+
+function validateLiabilityInput(input: CreateLiabilityInput): void {
+  if (input.repaymentSchedule !== "monthly") return;
+  if (!Number.isFinite(Number(input.monthlyPayment)) || Number(input.monthlyPayment) <= 0) {
+    throw new BadRequestException("固定月还负债必须填写大于 0 的月供");
+  }
+  const paymentDay = input.paymentDay;
+  if (paymentDay === undefined || !Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31) {
+    throw new BadRequestException("固定月还负债必须填写 1 至 31 日的还款日");
   }
 }

@@ -51,7 +51,41 @@ import type {
   RecurringCashflowKind
 } from "@family-finance/shared";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+// Development uses Vite's reverse proxy, matching the same-origin /api setup in production.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
+export interface AuthUser {
+  userId: string;
+  familyId: string;
+  memberId: string;
+  email: string;
+  displayName: string;
+  avatarData?: string;
+}
+
+export async function getAuthMe(): Promise<AuthUser> {
+  return (await getJson<{ user: AuthUser }>("/auth/me")).user;
+}
+
+export async function login(input: { email: string; password: string }): Promise<AuthUser> {
+  return (await postJson<{ user: AuthUser }>("/auth/login", input)).user;
+}
+
+export async function logout(): Promise<void> {
+  await postJson("/auth/logout", {});
+}
+
+export async function updateAuthProfile(input: { avatarData: string | null }): Promise<AuthUser> {
+  return (await patchJson<{ user: AuthUser }>("/auth/profile", input)).user;
+}
+
+export async function createAuthInvitation(memberId: string): Promise<{ code: string; expiresAt: string }> {
+  return postJson("/auth/invitations", { memberId });
+}
+
+export async function acceptAuthInvitation(input: { invitationCode: string; email: string; password: string }): Promise<AuthUser> {
+  return (await postJson<{ user: AuthUser }>("/auth/invitations/accept", input)).user;
+}
 
 export interface Category {
   id: string;
@@ -502,8 +536,14 @@ export type WeeklyHealthReviewInput = Omit<WeeklyHealthReview, "id" | "memberId"
 export type MedicationPlanInput = {
   name: string;
   specification?: string;
+  administrationRoute: MedicationPlan["administrationRoute"];
+  frequency: MedicationPlan["frequency"];
+  weekdays?: number[];
+  intervalDays?: number;
+  doseUnit: string;
   stockUnit: string;
   doseQuantity: string;
+  inventoryPerDose: string;
   scheduleSlots: MedicationScheduleSlot[];
   startDate: string;
   endDate?: string;
@@ -518,6 +558,8 @@ export type MedicationDoseInput = {
   slotId: string;
   status: MedicationDoseStatus;
   takenAt?: string;
+  actualDoseQuantity?: string;
+  injectionSite?: string;
   note?: string;
 };
 export type MedicationInventoryInput = {
@@ -668,7 +710,7 @@ export function healthExportUrl(memberId: string, from: string, to: string): str
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
   if (!response.ok) {
     throw new Error(`GET ${path} failed with ${response.status}`);
   }
@@ -686,6 +728,7 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
 async function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json"
     },
@@ -698,7 +741,7 @@ async function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknown
 }
 
 async function del(path: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { method: "DELETE" });
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: "DELETE", credentials: "include" });
   if (!response.ok) {
     throw new Error(await readError(response, `DELETE ${path} failed with ${response.status}`));
   }

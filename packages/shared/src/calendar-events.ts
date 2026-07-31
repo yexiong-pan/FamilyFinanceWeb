@@ -55,6 +55,7 @@ export function buildCalendarEventOccurrences(
       ...(event.endTime ? { endTime: event.endTime } : {}),
       allDay: event.allDay,
       showCountdown: event.showCountdown,
+      reminderDays: event.reminderDays,
       ...(countdownDays === undefined ? {} : { countdownDays }),
       ...(anniversaryYears === undefined ? {} : { anniversaryYears }),
       ...(event.calendarSystem === "lunar" ? { lunarLabel: calendarLunarInfo(date).fullLabel } : {}),

@@ -20,6 +20,7 @@ export type LiabilityType =
   | "privateLoan"
   | "other";
 export type LiabilityStatus = "active" | "paidOff" | "closed";
+export type LiabilityRepaymentSchedule = "monthly" | "flexible";
 
 export interface Account {
   id: string;
@@ -106,6 +107,7 @@ export interface Liability {
   currentBalance: MoneyAmount;
   monthlyPayment?: MoneyAmount;
   paymentDay?: number;
+  repaymentSchedule: LiabilityRepaymentSchedule;
   remainingPeriods?: number;
   lender?: string;
   status: LiabilityStatus;
@@ -260,6 +262,7 @@ export interface FamilyMemberInfo {
   id: string;
   name: string;
   icon?: string;
+  userId?: string;
 }
 
 export interface AccountTypeOption {

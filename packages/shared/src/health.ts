@@ -14,6 +14,8 @@ export type ExerciseRelation = "before" | "after";
 export type GlucoseSource = "manual" | "meter" | "cgm";
 export type MedicationPlanStatus = "active" | "paused" | "stopped";
 export type MedicationDoseStatus = "taken" | "missed" | "paused";
+export type MedicationAdministrationRoute = "oral" | "injection" | "topical" | "other";
+export type MedicationFrequency = "daily" | "weekly" | "interval";
 export type MedicationInventoryEventType = "initial" | "restock" | "adjustment" | "consumption";
 export type HealthFollowupStatus = "scheduled" | "completed" | "cancelled";
 
@@ -136,8 +138,14 @@ export interface MedicationPlan {
   memberId: string;
   name: string;
   specification?: string;
+  administrationRoute: MedicationAdministrationRoute;
+  frequency: MedicationFrequency;
+  weekdays: number[];
+  intervalDays?: number;
+  doseUnit: string;
   stockUnit: string;
   doseQuantity: HealthMoneyValue;
+  inventoryPerDose: HealthMoneyValue;
   scheduleSlots: MedicationScheduleSlot[];
   startDate: string;
   endDate?: string;
@@ -157,8 +165,34 @@ export interface MedicationDoseRecord {
   scheduledLabel: string;
   status: MedicationDoseStatus;
   quantityUsed: HealthMoneyValue;
+  actualDoseQuantity?: HealthMoneyValue;
+  injectionSite?: string;
   takenAt?: string;
   note?: string;
+}
+
+export interface MedicationScheduleRule {
+  startDate: string;
+  endDate?: string;
+  frequency: MedicationFrequency;
+  weekdays: number[];
+  intervalDays?: number;
+}
+
+export function isMedicationScheduledOnDate(
+  plan: MedicationScheduleRule,
+  date: string
+): boolean {
+  if (date < plan.startDate || (plan.endDate && date > plan.endDate)) return false;
+  if (plan.frequency === "daily") return true;
+  const dateValue = new Date(`${date}T00:00:00Z`);
+  if (plan.frequency === "weekly") {
+    const weekday = dateValue.getUTCDay() || 7;
+    return plan.weekdays.includes(weekday);
+  }
+  const startValue = new Date(`${plan.startDate}T00:00:00Z`);
+  const daysSinceStart = Math.floor((dateValue.getTime() - startValue.getTime()) / 86_400_000);
+  return daysSinceStart >= 0 && daysSinceStart % (plan.intervalDays ?? 1) === 0;
 }
 
 export interface MedicationInventoryEvent {

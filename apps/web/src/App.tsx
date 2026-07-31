@@ -1,13 +1,13 @@
 import {
-  BankOutlined,
-  BarChartOutlined,
+  AccountBookOutlined,
+  LogoutOutlined,
   CalendarOutlined,
   CameraOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CreditCardOutlined,
   CrownOutlined,
-  DatabaseOutlined,
+  FundOutlined,
   FundProjectionScreenOutlined,
   GiftOutlined,
   HeartOutlined,
@@ -17,10 +17,11 @@ import {
   ManOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  PieChartOutlined,
   PlusOutlined,
   ReloadOutlined,
   RightOutlined,
+  RiseOutlined,
+  ShoppingCartOutlined,
   SettingOutlined,
   SkinOutlined,
   SmileOutlined,
@@ -46,12 +47,14 @@ import { formatMoney } from "@family-finance/shared";
 import {
   Alert,
   App as AntApp,
+  Avatar,
   Button,
   Card,
   Checkbox,
   Col,
   DatePicker,
   Drawer,
+  Dropdown,
   Empty,
   Flex,
   Form,
@@ -78,12 +81,13 @@ import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
 import { Column, Line, Pie } from "./LazyCharts";
 import dayjs, { type Dayjs } from "dayjs";
-import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppData,
   type Category,
   type CategoryMapping,
   confirmTransaction,
+  createAuthInvitation,
   createAccount,
   createAccountType,
   createCategory,
@@ -107,6 +111,7 @@ import {
   getYearlyReport,
   importTransactions,
   loadAppData,
+  logout,
   repayLiability,
   updateAccount,
   updateAccountType,
@@ -115,10 +120,12 @@ import {
   snapshotAllLiabilities,
   updateCategory,
   updateCategoryMapping,
+  updateAuthProfile,
   updateInvestment,
   updateLiability,
   updateMember,
-  updateTransaction
+  updateTransaction,
+  type AuthUser
 } from "./api/client";
 import { buildMonthlyReportViewModel } from "./data/view-model";
 import {
@@ -206,10 +213,10 @@ function periodFromLocation(route: AppRoute): Dayjs {
 }
 
 const pageIcons: Record<PageKey, ReactNode> = {
-  report: <PieChartOutlined />,
-  spending: <DatabaseOutlined />,
-  income: <BarChartOutlined />,
-  checkup: <BankOutlined />,
+  report: <FundOutlined />,
+  spending: <ShoppingCartOutlined />,
+  income: <RiseOutlined />,
+  checkup: <AccountBookOutlined />,
   calendar: <CalendarOutlined />,
   health: <HeartOutlined />,
   settings: <SettingOutlined />
@@ -305,6 +312,9 @@ export default function App() {
 function AppShell() {
   const { message } = AntApp.useApp();
   const screens = Grid.useBreakpoint();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => readCurrentUser());
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const loginMemberId = currentUser?.memberId;
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => routeFromPath(window.location.pathname));
   const [month, setMonth] = useState<Dayjs>(() => periodFromLocation(routeFromPath(window.location.pathname)));
   const [cashflowFilters, setCashflowFilters] = useState<CashflowFilters>(() => {
@@ -314,7 +324,7 @@ function AppShell() {
       : {};
   });
   const [calendarMember, setCalendarMember] = useState(
-    () => new URLSearchParams(window.location.search).get("member") ?? "all"
+    () => new URLSearchParams(window.location.search).get("member") ?? loginMemberId ?? "all"
   );
   const [calendarDensity, setCalendarDensity] = useState<MobileCalendarDensity>(
     () => new URLSearchParams(window.location.search).get("density") === "detail"
@@ -413,9 +423,25 @@ function AppShell() {
     [message, reload]
   );
 
+  const currentMemberName = currentUser?.displayName;
+  const handleAvatarChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const [file] = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const avatarData = await createAvatarData(file);
+      const updated = await updateAuthProfile({ avatarData });
+      setCurrentUser(updated);
+      window.localStorage.setItem("family-life.current-user", JSON.stringify(updated));
+      message.success("头像已更新");
+    } catch (caught) {
+      message.error(caught instanceof Error ? caught.message : "头像上传失败");
+    }
+  }, [message]);
   const commonProps = {
     data,
     monthKey,
+    currentMemberName,
     reload,
     submit
   };
@@ -519,8 +545,8 @@ function AppShell() {
               <img className="brand-mark-image" src="/oreo-icon.png" alt="奥利奥" />
             </div>
             <div className="brand-copy">
-              <Text strong>家庭财务</Text>
-              <div className="brand-subtitle">Owner 工作台</div>
+              <Text strong>家庭生活</Text>
+              <div className="brand-subtitle">财务 · 健康 · 日程</div>
             </div>
           </div>
           <Menu
@@ -539,7 +565,7 @@ function AppShell() {
             <Title level={screens.md ? 4 : 5} className="page-title">
               {pageTitle(activePage)}
             </Title>
-            <Space wrap>
+            <Space className="header-date-actions">
               <div className="month-navigation">
                 <Button
                   className="month-nav-button"
@@ -578,9 +604,51 @@ function AppShell() {
                   onClick={() => changePeriodBy(1)}
                 />
               </div>
-              <Button icon={<ReloadOutlined />} onClick={() => void reload()}>
-                刷新
-              </Button>
+              <Button
+                className="header-refresh-button"
+                icon={<ReloadOutlined />}
+                aria-label="刷新当前数据"
+                title="刷新当前数据"
+                onClick={() => void reload()}
+              />
+            </Space>
+            <Space wrap className="header-actions">
+              <input
+                ref={avatarInputRef}
+                className="avatar-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleAvatarChange}
+              />
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    {
+                      key: "account",
+                      disabled: true,
+                      label: <div className="user-menu-account"><strong>{currentUser?.displayName ?? "家庭成员"}</strong><span>{currentUser?.email}</span></div>
+                    },
+                    { type: "divider" },
+                    { key: "avatar", icon: <CameraOutlined />, label: "更换头像" },
+                    { key: "logout", danger: true, icon: <LogoutOutlined />, label: "退出登录" }
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "avatar") avatarInputRef.current?.click();
+                    if (key === "logout") void logout().finally(() => {
+                      window.localStorage.removeItem("family-life.current-user");
+                      window.location.reload();
+                    });
+                  }
+                }}
+              >
+                <Button type="text" className="user-menu-trigger" aria-label="当前登录用户" title="账户菜单">
+                  <Avatar size={34} src={currentUser?.avatarData} icon={<UserOutlined />}>
+                    {currentUser?.avatarData ? undefined : currentUser?.displayName.slice(0, 1)}
+                  </Avatar>
+                  <span className="user-menu-name">{currentUser?.displayName ?? "家庭成员"}</span>
+                </Button>
+              </Dropdown>
             </Space>
           </Header>
           <Content className="app-content">
@@ -743,7 +811,7 @@ function ReportPage({
 }: PageProps & {
   month: Dayjs;
   tab: ReportTabKey;
-  navigateToRoute: (route: AppRoute) => void;
+  navigateToRoute: (route: AppRoute, suppliedFilters?: CashflowFilters) => void;
   onOpenMonth: (month: string) => void;
   onTabChange: (tab: ReportTabKey) => void;
 }) {
@@ -784,7 +852,7 @@ function MonthlyReportPage({
   navigateToRoute
 }: PageProps & {
   month: Dayjs;
-  navigateToRoute: (route: AppRoute) => void;
+  navigateToRoute: (route: AppRoute, suppliedFilters?: CashflowFilters) => void;
 }) {
   const model = buildMonthlyReportViewModel(data.summary);
   const incomeView = buildIncomeView(
@@ -797,6 +865,12 @@ function MonthlyReportPage({
   );
   const incomeCount = data.transactions.filter((item) => item.kind === "income").length;
   const expenseCount = data.transactions.filter((item) => item.kind === "expense").length;
+  const pendingIncomeCount = data.transactions.filter((item) => (
+    item.kind === "income" && item.source && item.source !== "manual" && !item.confirmedAt
+  )).length;
+  const pendingExpenseCount = data.transactions.filter((item) => (
+    item.kind === "expense" && item.source && item.source !== "manual" && !item.confirmedAt
+  )).length;
 
   const completionItems = [
     { key: "income", label: "收入账单", complete: data.monthlyReview.income, route: routeForMonthlyReview("income") },
@@ -820,8 +894,45 @@ function MonthlyReportPage({
       route: routeForMonthlyReview("investments")
     }
   ];
-  const completedCount = completionItems.filter((item) => item.complete).length;
   const nextIncomplete = completionItems.find((item) => !item.complete);
+  const incompleteWarningKeys = new Set(
+    data.monthlyReviewDetail.checks
+      .filter((item) => item.severity === "warning" && !item.complete)
+      .map((item) => item.key)
+  );
+  const dataWarnings = [
+    ...(incomeCount > 0 && expenseCount === 0
+      ? ["本月支出为 ¥0.00，请确认是否已完整导入或记录消费"]
+      : []),
+    ...data.monthlyReviewDetail.checks
+      .filter((item) => item.severity === "warning" && !item.complete)
+      .map((item) => item.detail || item.label)
+  ];
+  const hasStaleAccountsWarning = incompleteWarningKeys.has("fresh-accounts");
+  const hasIncompleteLiabilitiesWarning = incompleteWarningKeys.has("complete-liabilities");
+  const dataWarningActionCount = Number(incomeCount > 0 && expenseCount === 0)
+    + Number(pendingIncomeCount > 0)
+    + Number(pendingExpenseCount > 0)
+    + Number(hasStaleAccountsWarning)
+    + Number(hasIncompleteLiabilitiesWarning);
+  const assetState = [
+    {
+      title: "净资产",
+      value: financialMetricValue(data.summary.netAssets, data.monthlyReview.assets && data.monthlyReview.liabilities),
+      tone: "asset"
+    },
+    {
+      title: "总负债",
+      value: financialMetricValue(data.summary.totalLiabilities, data.monthlyReview.liabilities),
+      tone: "expense"
+    },
+    {
+      title: "投资收益",
+      value: financialMetricValue(data.summary.investmentProfit, data.monthlyReview.investments),
+      meta: `收益率 ${(data.summary.investmentProfitRate * 100).toFixed(2)}%`,
+      tone: Number(data.summary.investmentProfit) >= 0 ? "income" : "expense"
+    }
+  ];
 
   return (
     <Space orientation="vertical" size={18} className="page-stack monthly-report-page">
@@ -832,15 +943,95 @@ function MonthlyReportPage({
           </Title>
           <Text type="secondary">用一页了解本月收支和家庭财务状态</Text>
         </div>
-        <Button
-          type="primary"
-          size="large"
-          disabled={!nextIncomplete}
-          onClick={() => nextIncomplete && navigateToRoute(nextIncomplete.route)}
-        >
-          {nextIncomplete ? `去更新${nextIncomplete.label}` : "本月盘点已完成"}
-        </Button>
+        {nextIncomplete ? (
+          <Button type="primary" size="large" onClick={() => navigateToRoute(nextIncomplete.route)}>
+            去更新{nextIncomplete.label}
+          </Button>
+        ) : <Tag color="green">账务盘点已完成</Tag>}
       </Flex>
+
+      {dataWarnings.length ? (
+        <Alert
+          className="report-data-quality-alert"
+          type="warning"
+          showIcon
+          title="本月数据需要确认"
+          description={dataWarnings.join("；")}
+          action={dataWarningActionCount ? (
+            <Space size={6} wrap>
+              {pendingIncomeCount ? (
+                <Button
+                  size="small"
+                  onClick={() => navigateToRoute({ page: "income", tab: "details" }, { status: "pending" })}
+                >
+                  核对收入 {pendingIncomeCount}
+                </Button>
+              ) : null}
+              {pendingExpenseCount ? (
+                <Button
+                  size="small"
+                  onClick={() => navigateToRoute({ page: "spending", tab: "details" }, { status: "pending" })}
+                >
+                  核对支出 {pendingExpenseCount}
+                </Button>
+              ) : null}
+              {!pendingExpenseCount && incomeCount > 0 && expenseCount === 0 ? (
+                <Button size="small" onClick={() => navigateToRoute({ page: "spending", tab: "details" })}>
+                  核对支出
+                </Button>
+              ) : null}
+              {hasStaleAccountsWarning ? (
+                <Button size="small" onClick={() => navigateToRoute({ page: "checkup", tab: "assets" })}>更新资产</Button>
+              ) : null}
+              {hasIncompleteLiabilitiesWarning ? (
+                <Button size="small" onClick={() => navigateToRoute({ page: "checkup", tab: "liabilities" })}>补充负债</Button>
+              ) : null}
+            </Space>
+          ) : undefined}
+        />
+      ) : null}
+
+      <Row gutter={[14, 14]} className="report-decision-row">
+        <Col xs={24} xl={10}>
+          <Card className="report-safety-card safety-overview-card">
+            <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
+              <div>
+                <Text type="secondary">未来30天安全可支配</Text>
+                <Title level={3} className="safety-overview-value">
+                  {formatMoney(data.financialSafety.summary.safeToSpend)}
+                </Title>
+                <Text type="secondary">
+                  {Number(data.financialSafety.summary.shortfall) > 0
+                    ? `预计资金缺口 ${formatMoney(data.financialSafety.summary.shortfall)}`
+                    : "已预留必要支出、还款、储蓄和应急金"}
+                </Text>
+              </div>
+              <Button onClick={() => navigateToRoute({ page: "checkup", tab: "safety" })}>
+                查看资金安全
+              </Button>
+            </Flex>
+          </Card>
+        </Col>
+        <Col xs={24} xl={14}>
+          <Card
+            title="家庭资产状态"
+            className="report-asset-state-card"
+            extra={<Text type="secondary">{data.monthlyReview.assets && data.monthlyReview.liabilities ? "本月已盘点" : "待保存快照"}</Text>}
+          >
+            <Row gutter={[8, 8]}>
+              {assetState.map((metric, index) => (
+                <Col xs={index === 0 ? 24 : 12} md={8} key={metric.title}>
+                  <div className={`report-asset-state-metric is-${metric.tone}`}>
+                    <Text type="secondary">{metric.title}</Text>
+                    <strong>{metric.value}</strong>
+                    {metric.meta ? <small>{metric.meta}</small> : null}
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+        </Col>
+      </Row>
 
       <Row gutter={[14, 14]} className="monthly-cashflow-row">
         {model.cashflowMetrics.map((metric) => (
@@ -859,89 +1050,26 @@ function MonthlyReportPage({
         ))}
       </Row>
 
-      <Row gutter={[12, 12]} className="monthly-supporting-row">
-        {model.supportingMetrics.map((metric) => {
-          const reviewed = metric.title === "家庭净资产"
-            ? data.monthlyReview.assets && data.monthlyReview.liabilities
-            : metric.title === "总负债"
-              ? data.monthlyReview.liabilities
-              : data.monthlyReview.investments;
-          const rawValue = metric.title === "家庭净资产"
-            ? data.summary.netAssets
-            : metric.title === "总负债"
-              ? data.summary.totalLiabilities
-              : data.summary.investmentProfit;
-          return (
-          <Col xs={8} md={8} key={metric.title}>
-            <Card className={`report-supporting-metric metric-card--${metric.tone}`}>
-              <Statistic title={metric.title} value={financialMetricValue(rawValue, reviewed)} />
-              {reviewed && metric.trend ? <Text type="secondary">{metric.trend}</Text> : <Text type="secondary">保存本月快照后显示</Text>}
-            </Card>
-          </Col>
-          );
-        })}
-      </Row>
-
-      <Card className="report-section-card safety-overview-card">
-        <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
-          <div>
-            <Text type="secondary">未来30天安全可支配</Text>
-            <Title level={3} className="safety-overview-value">
-              {formatMoney(data.financialSafety.summary.safeToSpend)}
-            </Title>
-            <Text type="secondary">
-              {Number(data.financialSafety.summary.shortfall) > 0
-                ? `预计资金缺口 ${formatMoney(data.financialSafety.summary.shortfall)}`
-                : "已预留必要支出、还款、储蓄和应急金"}
-            </Text>
-          </div>
-          <Button onClick={() => navigateToRoute({ page: "checkup", tab: "safety" })}>
-            查看资金安全
-          </Button>
-        </Flex>
-      </Card>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={15}>
-          <Card title="支出分类占比" className="report-section-card">
-            {model.categoryChart.length ? (
-              <Pie
-                data={model.categoryChart}
-                angleField="value"
-                colorField="type"
-                height={300}
-                innerRadius={0.64}
-                label={{ text: "type", position: "outside" }}
-                legend={{ color: { position: "right" } }}
-              />
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本月尚未导入支出账单" />
-            )}
-          </Card>
-        </Col>
-        <Col xs={24} xl={9}>
-          <Card
-            title="本月盘点"
-            className="report-section-card checkup-status-card"
-            extra={<Text type="secondary">{completedCount} / {completionItems.length} 已完成</Text>}
+      <Card title="支出分类占比" className="report-section-card">
+        {model.categoryChart.length ? (
+          <Pie
+            data={model.categoryChart}
+            angleField="value"
+            colorField="type"
+            height={300}
+            innerRadius={0.64}
+            label={{ text: "type", position: "outside" }}
+            legend={{ color: { position: "right" } }}
+          />
+        ) : (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="本月暂无支出记录"
           >
-            <div className="checkup-list">
-              {completionItems.map((item) => (
-                <button key={item.key} type="button" className="checkup-list-item" onClick={() => navigateToRoute(item.route)}>
-                  <span className={item.complete ? "checkup-icon is-complete" : "checkup-icon"}>
-                    {item.complete ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
-                  </span>
-                  <span className="checkup-list-label">{item.label}</span>
-                  <span className={item.complete ? "checkup-state is-complete" : "checkup-state"}>
-                    {item.complete ? "已确认" : "待更新"}
-                  </span>
-                  <RightOutlined aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-          </Card>
-        </Col>
-      </Row>
+            <Button onClick={() => navigateToRoute({ page: "spending", tab: "details" })}>去核对支出</Button>
+          </Empty>
+        )}
+      </Card>
 
       <Card title="家庭成员收支" className="report-section-card">
         {model.memberCashflow.length ? (
@@ -1068,9 +1196,20 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
   }
   if (!report) return null;
 
-  const cashflowTrend = buildAnnualCashflowTrend(report.months);
-  const financeTrend = buildNetWorthTrend(report.months);
-  const hasFinanceTrend = financeTrend.some((item) => item.amount !== null);
+  const financeSnapshotMonths = report.months.filter((item) => (
+    item.totalAssets !== undefined
+    && item.totalLiabilities !== undefined
+    && item.netAssets !== undefined
+  ));
+  const cashflowMonths = report.months.filter((item) => (
+    item.review.income
+    || item.review.spending
+    || Number(item.income) !== 0
+    || Number(item.expense) !== 0
+  ));
+  const cashflowTrend = buildAnnualCashflowTrend(cashflowMonths);
+  const financeTrend = buildNetWorthTrend(financeSnapshotMonths);
+  const hasFinanceTrend = financeSnapshotMonths.length >= 2;
   const completedMonths = report.months.filter((item) => (
     item.review.income
     && item.review.spending
@@ -1096,10 +1235,7 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
     { title: "全年支出", value: report.summary.totalExpense, tone: "expense" },
     { title: "全年结余", value: report.summary.balance, tone: "asset" },
     { title: "结余率", value: `${report.summary.savingsRate}%`, tone: "asset" },
-    { title: yearlySnapshotLabel(yearEndMonth, yearEndComplete), value: report.summary.yearEndNetAssets, tone: "asset" },
-    { title: "净资产变化", value: report.summary.netAssetsChange, tone: "asset" },
-    { title: `${snapshotSuffix}投资市值`, value: report.summary.yearEndInvestmentMarketValue, tone: "income" },
-    { title: `${snapshotSuffix}累计收益`, value: report.summary.yearEndInvestmentProfit, tone: "income" }
+    { title: yearlySnapshotLabel(yearEndMonth, yearEndComplete), value: report.summary.yearEndNetAssets, tone: "asset" }
   ];
   const categoryColumns: ColumnsType<YearlyReportData["categories"][number]> = [
     { title: "支出分类", dataIndex: "categoryName", width: 140, render: renderCategoryTag },
@@ -1127,7 +1263,10 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
           <Title level={2} className="report-heading">{year}年家庭年报</Title>
           <Text type="secondary">汇总全年收支，并以已保存的月度快照展示家庭财务变化</Text>
         </div>
-        <Tag color={completedMonths === 12 ? "green" : "orange"}>完整盘点 {completedMonths} / 12 月</Tag>
+        <Space size={6} wrap>
+          <Tag color={completedMonths === 12 ? "green" : "orange"}>完整盘点 {completedMonths} / 12 月</Tag>
+          <Tag color={financeSnapshotMonths.length >= 2 ? "blue" : "default"}>资产快照 {financeSnapshotMonths.length} / 12 月</Tag>
+        </Space>
       </Flex>
 
       <Row gutter={[14, 14]}>
@@ -1143,7 +1282,11 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
         ))}
       </Row>
 
-      <Card title="净资产趋势" className="report-section-card" extra={<Text type="secondary">数据来自月度快照</Text>}>
+      <Card
+        title="净资产趋势"
+        className="report-section-card"
+        extra={<Text type="secondary">已保存 {financeSnapshotMonths.length} 个月快照</Text>}
+      >
         {hasFinanceTrend ? (
           <Line
             data={financeTrend}
@@ -1162,22 +1305,52 @@ function YearlyReportPage({ year, onOpenMonth }: { year: string; onOpenMonth: (m
             axis={{ y: { labelFormatter: (value: number) => Number(value).toLocaleString("zh-CN") } }}
           />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="保存月度快照后显示净资产趋势" />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={financeSnapshotMonths.length
+              ? "仅有 1 个月快照，暂不能判断净资产趋势"
+              : "保存至少 2 个月快照后显示净资产趋势"}
+          />
         )}
       </Card>
 
-      <Card title="月度收支与结余趋势" className="report-section-card">
-        <CashflowComboChart data={cashflowTrend} compact={isMobile} />
+      <Card
+        title="月度收支与结余趋势"
+        className="report-section-card"
+        extra={<Text type="secondary">已确认或有记录 {cashflowMonths.length} / 12 月</Text>}
+      >
+        {cashflowMonths.length ? <CashflowComboChart data={cashflowTrend} compact={isMobile} /> : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已确认的月度收支数据" />
+        )}
       </Card>
+
+      {yearEndMonth ? (
+        <Card title={`${snapshotSuffix}资产状态`} className="report-asset-state-card">
+          <Row gutter={[8, 8]}>
+            {[
+              { title: "净资产", value: report.summary.yearEndNetAssets, tone: "asset" },
+              { title: "投资市值", value: report.summary.yearEndInvestmentMarketValue, tone: "income" },
+              { title: "累计收益", value: report.summary.yearEndInvestmentProfit, tone: "expense" }
+            ].map((metric, index) => (
+              <Col xs={index === 0 ? 24 : 12} md={8} key={metric.title}>
+                <div className={`report-asset-state-metric is-${metric.tone}`}>
+                  <Text type="secondary">{metric.title}</Text>
+                  <strong>{metric.value === undefined ? "—" : formatMoney(metric.value)}</strong>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      ) : null}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card title="年度支出分类" className="report-section-card">
+          <Card title="年度支出分类" className="report-section-card" extra={<Text type="secondary">前 5 类</Text>}>
             <Table
               rowKey="categoryName"
               size="small"
               pagination={false}
-              dataSource={report.categories}
+              dataSource={report.categories.slice(0, 5)}
               columns={categoryColumns}
               scroll={{ x: 520 }}
             />
@@ -1273,7 +1446,7 @@ function CashflowComboChart({ data, compact }: { data: AnnualCashflowTrend; comp
   const balancePath = pointsByMonth
     .map((item, index) => `${index === 0 ? "M" : "L"} ${xForPosition(item.monthNumber)} ${yForAmount(item.balance)}`)
     .join(" ");
-  const activePoint = activeMonth === null ? null : pointsByMonth[activeMonth - 1];
+  const activePoint = activeMonth === null ? null : pointsByMonth.find((item) => item.monthNumber === activeMonth);
   const tickCount = 5;
 
   return (
@@ -1485,12 +1658,12 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
             kind: props.kind,
             categoryName: undefined,
             accountId: undefined,
-            memberName: undefined,
+            memberName: props.currentMemberName,
             amount: undefined,
             note: undefined
           }
     );
-  }, [open, editing, form, props.kind]);
+  }, [open, editing, form, props.currentMemberName, props.kind]);
   const cashflow = useMemo(
     () => isExpense
       ? buildSpendingView(props.data.transactions, props.data.categories.filter((item) => item.kind === "expense"))
@@ -2275,12 +2448,12 @@ function AccountsPage(props: PageProps) {
             name: undefined,
             type: "银行卡",
             purpose: "daily",
-            ownerName: undefined,
+            ownerName: props.currentMemberName,
             currentValue: undefined,
             note: undefined
           }
     );
-  }, [open, editing, form]);
+  }, [open, editing, form, props.currentMemberName]);
   return (
     <Card
       title={
@@ -2438,7 +2611,7 @@ function AccountsPage(props: PageProps) {
                   ownerName: editing.ownerName,
                   note: editing.note
                 }
-              : { type: "银行卡", purpose: "daily", ownerName: undefined }
+              : { type: "银行卡", purpose: "daily", ownerName: props.currentMemberName }
           }
           onFinish={(values) => {
             const payload = {
@@ -2553,6 +2726,7 @@ function LiabilitiesPage(props: PageProps) {
             currentBalance: Number(editing.currentBalance),
             monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
             paymentDay: editing.paymentDay,
+            repaymentSchedule: editing.repaymentSchedule,
             remainingPeriods: editing.remainingPeriods,
             lender: editing.lender,
             status: editing.status,
@@ -2561,18 +2735,19 @@ function LiabilitiesPage(props: PageProps) {
         : {
             name: undefined,
             type: "mortgage",
-            ownerName: undefined,
+            ownerName: props.currentMemberName,
             initialBalance: undefined,
             currentBalance: undefined,
             monthlyPayment: undefined,
             paymentDay: undefined,
+            repaymentSchedule: "monthly",
             remainingPeriods: undefined,
             lender: undefined,
             status: "active",
             note: undefined
           }
     );
-  }, [open, editing, form]);
+  }, [open, editing, form, props.currentMemberName]);
   useEffect(() => {
     if (!repaying) return;
     repayForm.setFieldsValue({
@@ -2672,6 +2847,7 @@ function LiabilitiesPage(props: PageProps) {
                 </Flex>
                 <Flex gap={6} wrap>
                   {renderLiabilityType(liability.type)}
+                  {renderLiabilityRepaymentSchedule(liability.repaymentSchedule)}
                   {renderOwnerTag(liability.ownerName, props.data.members)}
                   {renderLiabilityStatus(liability.status)}
                 </Flex>
@@ -2701,10 +2877,11 @@ function LiabilitiesPage(props: PageProps) {
         <Table<Liability>
           rowKey="id" tableLayout="fixed"
           dataSource={props.data.liabilities}
-          scroll={{ x: 1360 }}
+          scroll={{ x: 1480 }}
           columns={[
             { title: "名称", dataIndex: "name", width: 160 },
             { title: "类型", dataIndex: "type", width: 110, render: renderLiabilityType },
+            { title: "还款安排", dataIndex: "repaymentSchedule", width: 120, render: renderLiabilityRepaymentSchedule },
             { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
             { title: "债权机构", dataIndex: "lender", width: 130 },
             {
@@ -2789,12 +2966,13 @@ function LiabilitiesPage(props: PageProps) {
                   currentBalance: Number(editing.currentBalance),
                   monthlyPayment: editing.monthlyPayment == null ? undefined : Number(editing.monthlyPayment),
                   paymentDay: editing.paymentDay,
+                  repaymentSchedule: editing.repaymentSchedule,
                   remainingPeriods: editing.remainingPeriods,
                   lender: editing.lender,
                   status: editing.status,
                   note: editing.note
                 }
-              : { type: "mortgage", ownerName: undefined, status: "active" }
+              : { type: "mortgage", repaymentSchedule: "monthly", ownerName: props.currentMemberName, status: "active" }
           }
           onFinish={(values) => {
             const payload = {
@@ -2806,6 +2984,7 @@ function LiabilitiesPage(props: PageProps) {
               monthlyPayment:
                 values.monthlyPayment == null ? undefined : String(values.monthlyPayment),
               paymentDay: values.paymentDay ?? undefined,
+              repaymentSchedule: values.repaymentSchedule,
               remainingPeriods: values.remainingPeriods ?? undefined,
               lender: values.lender,
               status: values.status,
@@ -3437,6 +3616,16 @@ function SettingsPage(props: PageProps) {
     mapping.source === mappingSource
     && (!mappingSearch || `${mapping.sourceCategory} ${mapping.targetCategoryName}`.toLowerCase().includes(mappingSearch.toLowerCase()))
   ));
+  const inviteMember = (member: FamilyMemberInfo) => props.submit(
+    () => createAuthInvitation(member.id),
+    {
+      success: "邀请码已生成",
+      onSuccess: (invitation) => Modal.info({
+        title: `邀请 ${member.name} 登录`,
+        content: <Text copyable>{invitation.code}</Text>
+      })
+    }
+  );
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue(
@@ -3518,10 +3707,13 @@ function SettingsPage(props: PageProps) {
                   <div className="mobile-record-card" key={member.id}>
                     <Flex justify="space-between" align="center" gap={8}>
                       <Space size={6}>{renderMemberIcon(member.icon)}<Text strong>{member.name}</Text></Space>
-                      <RowActions
-                        onEdit={() => { setMemberEditing(member); setMemberOpen(true); }}
-                        onDelete={() => props.submit(() => deleteMember(member.id), { success: "成员已删除" })}
-                      />
+                      <Space size={4}>
+                        {!member.userId ? <Button type="link" size="small" onClick={() => void inviteMember(member)}>邀请登录</Button> : <Tag color="green">已登录</Tag>}
+                        <RowActions
+                          onEdit={() => { setMemberEditing(member); setMemberOpen(true); }}
+                          onDelete={() => props.submit(() => deleteMember(member.id), { success: "成员已删除" })}
+                        />
+                      </Space>
                     </Flex>
                   </div>
                 ))}
@@ -3543,6 +3735,13 @@ function SettingsPage(props: PageProps) {
                       {renderMemberIcon(record.icon)}
                       <span>{value}</span>
                     </Space>
+                  )
+                },
+                {
+                  title: "登录",
+                  width: 100,
+                  render: (_, record) => record.userId ? <Tag color="green">已登录</Tag> : (
+                    <Button type="link" size="small" onClick={() => void inviteMember(record)}>邀请登录</Button>
                   )
                 },
                 {
@@ -3995,6 +4194,7 @@ function SettingsPage(props: PageProps) {
 interface PageProps {
   data: AppData;
   monthKey: string;
+  currentMemberName?: string;
   reload: () => Promise<void>;
   submit: <T>(
     run: () => Promise<T>,
@@ -4138,11 +4338,26 @@ function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmi
       <Form.Item name="currentBalance" label="当前余额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />
       </Form.Item>
-      <Form.Item name="monthlyPayment" label="月供（可选）">
-        <InputNumber min={0} precision={2} className="full-width" />
+      <Form.Item name="repaymentSchedule" label="还款安排" rules={[{ required: true }]}>
+        <Select options={liabilityRepaymentScheduleOptions} />
       </Form.Item>
-      <Form.Item name="paymentDay" label="还款日（每月几号，可选）">
-        <InputNumber min={1} max={31} precision={0} className="full-width" />
+      <Form.Item noStyle shouldUpdate={(previous, current) => previous.repaymentSchedule !== current.repaymentSchedule}>
+        {({ getFieldValue }) => getFieldValue("repaymentSchedule") === "monthly" ? (
+          <>
+            <Form.Item name="monthlyPayment" label="固定月供" rules={[{ required: true, message: "请填写固定月供" }]}>
+              <InputNumber min={0.01} precision={2} className="full-width" />
+            </Form.Item>
+            <Form.Item name="paymentDay" label="还款日（每月几号）" rules={[{ required: true, message: "请选择还款日" }]}>
+              <InputNumber min={1} max={31} precision={0} className="full-width" />
+            </Form.Item>
+          </>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            title="非固定还款不计入月供与未来30天还款预算。"
+          />
+        )}
       </Form.Item>
       <Form.Item name="remainingPeriods" label="剩余期数（可选）">
         <InputNumber min={0} precision={0} className="full-width" />
@@ -4212,6 +4427,59 @@ function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onS
       </Button>
     </>
   );
+}
+
+function readCurrentUser(): AuthUser | null {
+  try {
+    return JSON.parse(window.localStorage.getItem("family-life.current-user") ?? "null") as AuthUser | null;
+  } catch {
+    return null;
+  }
+}
+
+async function createAvatarData(file: File): Promise<string> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("请选择 JPG、PNG 或 WebP 图片");
+  }
+  if (file.size > 8 * 1024 * 1024) throw new Error("头像原图不能超过 8MB");
+
+  const source = await loadImage(file);
+  const side = Math.min(source.naturalWidth, source.naturalHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = 192;
+  canvas.height = 192;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("当前浏览器不支持头像处理");
+  context.drawImage(
+    source,
+    (source.naturalWidth - side) / 2,
+    (source.naturalHeight - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+  const avatarData = canvas.toDataURL("image/jpeg", 0.82);
+  if (avatarData.length > 100_000) throw new Error("图片内容过大，请更换更简单的头像");
+  return avatarData;
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("无法读取这张图片"));
+    };
+    image.src = url;
+  });
 }
 
 function formatDateTime(value?: string) {
@@ -4339,8 +4607,21 @@ const liabilityStatusOptions = (Object.keys(liabilityStatusLabels) as Liability[
   (value) => ({ label: liabilityStatusLabels[value], value })
 );
 
+const liabilityRepaymentScheduleLabels = {
+  monthly: "固定月还",
+  flexible: "非固定还款"
+} satisfies Record<Liability["repaymentSchedule"], string>;
+
+const liabilityRepaymentScheduleOptions = (
+  Object.keys(liabilityRepaymentScheduleLabels) as Liability["repaymentSchedule"][]
+).map((value) => ({ label: liabilityRepaymentScheduleLabels[value], value }));
+
 function renderLiabilityType(type: Liability["type"]) {
   return <Tag color="volcano">{liabilityTypeLabels[type]}</Tag>;
+}
+
+function renderLiabilityRepaymentSchedule(schedule: Liability["repaymentSchedule"]) {
+  return <Tag color={schedule === "monthly" ? "blue" : "default"}>{liabilityRepaymentScheduleLabels[schedule]}</Tag>;
 }
 
 function renderLiabilityStatus(status: Liability["status"]) {

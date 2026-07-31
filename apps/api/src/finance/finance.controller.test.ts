@@ -225,6 +225,7 @@ function createEmptyRepository(): FinanceRepository {
         type: "mortgage",
         ownerName: "家庭共同",
         currentBalance: "0.00",
+        repaymentSchedule: "monthly",
         status: "paidOff"
       };
     },

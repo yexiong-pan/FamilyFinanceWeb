@@ -3,7 +3,6 @@ import {
   CloseOutlined,
   ExperimentOutlined,
   FireOutlined,
-  HeartOutlined,
   LineChartOutlined,
   MedicineBoxOutlined,
   MoreOutlined,
@@ -108,7 +107,7 @@ export function QuickRecordFloatButton({
           </Button>
           <Button
             block
-            icon={<HeartOutlined />}
+            icon={<UserOutlined />}
             onClick={() => selectMoreItem("body")}
           >
             身体与运动记录

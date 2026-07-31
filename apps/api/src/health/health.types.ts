@@ -7,7 +7,9 @@ import type {
   GlucoseTargets,
   HealthFollowupStatus,
   MealType,
+  MedicationAdministrationRoute,
   MedicationDoseStatus,
+  MedicationFrequency,
   MedicationPlanStatus,
   MedicationScheduleSlot,
   StrengthExerciseGoal,
@@ -92,8 +94,14 @@ export interface WeeklyHealthReviewInput {
 export interface MedicationPlanInput {
   name: string;
   specification?: string;
+  administrationRoute: MedicationAdministrationRoute;
+  frequency: MedicationFrequency;
+  weekdays?: number[];
+  intervalDays?: number;
+  doseUnit: string;
   stockUnit: string;
   doseQuantity: string;
+  inventoryPerDose: string;
   scheduleSlots: MedicationScheduleSlot[];
   startDate: string;
   endDate?: string;
@@ -109,6 +117,8 @@ export interface MedicationDoseInput {
   slotId: string;
   status: MedicationDoseStatus;
   takenAt?: string;
+  actualDoseQuantity?: string;
+  injectionSite?: string;
   note?: string;
 }
 

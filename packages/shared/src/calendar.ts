@@ -73,6 +73,7 @@ export interface CalendarEventOccurrence {
   endTime?: string;
   allDay: boolean;
   showCountdown: boolean;
+  reminderDays: number[];
   countdownDays?: number;
   anniversaryYears?: number;
   lunarLabel?: string;
@@ -113,6 +114,8 @@ export interface CalendarFollowupItem {
   hospital?: string;
   department?: string;
 }
+
+export interface CalendarUpcomingFollowup extends CalendarFollowupItem {}
 
 export interface CalendarMedicationSummary {
   scheduled: number;
@@ -196,6 +199,19 @@ export interface CalendarMemberWeightSummary {
   weightKg?: string;
 }
 
+export type CalendarGlucoseStatus = "low" | "inRange" | "high" | "unconfigured";
+
+export interface CalendarMemberGlucoseSummary {
+  memberId: string;
+  memberName: string;
+  measuredAt?: string;
+  value?: string;
+  context?: GlucoseContext;
+  status?: CalendarGlucoseStatus;
+  targetMin?: string;
+  targetMax?: string;
+}
+
 export interface CalendarData {
   view: CalendarView;
   period: string;
@@ -203,6 +219,8 @@ export interface CalendarData {
   summary: CalendarPeriodSummary;
   exerciseByMember: CalendarMemberExerciseSummary[];
   latestWeightByMember: CalendarMemberWeightSummary[];
+  latestGlucoseByMember: CalendarMemberGlucoseSummary[];
+  upcomingFollowup?: CalendarUpcomingFollowup;
   upcomingEvents: CalendarEventOccurrence[];
   days: CalendarDaySummary[];
   months: CalendarMonthSummary[];

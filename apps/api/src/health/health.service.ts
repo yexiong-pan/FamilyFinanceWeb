@@ -17,6 +17,7 @@ import type {
   StrengthExerciseMovement,
   WeeklyHealthReview
 } from "@family-finance/shared";
+import { isMedicationScheduledOnDate } from "@family-finance/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service";
 import type {
@@ -316,6 +317,15 @@ export class HealthService {
     const plan = await this.getMedication(id);
     validateMedicationDose(input, parseMedicationSlots(plan.scheduleSlots));
     const scheduledDate = parseDate(input.scheduledDate, "计划日期");
+    if (!isMedicationScheduledOnDate({
+      startDate: formatDate(plan.startDate),
+      ...(plan.endDate ? { endDate: formatDate(plan.endDate) } : {}),
+      frequency: plan.frequency,
+      weekdays: plan.weekdays,
+      ...(plan.intervalDays ? { intervalDays: plan.intervalDays } : {})
+    }, formatDate(scheduledDate))) {
+      throw new BadRequestException("该日期不在用药计划中");
+    }
     const slot = parseMedicationSlots(plan.scheduleSlots).find((item) => item.id === input.slotId)!;
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.medicationDoseRecord.findUnique({
@@ -329,7 +339,7 @@ export class HealthService {
       });
       const wasTaken = existing?.status === "taken";
       const isTaken = input.status === "taken";
-      const dose = money(plan.doseQuantity);
+      const inventoryUsed = money(plan.inventoryPerDose ?? plan.doseQuantity);
       const record = await tx.medicationDoseRecord.upsert({
         where: {
           medicationId_scheduledDate_slotId: {
@@ -346,14 +356,22 @@ export class HealthService {
           slotId: input.slotId,
           scheduledLabel: slot.label,
           status: input.status,
-          quantityUsed: dose,
+          quantityUsed: inventoryUsed,
+          actualDoseQuantity: isTaken
+            ? decimal(input.actualDoseQuantity ?? plan.doseQuantity.toString(), "实际剂量")
+            : null,
+          injectionSite: isTaken ? cleanText(input.injectionSite) : null,
           takenAt: isTaken ? parseOptionalDateTime(input.takenAt) ?? new Date() : null,
           note: cleanText(input.note)
         },
         update: {
           scheduledLabel: slot.label,
           status: input.status,
-          quantityUsed: dose,
+          quantityUsed: inventoryUsed,
+          actualDoseQuantity: isTaken
+            ? decimal(input.actualDoseQuantity ?? plan.doseQuantity.toString(), "实际剂量")
+            : null,
+          injectionSite: isTaken ? cleanText(input.injectionSite) : null,
           takenAt: isTaken ? parseOptionalDateTime(input.takenAt) ?? existing?.takenAt ?? new Date() : null,
           note: cleanText(input.note)
         }
@@ -362,7 +380,7 @@ export class HealthService {
       if (!wasTaken && isTaken) {
         await tx.medicationPlan.update({
           where: { id },
-          data: { currentStock: { decrement: dose } }
+          data: { currentStock: { decrement: inventoryUsed } }
         });
         await tx.medicationInventoryEvent.create({
           data: {
@@ -370,7 +388,7 @@ export class HealthService {
             medicationId: id,
             doseRecordId: record.id,
             type: "consumption",
-            quantityDelta: (-Number(dose)).toFixed(2),
+            quantityDelta: (-Number(inventoryUsed)).toFixed(2),
             occurredAt: record.takenAt ?? new Date(),
             note: `${formatDate(scheduledDate)} ${slot.label}`
           }
@@ -378,7 +396,7 @@ export class HealthService {
       } else if (wasTaken && !isTaken) {
         await tx.medicationPlan.update({
           where: { id },
-          data: { currentStock: { increment: dose } }
+          data: { currentStock: { increment: inventoryUsed } }
         });
         await tx.medicationInventoryEvent.deleteMany({ where: { doseRecordId: record.id } });
       }
@@ -512,7 +530,17 @@ export class HealthService {
           memberId,
           scheduledDate: { gte: start, lt: end }
         },
-        include: { medication: { select: { name: true, stockUnit: true } } },
+        include: {
+          medication: {
+            select: {
+              name: true,
+              administrationRoute: true,
+              doseQuantity: true,
+              doseUnit: true,
+              stockUnit: true
+            }
+          }
+        },
         orderBy: { scheduledDate: "asc" }
       }),
       this.prisma.healthFollowup.findMany({
@@ -539,13 +567,18 @@ export class HealthService {
       ]),
       ...medicationRows.map((row) => [
         "用药计划", row.startDate.toISOString(), `${row.name}${row.specification ? ` ${row.specification}` : ""}`,
-        parseMedicationSlots(row.scheduleSlots).map((slot) => slot.label).join("、"), "", "",
+        `${medicationRouteLabel(row.administrationRoute)} / ${medicationFrequencyLabel(row)}`, "", "",
         row.instructions ?? "", `剩余 ${money(row.currentStock)} ${row.stockUnit}`
       ]),
       ...medicationDoseRows.map((row) => [
         "用药执行", row.scheduledDate.toISOString(),
-        `${row.medication.name} ${money(row.quantityUsed)} ${row.medication.stockUnit}`,
-        `${row.scheduledLabel} / ${row.status}`, "", "", "", row.note ?? ""
+        `${row.medication.name} ${money(row.actualDoseQuantity ?? row.medication.doseQuantity)} ${row.medication.doseUnit ?? row.medication.stockUnit}`,
+        [
+          medicationRouteLabel(row.medication.administrationRoute),
+          row.scheduledLabel,
+          row.status,
+          row.injectionSite
+        ].filter(Boolean).join(" / "), "", "", "", row.note ?? ""
       ]),
       ...followupRows.map((row) => [
         "复诊", row.scheduledAt.toISOString(), row.type,
@@ -706,8 +739,14 @@ function medicationPlanData(input: MedicationPlanInput) {
   return {
     name: input.name.trim(),
     specification: cleanText(input.specification),
+    administrationRoute: input.administrationRoute,
+    frequency: input.frequency,
+    weekdays: input.frequency === "weekly" ? [...new Set(input.weekdays ?? [])].sort() : [],
+    intervalDays: input.frequency === "interval" ? input.intervalDays : null,
+    doseUnit: input.doseUnit.trim(),
     stockUnit: input.stockUnit.trim(),
     doseQuantity: decimal(input.doseQuantity, "单次用量"),
+    inventoryPerDose: decimal(input.inventoryPerDose, "每次库存消耗"),
     scheduleSlots: input.scheduleSlots as unknown as Prisma.InputJsonValue,
     startDate: parseDate(input.startDate, "开始日期"),
     endDate: optionalDate(input.endDate, "结束日期"),
@@ -825,8 +864,25 @@ function validateHba1c(input: Hba1cInput) {
 
 function validateMedicationPlan(input: MedicationPlanInput) {
   if (!input.name?.trim()) throw new BadRequestException("药品名称不能为空");
+  if (!["oral", "injection", "topical", "other"].includes(input.administrationRoute)) {
+    throw new BadRequestException("给药方式无效");
+  }
+  if (!["daily", "weekly", "interval"].includes(input.frequency)) {
+    throw new BadRequestException("用药频率无效");
+  }
+  if (input.frequency === "weekly") {
+    const weekdays = [...new Set(input.weekdays ?? [])];
+    if (!weekdays.length || weekdays.some((value) => !Number.isInteger(value) || value < 1 || value > 7)) {
+      throw new BadRequestException("请选择每周用药日期");
+    }
+  }
+  if (input.frequency === "interval") {
+    validateInteger(input.intervalDays, 1, 365, "间隔天数");
+  }
+  if (!input.doseUnit?.trim()) throw new BadRequestException("剂量单位不能为空");
   if (!input.stockUnit?.trim()) throw new BadRequestException("库存单位不能为空");
   validateRequiredNumber(input.doseQuantity, 0.01, 100000, "单次用量");
+  validateRequiredNumber(input.inventoryPerDose, 0.01, 100000, "每次库存消耗");
   validateOptionalNumber(input.initialStock, 0, 10000000, "初始库存");
   validateInteger(input.lowStockDays, 0, 365, "库存提醒天数");
   if (!input.scheduleSlots?.length) throw new BadRequestException("至少需要一个用药时间");
@@ -851,6 +907,7 @@ function validateMedicationDose(input: MedicationDoseInput, slots: MedicationSch
     throw new BadRequestException("用药状态无效");
   }
   if (input.takenAt) parseDateTime(input.takenAt, "实际用药时间");
+  validateOptionalNumber(input.actualDoseQuantity, 0.01, 100000, "实际剂量");
 }
 
 function validateMedicationInventory(input: MedicationInventoryInput) {
@@ -1060,8 +1117,14 @@ function mapMedicationPlan(row: {
   memberId: string;
   name: string;
   specification: string | null;
+  administrationRoute: MedicationPlan["administrationRoute"];
+  frequency: MedicationPlan["frequency"];
+  weekdays: number[];
+  intervalDays: number | null;
+  doseUnit: string | null;
   stockUnit: string;
   doseQuantity: { toString(): string };
+  inventoryPerDose: { toString(): string } | null;
   scheduleSlots: unknown;
   startDate: Date;
   endDate: Date | null;
@@ -1076,8 +1139,14 @@ function mapMedicationPlan(row: {
     memberId: row.memberId,
     name: row.name,
     ...(row.specification ? { specification: row.specification } : {}),
+    administrationRoute: row.administrationRoute,
+    frequency: row.frequency,
+    weekdays: row.weekdays,
+    ...(row.intervalDays ? { intervalDays: row.intervalDays } : {}),
+    doseUnit: row.doseUnit ?? row.stockUnit,
     stockUnit: row.stockUnit,
     doseQuantity: money(row.doseQuantity),
+    inventoryPerDose: money(row.inventoryPerDose ?? row.doseQuantity),
     scheduleSlots: parseMedicationSlots(row.scheduleSlots),
     startDate: formatDate(row.startDate),
     ...(row.endDate ? { endDate: formatDate(row.endDate) } : {}),
@@ -1098,6 +1167,8 @@ function mapMedicationDose(row: {
   scheduledLabel: string;
   status: MedicationDoseRecord["status"];
   quantityUsed: { toString(): string };
+  actualDoseQuantity: { toString(): string } | null;
+  injectionSite: string | null;
   takenAt: Date | null;
   note: string | null;
 }): MedicationDoseRecord {
@@ -1110,6 +1181,8 @@ function mapMedicationDose(row: {
     scheduledLabel: row.scheduledLabel,
     status: row.status,
     quantityUsed: money(row.quantityUsed),
+    ...(row.actualDoseQuantity ? { actualDoseQuantity: money(row.actualDoseQuantity) } : {}),
+    ...(row.injectionSite ? { injectionSite: row.injectionSite } : {}),
     ...(row.takenAt ? { takenAt: row.takenAt.toISOString() } : {}),
     ...(row.note ? { note: row.note } : {})
   };
@@ -1221,6 +1294,34 @@ function exerciseTypeWithMovements(row: {
     return `${movement.name} ${total}${movement.metric === "seconds" ? "秒" : "次"}`;
   });
   return `${row.type}（${details.join("；")}）`;
+}
+
+function medicationRouteLabel(route: MedicationPlan["administrationRoute"]): string {
+  return {
+    oral: "口服",
+    injection: "注射",
+    topical: "外用",
+    other: "其他"
+  }[route];
+}
+
+function medicationFrequencyLabel(row: {
+  frequency: MedicationPlan["frequency"];
+  weekdays: number[];
+  intervalDays: number | null;
+  scheduleSlots: unknown;
+}): string {
+  const times = parseMedicationSlots(row.scheduleSlots)
+    .map((slot) => `${slot.time ? `${slot.time} ` : ""}${slot.label}`)
+    .join("、");
+  if (row.frequency === "weekly") {
+    const weekdays = row.weekdays.map((value) => `周${"一二三四五六日"[value - 1]}`).join("、");
+    return `每周${weekdays}${times ? ` / ${times}` : ""}`;
+  }
+  if (row.frequency === "interval") {
+    return `每隔${row.intervalDays ?? 1}天${times ? ` / ${times}` : ""}`;
+  }
+  return `每天${times ? ` / ${times}` : ""}`;
 }
 
 function validateRequiredNumber(value: string | number | undefined, min: number, max: number, label: string) {

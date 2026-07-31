@@ -595,7 +595,11 @@ export class PrismaFinanceRepository implements FinanceRepository {
     if (isCurrentMonth(month)) return this.listLiabilities();
     const [liabilities, snapshots] = await Promise.all([
       this.prisma.liability.findMany({
-        where: { familyId: DEFAULT_FAMILY_ID, deletedAt: null, createdAt: { lt: nextMonthStart(month) } },
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          createdAt: { lt: nextMonthStart(month) },
+          OR: [{ deletedAt: null }, { deletedAt: { gte: nextMonthStart(month) } }]
+        },
         orderBy: { createdAt: "asc" }
       }),
       this.prisma.liabilitySnapshot.findMany({ where: { familyId: DEFAULT_FAMILY_ID, month } })
@@ -608,6 +612,9 @@ export class PrismaFinanceRepository implements FinanceRepository {
         ...mapLiability(liability),
         currentBalance: decimalToMoney(snapshot.currentBalance),
         monthlyPayment: snapshot.monthlyPayment === null ? undefined : decimalToMoney(snapshot.monthlyPayment),
+        paymentDay: snapshot.paymentDay ?? undefined,
+        repaymentSchedule: snapshot.repaymentSchedule,
+        status: snapshot.status,
         remainingPeriods: snapshot.remainingPeriods ?? undefined
       };
     });
@@ -626,6 +633,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         monthlyPayment:
           input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
         paymentDay: input.paymentDay ?? null,
+        repaymentSchedule: input.repaymentSchedule,
         remainingPeriods: input.remainingPeriods ?? null,
         lender: input.lender,
         status: input.status ?? "active",
@@ -993,6 +1001,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         monthlyPayment:
           input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
         paymentDay: input.paymentDay ?? null,
+        repaymentSchedule: input.repaymentSchedule,
         remainingPeriods: input.remainingPeriods ?? null,
         lender: input.lender ?? null,
         status: input.status ?? "active",
@@ -1054,11 +1063,17 @@ export class PrismaFinanceRepository implements FinanceRepository {
             month,
             currentBalance: liability.currentBalance,
             monthlyPayment: liability.monthlyPayment,
+            paymentDay: liability.paymentDay,
+            repaymentSchedule: liability.repaymentSchedule,
+            status: liability.status,
             remainingPeriods: liability.remainingPeriods
           },
           update: {
             currentBalance: liability.currentBalance,
             monthlyPayment: liability.monthlyPayment,
+            paymentDay: liability.paymentDay,
+            repaymentSchedule: liability.repaymentSchedule,
+            status: liability.status,
             remainingPeriods: liability.remainingPeriods,
             confirmedAt: new Date()
           }
@@ -1487,6 +1502,7 @@ function mapLiability(liability: DbLiability): Liability {
     monthlyPayment:
       liability.monthlyPayment === null ? undefined : decimalToMoney(liability.monthlyPayment),
     paymentDay: liability.paymentDay ?? undefined,
+    repaymentSchedule: liability.repaymentSchedule,
     remainingPeriods: liability.remainingPeriods ?? undefined,
     lender: liability.lender ?? undefined,
     status: liability.status,
@@ -1531,7 +1547,7 @@ function mapAccountType(accountType: DbAccountTypeOption): AccountTypeOption {
 }
 
 function mapMember(member: FamilyMember): FamilyMemberInfo {
-  return { id: member.id, name: member.name, icon: member.icon ?? undefined };
+  return { id: member.id, name: member.name, icon: member.icon ?? undefined, userId: member.userId ?? undefined };
 }
 
 function sortByDefaultMemberOrder(members: FamilyMember[]): FamilyMember[] {

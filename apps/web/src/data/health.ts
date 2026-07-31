@@ -10,6 +10,7 @@ import type {
   MedicationScheduleSlot,
   MemberHealthProfile
 } from "@family-finance/shared";
+import { isMedicationScheduledOnDate } from "@family-finance/shared";
 import dayjs, { type Dayjs } from "dayjs";
 
 export function toMinuteIso(value: Dayjs): string {
@@ -200,8 +201,7 @@ export function buildMedicationTasks(
   return plans
     .filter((plan) => (
       plan.status === "active"
-      && plan.startDate <= date
-      && (!plan.endDate || plan.endDate >= date)
+      && isMedicationScheduledOnDate(plan, date)
     ))
     .flatMap((plan) => plan.scheduleSlots.map((slot) => ({
       key: `${plan.id}-${date}-${slot.id}`,
@@ -217,7 +217,13 @@ export function buildMedicationTasks(
 }
 
 export function medicationDaysRemaining(plan: MedicationPlan): number | undefined {
-  const dailyUse = Number(plan.doseQuantity) * plan.scheduleSlots.length;
+  const usePerTask = Number(plan.inventoryPerDose);
+  const slotCount = plan.scheduleSlots.length;
+  const dailyUse = plan.frequency === "daily"
+    ? usePerTask * slotCount
+    : plan.frequency === "weekly"
+      ? usePerTask * slotCount * plan.weekdays.length / 7
+      : usePerTask * slotCount / (plan.intervalDays ?? 1);
   if (dailyUse <= 0) return undefined;
   return Math.max(0, Math.floor(Number(plan.currentStock) / dailyUse));
 }
@@ -227,10 +233,22 @@ export function isMedicationLowStock(plan: MedicationPlan): boolean {
   return days !== undefined && days <= plan.lowStockDays;
 }
 
-export function nextScheduledFollowup(followups: HealthFollowup[], referenceDate: string) {
-  return followups.find((followup) => (
-    followup.status === "scheduled" && dayjs(followup.scheduledAt).isAfter(dayjs(referenceDate).startOf("day"))
-  ));
+export function nextScheduledFollowup(
+  followups: HealthFollowup[],
+  referenceDate: string,
+  preferredMonth = dayjs(referenceDate).format("YYYY-MM")
+) {
+  const scheduled = followups
+    .filter((followup) => followup.status === "scheduled")
+    .sort((left, right) => dayjs(left.scheduledAt).valueOf() - dayjs(right.scheduledAt).valueOf());
+  const inPreferredMonth = scheduled.find(
+    (followup) => dayjs(followup.scheduledAt).format("YYYY-MM") === preferredMonth
+  );
+  if (inPreferredMonth) return inPreferredMonth;
+
+  return scheduled.find(
+    (followup) => !dayjs(followup.scheduledAt).isBefore(dayjs(referenceDate).startOf("day"))
+  );
 }
 
 function changeFrom(records: BodyMeasurement[], latest: BodyMeasurement, days: number): number | undefined {

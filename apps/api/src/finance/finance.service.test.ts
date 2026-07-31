@@ -193,6 +193,30 @@ describe("FinanceService", () => {
     expect(snapshotAllLiabilities).toHaveBeenCalledWith("2026-07");
     expect(snapshotAllInvestments).toHaveBeenCalledWith("2026-07");
   });
+
+  it("requires a valid monthly payment and payment day for fixed monthly liabilities", async () => {
+    const service = new FinanceService(createRepository());
+    const base = {
+      name: "房贷",
+      type: "mortgage" as const,
+      ownerName: "雄哥",
+      initialBalance: "1000000.00",
+      currentBalance: "800000.00",
+      repaymentSchedule: "monthly" as const
+    };
+
+    await expect(service.createLiability(base)).rejects.toThrow("必须填写大于 0 的月供");
+    await expect(service.createLiability({ ...base, monthlyPayment: "6200.00", paymentDay: 8 })).resolves.toMatchObject({
+      repaymentSchedule: "monthly",
+      monthlyPayment: "6200.00",
+      paymentDay: 8
+    });
+    await expect(service.createLiability({
+      ...base,
+      name: "私人借款",
+      repaymentSchedule: "flexible"
+    })).resolves.toMatchObject({ repaymentSchedule: "flexible" });
+  });
 });
 
 function createRepository(): FinanceRepository {

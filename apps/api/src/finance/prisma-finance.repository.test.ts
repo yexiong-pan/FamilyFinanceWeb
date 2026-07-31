@@ -213,6 +213,95 @@ describe("PrismaFinanceRepository liability balances", () => {
     });
     expect(liability.initialBalance).toBe("1000000.00");
   });
+
+  it("snapshots the repayment arrangement needed by historical monthly reviews", async () => {
+    const upsert = vi.fn();
+    const repository = new PrismaFinanceRepository({
+      liability: {
+        findMany: vi.fn(async () => [{
+          id: "liability-1",
+          familyId: "default-family",
+          name: "招行房贷",
+          type: "mortgage",
+          ownerName: "雄哥",
+          initialBalance: "1000000.00",
+          currentBalance: "800000.00",
+          monthlyPayment: "6200.00",
+          paymentDay: 8,
+          repaymentSchedule: "monthly",
+          remainingPeriods: 180,
+          lender: "招商银行",
+          status: "active",
+          note: null,
+          deletedAt: null,
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z")
+        }])
+      },
+      $transaction: async (callback: any) => callback({
+        liabilitySnapshot: { upsert },
+        monthlyReview: { upsert: vi.fn() }
+      })
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.snapshotAllLiabilities("2026-07");
+
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ paymentDay: 8, repaymentSchedule: "monthly", status: "active" }),
+      update: expect.objectContaining({ paymentDay: 8, repaymentSchedule: "monthly", status: "active" })
+    }));
+  });
+
+  it("uses the selected month's repayment arrangement instead of live liability fields", async () => {
+    const repository = new PrismaFinanceRepository({
+      liability: {
+        findMany: vi.fn(async () => [{
+          id: "liability-1",
+          familyId: "default-family",
+          name: "招行房贷",
+          type: "mortgage",
+          ownerName: "雄哥",
+          initialBalance: "1000000.00",
+          currentBalance: "700000.00",
+          monthlyPayment: "6800.00",
+          paymentDay: 10,
+          repaymentSchedule: "flexible",
+          remainingPeriods: 120,
+          lender: "招商银行",
+          status: "active",
+          note: null,
+          deletedAt: null,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z")
+        }])
+      },
+      liabilitySnapshot: {
+        findMany: vi.fn(async () => [{
+          liabilityId: "liability-1",
+          month: "2026-06",
+          currentBalance: "720000.00",
+          monthlyPayment: "6200.00",
+          paymentDay: 8,
+          repaymentSchedule: "monthly",
+          status: "active",
+          remainingPeriods: 121
+        }])
+      }
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await expect(repository.listLiabilitiesForMonth("2026-06")).resolves.toEqual([
+      expect.objectContaining({
+        currentBalance: "720000.00",
+        monthlyPayment: "6200.00",
+        paymentDay: 8,
+        repaymentSchedule: "monthly",
+        status: "active",
+        remainingPeriods: 121
+      })
+    ]);
+  });
 });
 
 describe("PrismaFinanceRepository account edits", () => {

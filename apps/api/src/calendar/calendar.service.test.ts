@@ -58,6 +58,9 @@ describe("CalendarService", () => {
           scheduleSlots: [{ id: "morning", label: "早餐后" }],
           startDate: date("2026-07-01"),
           endDate: date("2026-07-02"),
+          frequency: "daily",
+          weekdays: [],
+          intervalDays: null,
           status: "active"
         }])
       },
@@ -77,7 +80,16 @@ describe("CalendarService", () => {
           status: "scheduled",
           hospital: "社区医院",
           department: "内分泌科"
-        }])
+        }]),
+        findFirst: vi.fn(async () => ({
+          id: "followup-next",
+          memberId: "member-1",
+          scheduledAt: date("2026-08-08"),
+          type: "糖尿病复诊",
+          status: "scheduled",
+          hospital: "社区医院",
+          department: "内分泌科"
+        }))
       },
       calendarEvent: {
         findMany: vi.fn(async () => [{
@@ -146,6 +158,16 @@ describe("CalendarService", () => {
       measuredAt: "2026-07-20T08:00:00.000Z",
       weightKg: "76.50"
     }]);
+    expect(result.latestGlucoseByMember).toEqual([{
+      memberId: "member-1",
+      memberName: "雄哥",
+      measuredAt: "2026-06-30T22:30:00.000Z",
+      value: "8.20",
+      context: "fasting",
+      status: "high",
+      targetMin: "4.4",
+      targetMax: "7"
+    }]);
     expect(financeDay?.income).toBe("1000.00");
     expect(financeDay?.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -209,6 +231,11 @@ describe("CalendarService", () => {
       })
     ]));
     expect(financeDay?.followups[0]?.department).toBe("内分泌科");
+    expect(result.upcomingFollowup).toMatchObject({
+      id: "followup-next",
+      memberName: "雄哥",
+      scheduledAt: "2026-08-08T00:00:00.000Z"
+    });
   });
 
   it("calculates each month's expense change from the preceding month", async () => {
@@ -229,7 +256,10 @@ describe("CalendarService", () => {
       exerciseLog: { findMany: vi.fn(async () => []) },
       medicationPlan: { findMany: vi.fn(async () => []) },
       medicationDoseRecord: { findMany: vi.fn(async () => []) },
-      healthFollowup: { findMany: vi.fn(async () => []) }
+      healthFollowup: {
+        findMany: vi.fn(async () => []),
+        findFirst: vi.fn(async () => undefined)
+      }
     }));
 
     const result = await service.getCalendar("year", "2026", "all");

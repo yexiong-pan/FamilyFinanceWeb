@@ -9,6 +9,7 @@ import type {
   CalendarEventStatus,
   CalendarEventType,
   CalendarFollowupItem,
+  CalendarGlucoseStatus,
   CalendarGlucoseReading,
   CalendarMedicationSummary,
   CalendarMonthSummary,
@@ -18,7 +19,10 @@ import type {
   GlucoseTargets,
   MedicationScheduleSlot
 } from "@family-finance/shared";
-import { buildCalendarEventOccurrences } from "@family-finance/shared";
+import {
+  buildCalendarEventOccurrences,
+  isMedicationScheduledOnDate
+} from "@family-finance/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service";
 
@@ -168,17 +172,22 @@ export class CalendarService {
     const financeStart = view === "year"
       ? new Date(`${Number(period) - 1}-12-01T00:00:00.000+08:00`)
       : range.start;
+    const today = dateOnlyUtc(dateKey(new Date()));
+    const reminderRangeEnd = addUtcDays(today, 30);
 
     const [
       transactions,
       profiles,
       bodyRows,
       glucoseRows,
+      latestGlucoseRows,
       exerciseRows,
       medicationPlans,
       medicationDoseRows,
       followupRows,
-      calendarEventRows
+      upcomingFollowupRow,
+      calendarEventRows,
+      upcomingCalendarEventRows
     ] = await Promise.all([
       this.prisma.financeTransaction.findMany({
         where: {
@@ -211,6 +220,19 @@ export class CalendarService {
         },
         orderBy: { measuredAt: "asc" }
       }),
+      this.prisma.bloodGlucoseRecord.findMany({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          memberId: { in: memberIds }
+        },
+        orderBy: { measuredAt: "desc" },
+        select: {
+          memberId: true,
+          measuredAt: true,
+          glucoseMmol: true,
+          context: true
+        }
+      }),
       this.prisma.exerciseLog.findMany({
         where: {
           familyId: DEFAULT_FAMILY_ID,
@@ -232,6 +254,9 @@ export class CalendarService {
           scheduleSlots: true,
           startDate: true,
           endDate: true,
+          frequency: true,
+          weekdays: true,
+          intervalDays: true,
           status: true
         }
       }),
@@ -251,6 +276,15 @@ export class CalendarService {
         },
         orderBy: { scheduledAt: "asc" }
       }),
+      this.prisma.healthFollowup.findFirst({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          memberId: { in: memberIds },
+          status: "scheduled",
+          scheduledAt: { gte: today }
+        },
+        orderBy: { scheduledAt: "asc" }
+      }),
       this.prisma.calendarEvent.findMany({
         where: {
           familyId: DEFAULT_FAMILY_ID,
@@ -259,6 +293,21 @@ export class CalendarService {
           OR: [
             { recurrenceEndDate: null },
             { recurrenceEndDate: { gte: range.start } }
+          ],
+          ...(selectedMember
+            ? { participants: { some: { memberId: selectedMember.id } } }
+            : {})
+        },
+        include: calendarEventInclude
+      }),
+      this.prisma.calendarEvent.findMany({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          status: "scheduled",
+          startDate: { lte: reminderRangeEnd },
+          OR: [
+            { recurrenceEndDate: null },
+            { recurrenceEndDate: { gte: today } }
           ],
           ...(selectedMember
             ? { participants: { some: { memberId: selectedMember.id } } }
@@ -416,7 +465,6 @@ export class CalendarService {
       }
     }
 
-    const today = dateOnlyUtc(dateKey(new Date()));
     for (const plan of medicationPlans) {
       if (plan.status !== "active") continue;
       const planStart = maxDate(range.start, utcDayStart(plan.startDate));
@@ -425,7 +473,15 @@ export class CalendarService {
         plan.endDate ? addUtcDays(utcDayStart(plan.endDate), 1) : range.end
       );
       const slots = medicationSlots(plan.scheduleSlots);
+      const scheduleRule = {
+        startDate: dateKey(plan.startDate),
+        ...(plan.endDate ? { endDate: dateKey(plan.endDate) } : {}),
+        frequency: plan.frequency,
+        weekdays: plan.weekdays,
+        ...(plan.intervalDays ? { intervalDays: plan.intervalDays } : {})
+      };
       for (let date = planStart; date < planEndExclusive; date = addUtcDays(date, 1)) {
+        if (!isMedicationScheduledOnDate(scheduleRule, dateKey(date))) continue;
         const bucket = bucketFor(date);
         bucket.medication.scheduled += slots.length;
         if (date <= today) bucket.medication.dueScheduled += slots.length;
@@ -499,6 +555,23 @@ export class CalendarService {
       dateKey(addUtcDays(range.end, -1)),
       dateKey(new Date())
     ));
+    const upcomingEvents = upcomingCalendarEventRows
+      .flatMap((row) => buildCalendarEventOccurrences(
+        mapCalendarEvent(row),
+        dateKey(today),
+        dateKey(reminderRangeEnd),
+        dateKey(today)
+      ))
+      .filter((occurrence) => (
+        occurrence.countdownDays !== undefined
+        && occurrence.countdownDays >= 0
+        && occurrence.reminderDays.some((days) => occurrence.countdownDays! <= days)
+      ))
+      .sort((left, right) => (
+        left.date.localeCompare(right.date)
+        || (left.startTime ?? "").localeCompare(right.startTime ?? "")
+      ))
+      .slice(0, 4);
     for (const occurrence of eventOccurrences) {
       const bucket = bucketFor(dateOnlyUtc(occurrence.date));
       if (occurrence.type === "schedule") {
@@ -600,6 +673,12 @@ export class CalendarService {
         latestWeightByMemberId.set(row.memberId, row);
       }
     }
+    const latestGlucoseByMemberId = new Map<string, typeof latestGlucoseRows[number]>();
+    for (const row of latestGlucoseRows) {
+      if (!latestGlucoseByMemberId.has(row.memberId)) {
+        latestGlucoseByMemberId.set(row.memberId, row);
+      }
+    }
 
     return {
       view,
@@ -625,10 +704,31 @@ export class CalendarService {
           } : {})
         };
       }),
-      upcomingEvents: eventOccurrences
-        .filter((occurrence) => (occurrence.countdownDays ?? 0) >= 0)
-        .sort((left, right) => left.date.localeCompare(right.date))
-        .slice(0, 8),
+      latestGlucoseByMember: memberIds.map((memberId) => {
+        const reading = latestGlucoseByMemberId.get(memberId);
+        if (!reading) {
+          return {
+            memberId,
+            memberName: memberNameById.get(memberId) ?? "未知成员"
+          };
+        }
+        const profile = profileByMember.get(memberId);
+        const range = glucoseTargetRange(reading.context, profile);
+        return {
+          memberId,
+          memberName: memberNameById.get(memberId) ?? "未知成员",
+          measuredAt: reading.measuredAt.toISOString(),
+          value: Number(reading.glucoseMmol.toString()).toFixed(2),
+          context: reading.context,
+          status: glucoseStatus(Number(reading.glucoseMmol.toString()), reading.context, profile),
+          ...(range?.min !== undefined ? { targetMin: String(range.min) } : {}),
+          ...(range?.max !== undefined ? { targetMax: String(range.max) } : {})
+        };
+      }),
+      ...(upcomingFollowupRow ? {
+        upcomingFollowup: calendarFollowupItem(upcomingFollowupRow, memberNameById)
+      } : {}),
+      upcomingEvents,
       days,
       months
     };
@@ -784,6 +884,30 @@ function mapCalendarEvent(row: CalendarEventRow): CalendarEvent {
   };
 }
 
+function calendarFollowupItem(
+  row: {
+    id: string;
+    memberId: string;
+    scheduledAt: Date;
+    type: string;
+    status: CalendarFollowupItem["status"];
+    hospital: string | null;
+    department: string | null;
+  },
+  memberNameById: Map<string, string>
+): CalendarFollowupItem {
+  return {
+    id: row.id,
+    memberId: row.memberId,
+    memberName: memberNameById.get(row.memberId) ?? "未知成员",
+    scheduledAt: row.scheduledAt.toISOString(),
+    type: row.type,
+    status: row.status,
+    ...(row.hospital ? { hospital: row.hospital } : {}),
+    ...(row.department ? { department: row.department } : {})
+  };
+}
+
 function emptyMutableSummary(): MutablePeriodSummary {
   return {
     incomeCents: 0,
@@ -907,19 +1031,30 @@ function glucoseIsAbnormal(
   context: GlucoseContext,
   profile?: HealthProfileThresholds
 ): boolean {
+  const status = glucoseStatus(value, context, profile);
+  return status === "low" || status === "high";
+}
+
+function glucoseStatus(
+  value: number,
+  context: GlucoseContext,
+  profile?: HealthProfileThresholds
+): CalendarGlucoseStatus {
   const lowThreshold = profile ? Number(profile.glucoseLowThreshold.toString()) : 3.9;
-  if (value < lowThreshold) return true;
+  if (value < lowThreshold) return "low";
+  const range = glucoseTargetRange(context, profile);
+  if (!range || (range.min === undefined && range.max === undefined)) return "unconfigured";
+  if (range.min !== undefined && value < range.min) return "low";
+  if (range.max !== undefined && value > range.max) return "high";
+  return "inRange";
+}
+
+function glucoseTargetRange(context: GlucoseContext, profile?: HealthProfileThresholds) {
   const targets = parseGlucoseTargets(profile?.glucoseTargets);
-  const range = context === "fasting"
-    ? targets.fasting
-    : context === "beforeMeal"
-      ? targets.beforeMeal
-      : context === "afterMeal2h"
-        ? targets.afterMeal2h
-        : undefined;
-  if (!range) return false;
-  return (range.min !== undefined && value < range.min)
-    || (range.max !== undefined && value > range.max);
+  if (context === "fasting") return targets.fasting;
+  if (context === "beforeMeal") return targets.beforeMeal;
+  if (context === "afterMeal2h") return targets.afterMeal2h;
+  return undefined;
 }
 
 function parseGlucoseTargets(value: unknown): GlucoseTargets {

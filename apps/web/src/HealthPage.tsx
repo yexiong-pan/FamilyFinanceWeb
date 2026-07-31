@@ -37,6 +37,7 @@ import {
   Input,
   InputNumber,
   List,
+  Pagination,
   Popconfirm,
   Progress,
   Row,
@@ -52,7 +53,7 @@ import {
   Typography
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   type BloodGlucoseInput,
   type BodyMeasurementInput,
@@ -99,6 +100,7 @@ import {
   isMedicationLowStock,
   medicationDaysRemaining,
   medicationDoseStatusLabels,
+  type MedicationTask,
   nextScheduledFollowup,
   strengthSessionText,
   toMinuteIso
@@ -125,6 +127,30 @@ const MINUTE_DATE_TIME_PICKER_PROPS = {
     showSecond: false
   }
 } as const;
+const WEEKDAY_OPTIONS = [
+  { label: "周一", value: 1 },
+  { label: "周二", value: 2 },
+  { label: "周三", value: 3 },
+  { label: "周四", value: 4 },
+  { label: "周五", value: 5 },
+  { label: "周六", value: 6 },
+  { label: "周日", value: 7 }
+];
+const MEDICATION_ROUTE_LABELS: Record<MedicationPlan["administrationRoute"], string> = {
+  oral: "口服",
+  injection: "注射",
+  topical: "外用",
+  other: "其他"
+};
+const MEDICATION_ROUTE_DEFAULTS: Record<
+  MedicationPlan["administrationRoute"],
+  { doseUnit: string; stockUnit: string; scheduleLabel: string }
+> = {
+  oral: { doseUnit: "片", stockUnit: "片", scheduleLabel: "早餐后" },
+  injection: { doseUnit: "单位", stockUnit: "支", scheduleLabel: "计划注射" },
+  topical: { doseUnit: "克", stockUnit: "支", scheduleLabel: "计划使用" },
+  other: { doseUnit: "次", stockUnit: "份", scheduleLabel: "计划使用" }
+};
 
 interface HealthPageProps {
   monthKey: string;
@@ -149,7 +175,13 @@ export function HealthPage({ monthKey, members, tab, onTabChange }: HealthPagePr
   const screens = Grid.useBreakpoint();
   const [memberId, setMemberId] = useState(() => {
     const saved = window.localStorage.getItem(MEMBER_STORAGE_KEY);
-    return saved && members.some((member) => member.id === saved) ? saved : members[0]?.id ?? "";
+    const loginMemberId = (() => {
+      try { return (JSON.parse(window.localStorage.getItem("family-life.current-user") ?? "null") as { memberId?: string } | null)?.memberId; }
+      catch { return undefined; }
+    })();
+    return saved && members.some((member) => member.id === saved)
+      ? saved
+      : members.some((member) => member.id === loginMemberId) ? loginMemberId ?? "" : members[0]?.id ?? "";
   });
   const [data, setData] = useState<HealthData>();
   const [loading, setLoading] = useState(false);
@@ -211,8 +243,10 @@ export function HealthPage({ monthKey, members, tab, onTabChange }: HealthPagePr
       setEditor(null);
       setEditingRecord(undefined);
       await reload();
+      return true;
     } catch (caught) {
       message.error(errorMessage(caught, "保存失败，请重试"));
+      return false;
     }
   };
 
@@ -430,7 +464,7 @@ function HealthOverview({
   const lowStockCount = data.medicationPlans.filter((plan) => (
     plan.status === "active" && isMedicationLowStock(plan)
   )).length;
-  const nextFollowup = nextScheduledFollowup(data.followups, referenceDate);
+  const nextFollowup = nextScheduledFollowup(data.followups, referenceDate, monthKey);
   const [form] = Form.useForm<ReviewFormValues>();
 
   useEffect(() => {
@@ -864,9 +898,12 @@ function MedicationPanel({
     editor: Exclude<Editor, null>,
     record?: MedicationPlan | HealthFollowup
   ) => void;
-  onMutate: (operation: () => Promise<unknown>, success: string) => Promise<void>;
+  onMutate: (operation: () => Promise<unknown>, success: string) => Promise<boolean>;
 }) {
   const [selectedDate, setSelectedDate] = useState(() => healthReferenceDate(monthKey));
+  const [planStatus, setPlanStatus] = useState<"all" | MedicationPlan["status"]>("all");
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [injectionTask, setInjectionTask] = useState<MedicationTask>();
   useEffect(() => {
     setSelectedDate(healthReferenceDate(monthKey));
   }, [monthKey]);
@@ -875,7 +912,23 @@ function MedicationPanel({
   const taken = tasks.filter((task) => task.record?.status === "taken").length;
   const activePlans = data.medicationPlans.filter((plan) => plan.status === "active");
   const lowStockPlans = activePlans.filter(isMedicationLowStock);
-  const nextFollowup = nextScheduledFollowup(data.followups, selectedDate);
+  const nextFollowup = nextScheduledFollowup(data.followups, selectedDate, monthKey);
+  const filteredPlans = data.medicationPlans.filter((plan) => (
+    planStatus === "all" || plan.status === planStatus
+  ));
+  const inventoryEvents = useMemo(
+    () => [...data.medicationInventoryEvents].reverse(),
+    [data.medicationInventoryEvents]
+  );
+  const inventoryPageSize = 20;
+  const visibleInventoryEvents = inventoryEvents.slice(
+    (inventoryPage - 1) * inventoryPageSize,
+    inventoryPage * inventoryPageSize
+  );
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(inventoryEvents.length / inventoryPageSize));
+    if (inventoryPage > lastPage) setInventoryPage(lastPage);
+  }, [inventoryEvents.length, inventoryPage]);
 
   return (
     <Space orientation="vertical" size={16} className="page-stack medication-page">
@@ -888,7 +941,7 @@ function MedicationPanel({
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}>
           <Card className="health-metric-card metric-card">
-            <Statistic title="当日已服" value={`${taken}/${tasks.length}`} />
+            <Statistic title="当日已完成" value={`${taken}/${tasks.length}`} />
             <Text type="secondary">已确认 {confirmed} 次</Text>
           </Card>
         </Col>
@@ -916,7 +969,7 @@ function MedicationPanel({
       </Row>
 
       <Card
-        title="每日用药"
+        title="当日用药任务"
         extra={
           <DatePicker
             inputReadOnly
@@ -934,21 +987,31 @@ function MedicationPanel({
             renderItem={(task) => (
               <List.Item
                 actions={[
-                  <Button
-                    key="taken"
-                    type={task.record?.status === "taken" ? "primary" : "default"}
-                    onClick={() => void onMutate(
-                      () => saveMedicationDose(task.plan.id, {
-                        scheduledDate: selectedDate,
-                        slotId: task.slot.id,
-                        status: "taken",
-                        takenAt: toMinuteIso(dayjs())
-                      }),
-                      "已记录用药"
-                    )}
-                  >
-                    已服
-                  </Button>,
+                  task.plan.administrationRoute === "injection" ? (
+                    <Button
+                      key="taken"
+                      type={task.record?.status === "taken" ? "primary" : "default"}
+                      onClick={() => setInjectionTask(task)}
+                    >
+                      记录注射
+                    </Button>
+                  ) : (
+                    <Button
+                      key="taken"
+                      type={task.record?.status === "taken" ? "primary" : "default"}
+                      onClick={() => void onMutate(
+                        () => saveMedicationDose(task.plan.id, {
+                          scheduledDate: selectedDate,
+                          slotId: task.slot.id,
+                          status: "taken",
+                          takenAt: toMinuteIso(dayjs())
+                        }),
+                        "已记录用药"
+                      )}
+                    >
+                      已使用
+                    </Button>
+                  ),
                   <Button
                     key="missed"
                     danger={task.record?.status === "missed"}
@@ -961,7 +1024,7 @@ function MedicationPanel({
                       "已记录漏服"
                     )}
                   >
-                    漏服
+                    {task.plan.administrationRoute === "injection" ? "未注射" : "漏用"}
                   </Button>,
                   <Button
                     key="paused"
@@ -985,10 +1048,15 @@ function MedicationPanel({
                     <Space wrap>
                       <Text strong>{task.plan.name}</Text>
                       {task.plan.specification ? <Tag>{task.plan.specification}</Tag> : null}
+                      <Tag>{MEDICATION_ROUTE_LABELS[task.plan.administrationRoute]}</Tag>
                       <Tag color="blue">{task.slot.time ? `${task.slot.time} ` : ""}{task.slot.label}</Tag>
                     </Space>
                   }
-                  description={`每次 ${trimDecimal(task.plan.doseQuantity)} ${task.plan.stockUnit}${task.record ? ` · ${medicationDoseStatusLabels[task.record.status]}` : " · 待确认"}`}
+                  description={[
+                    `每次 ${trimDecimal(task.plan.doseQuantity)} ${task.plan.doseUnit}`,
+                    task.record ? medicationDoseStatusLabels[task.record.status] : "待确认",
+                    task.record?.injectionSite
+                  ].filter(Boolean).join(" · ")}
                 />
               </List.Item>
             )}
@@ -1002,6 +1070,16 @@ function MedicationPanel({
         title="用药计划与库存"
         extra={
           <Space wrap>
+            <Select
+              value={planStatus}
+              onChange={setPlanStatus}
+              options={[
+                { label: "全部状态", value: "all" },
+                { label: "使用中", value: "active" },
+                { label: "医嘱暂停", value: "paused" },
+                { label: "已停用", value: "stopped" }
+              ]}
+            />
             <Button
               icon={<DownloadOutlined />}
               href={healthExportUrl(
@@ -1016,10 +1094,10 @@ function MedicationPanel({
           </Space>
         }
       >
-        {data.medicationPlans.length ? (
+        {filteredPlans.length ? (
           <List
             className="medication-plan-list"
-            dataSource={data.medicationPlans}
+            dataSource={filteredPlans}
             renderItem={(plan) => {
               const days = medicationDaysRemaining(plan);
               const lowStock = plan.status === "active" && isMedicationLowStock(plan);
@@ -1035,6 +1113,7 @@ function MedicationPanel({
                       <Space wrap>
                         <Text strong>{plan.name}</Text>
                         {plan.specification ? <Tag>{plan.specification}</Tag> : null}
+                        <Tag>{MEDICATION_ROUTE_LABELS[plan.administrationRoute]}</Tag>
                         <MedicationPlanStatusTag status={plan.status} />
                         {lowStock ? <Tag color="red">药量预警</Tag> : null}
                       </Space>
@@ -1046,7 +1125,9 @@ function MedicationPanel({
                           {days === undefined ? "" : ` · 预计 ${days} 天`}
                         </Text>
                         <Text type="secondary">
-                          每次 {trimDecimal(plan.doseQuantity)} {plan.stockUnit} · {plan.scheduleSlots.map((slot) => slot.label).join("、")}
+                          每次 {trimDecimal(plan.doseQuantity)} {plan.doseUnit}
+                          {` · ${medicationFrequencyText(plan)}`}
+                          {` · 每次消耗 ${trimDecimal(plan.inventoryPerDose)} ${plan.stockUnit}`}
                         </Text>
                         {plan.instructions ? <Text type="secondary">医嘱：{plan.instructions}</Text> : null}
                       </Space>
@@ -1056,14 +1137,14 @@ function MedicationPanel({
               );
             }}
           />
-        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未建立用药计划" />}
+        ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前筛选下暂无用药计划" />}
       </Card>
 
       {data.medicationInventoryEvents.length ? (
         <Card title="库存变更记录">
           <List
             size="small"
-            dataSource={[...data.medicationInventoryEvents].reverse().slice(0, 20)}
+            dataSource={visibleInventoryEvents}
             renderItem={(event) => {
               const plan = data.medicationPlans.find((item) => item.id === event.medicationId);
               return (
@@ -1084,8 +1165,40 @@ function MedicationPanel({
               );
             }}
           />
+          {inventoryEvents.length > inventoryPageSize ? (
+            <Pagination
+              current={inventoryPage}
+              pageSize={inventoryPageSize}
+              total={inventoryEvents.length}
+              showSizeChanger={false}
+              onChange={setInventoryPage}
+              className="medication-inventory-pagination"
+            />
+          ) : null}
         </Card>
       ) : null}
+      <InjectionDoseEditor
+        task={injectionTask}
+        selectedDate={selectedDate}
+        onClose={() => setInjectionTask(undefined)}
+        onSave={(values) => {
+          if (!injectionTask) return;
+          void onMutate(
+            () => saveMedicationDose(injectionTask.plan.id, {
+              scheduledDate: selectedDate,
+              slotId: injectionTask.slot.id,
+              status: "taken",
+              takenAt: toMinuteIso(values.takenAt),
+              actualDoseQuantity: String(values.actualDoseQuantity),
+              injectionSite: values.injectionSite,
+              note: values.note
+            }),
+            "已记录注射"
+          ).then((saved) => {
+            if (saved) setInjectionTask(undefined);
+          });
+        }}
+      />
 
       <Card
         title="复诊安排"
@@ -1112,6 +1225,99 @@ function MedicationPanel({
         />
       </Card>
     </Space>
+  );
+}
+
+function medicationFrequencyText(plan: MedicationPlan): string {
+  const times = plan.scheduleSlots
+    .map((slot) => `${slot.time ? `${slot.time} ` : ""}${slot.label}`)
+    .join("、");
+  if (plan.frequency === "weekly") {
+    const weekdays = plan.weekdays
+      .map((weekday) => WEEKDAY_OPTIONS.find((option) => option.value === weekday)?.label)
+      .filter(Boolean)
+      .join("、");
+    return `每周${weekdays}${times ? ` · ${times}` : ""}`;
+  }
+  if (plan.frequency === "interval") {
+    return `每隔${plan.intervalDays ?? 1}天${times ? ` · ${times}` : ""}`;
+  }
+  return `每天${times ? ` · ${times}` : ""}`;
+}
+
+interface InjectionDoseFormValues {
+  actualDoseQuantity: number;
+  takenAt: Dayjs;
+  injectionSite?: string;
+  note?: string;
+}
+
+function InjectionDoseEditor({
+  task,
+  selectedDate,
+  onClose,
+  onSave
+}: {
+  task?: MedicationTask;
+  selectedDate: string;
+  onClose(): void;
+  onSave(values: InjectionDoseFormValues): void;
+}) {
+  const [form] = Form.useForm<InjectionDoseFormValues>();
+  useEffect(() => {
+    if (!task) return;
+    form.setFieldsValue({
+      actualDoseQuantity: numberOrUndefined(task.record?.actualDoseQuantity)
+        ?? Number(task.plan.doseQuantity),
+      takenAt: task.record?.takenAt
+        ? dayjs(task.record.takenAt).startOf("minute")
+        : dayjs(`${selectedDate}T${task.slot.time ?? dayjs().format("HH:mm")}:00`),
+      injectionSite: task.record?.injectionSite,
+      note: task.record?.note
+    });
+  }, [form, selectedDate, task]);
+  return (
+    <EditorDrawer title="记录注射" open={Boolean(task)} onClose={onClose}>
+      {task ? (
+        <Form form={form} layout="vertical" onFinish={onSave}>
+          <Alert
+            type="info"
+            showIcon
+            title={`${task.plan.name} · 医嘱剂量 ${trimDecimal(task.plan.doseQuantity)} ${task.plan.doseUnit}`}
+            description="请按医生已经确定的方案记录，系统不会根据血糖自动调整剂量。"
+            className="health-editor-alert"
+          />
+          <Row gutter={12}>
+            <Col xs={12}>
+              <NumberField
+                name="actualDoseQuantity"
+                label={`实际剂量（${task.plan.doseUnit}）`}
+                min={0.01}
+                max={100000}
+                step={0.1}
+                required
+              />
+            </Col>
+            <Col xs={12}>
+              <Form.Item name="takenAt" label="实际注射时间" rules={[{ required: true }]}>
+                <DatePicker {...MINUTE_DATE_TIME_PICKER_PROPS} className="health-full-width" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="injectionSite" label="注射部位">
+            <Select
+              allowClear
+              placeholder="可选"
+              options={["腹部", "大腿", "上臂", "臀部", "其他"].map((value) => ({ value }))}
+            />
+          </Form.Item>
+          <Form.Item name="note" label="备注或不适反应">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit">确认已注射</Button>
+        </Form>
+      ) : null}
+    </EditorDrawer>
   );
 }
 
@@ -1665,14 +1871,24 @@ function MedicationEditor({
   onSave
 }: EditorProps<MedicationPlan, MedicationPlanInput>) {
   const [form] = Form.useForm<MedicationFormValues>();
+  const administrationRoute = Form.useWatch("administrationRoute", form) ?? "oral";
+  const frequency = Form.useWatch("frequency", form) ?? "daily";
   useEffect(() => {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({
       name: record?.name,
       specification: record?.specification,
+      administrationRoute: record?.administrationRoute ?? "oral",
+      frequency: record?.frequency ?? "daily",
+      weekdays: record?.weekdays.length ? record.weekdays : [dayjs().day() || 7],
+      intervalDays: record?.intervalDays ?? 7,
+      doseUnit: record?.doseUnit ?? record?.stockUnit ?? "片",
       stockUnit: record?.stockUnit ?? "片",
       doseQuantity: numberOrUndefined(record?.doseQuantity) ?? 1,
+      inventoryPerDose: numberOrUndefined(record?.inventoryPerDose)
+        ?? numberOrUndefined(record?.doseQuantity)
+        ?? 1,
       scheduleSlots: record?.scheduleSlots.length
         ? record.scheduleSlots.map((slot) => ({
           ...slot,
@@ -1700,8 +1916,14 @@ function MedicationEditor({
       <Form form={form} layout="vertical" onFinish={(values) => onSave({
         name: values.name,
         specification: values.specification,
+        administrationRoute: values.administrationRoute,
+        frequency: values.frequency,
+        weekdays: values.frequency === "weekly" ? values.weekdays : undefined,
+        intervalDays: values.frequency === "interval" ? values.intervalDays : undefined,
+        doseUnit: values.doseUnit,
         stockUnit: values.stockUnit,
         doseQuantity: String(values.doseQuantity),
+        inventoryPerDose: String(values.inventoryPerDose),
         scheduleSlots: values.scheduleSlots.map((slot, index) => ({
           id: slot.id || `slot-${index + 1}`,
           label: slot.label,
@@ -1719,15 +1941,101 @@ function MedicationEditor({
           <Input placeholder="例如：二甲双胍" />
         </Form.Item>
         <Form.Item name="specification" label="规格"><Input placeholder="例如：0.5g/片" /></Form.Item>
+        <Form.Item name="administrationRoute" label="给药方式" rules={[{ required: true }]}>
+          <Segmented
+            block
+            options={[
+              { value: "oral", label: "口服" },
+              { value: "injection", label: "注射" },
+              { value: "topical", label: "外用" },
+              { value: "other", label: "其他" }
+            ]}
+            onChange={(value) => {
+              const route = value as MedicationPlan["administrationRoute"];
+              const defaults = MEDICATION_ROUTE_DEFAULTS[route];
+              const knownDoseUnits = Object.values(MEDICATION_ROUTE_DEFAULTS)
+                .map((item) => item.doseUnit);
+              const knownStockUnits = Object.values(MEDICATION_ROUTE_DEFAULTS)
+                .map((item) => item.stockUnit);
+              const knownScheduleLabels = Object.values(MEDICATION_ROUTE_DEFAULTS)
+                .map((item) => item.scheduleLabel);
+              const nextValues: Partial<MedicationFormValues> = {};
+              const currentDoseUnit = form.getFieldValue("doseUnit");
+              const currentStockUnit = form.getFieldValue("stockUnit");
+              if (!record || knownDoseUnits.includes(currentDoseUnit)) {
+                nextValues.doseUnit = defaults.doseUnit;
+              }
+              if (!record || knownStockUnits.includes(currentStockUnit)) {
+                nextValues.stockUnit = defaults.stockUnit;
+              }
+              const slots = form.getFieldValue("scheduleSlots");
+              if (
+                slots?.length === 1
+                && (!record || knownScheduleLabels.includes(slots[0]?.label))
+              ) {
+                nextValues.scheduleSlots = [{ ...slots[0], label: defaults.scheduleLabel }];
+              }
+              form.setFieldsValue(nextValues);
+            }}
+          />
+        </Form.Item>
+        <Form.Item name="frequency" label="用药频率" rules={[{ required: true }]}>
+          <Segmented block options={[
+            { value: "daily", label: "每天" },
+            { value: "weekly", label: "每周" },
+            { value: "interval", label: "间隔" }
+          ]} />
+        </Form.Item>
+        {frequency === "weekly" ? (
+          <Form.Item
+            name="weekdays"
+            label="每周用药日期"
+            rules={[{ required: true, message: "请选择每周用药日期" }]}
+          >
+            <Checkbox.Group options={WEEKDAY_OPTIONS} />
+          </Form.Item>
+        ) : null}
+        {frequency === "interval" ? (
+          <NumberField name="intervalDays" label="每隔多少天" min={1} max={365} required />
+        ) : null}
         <Row gutter={12}>
-          <Col xs={12}><NumberField name="doseQuantity" label="每次用量" min={0.01} max={100000} step={0.5} required /></Col>
           <Col xs={12}>
-            <Form.Item name="stockUnit" label="库存单位" rules={[{ required: true, message: "请输入库存单位" }]}>
-              <Input placeholder="片、粒、支、毫升" />
+            <NumberField
+              name="doseQuantity"
+              label={administrationRoute === "injection" ? "医嘱注射剂量" : "每次用量"}
+              min={0.01}
+              max={100000}
+              step={0.1}
+              required
+            />
+          </Col>
+          <Col xs={12}>
+            <Form.Item name="doseUnit" label="剂量单位" rules={[{ required: true, message: "请输入剂量单位" }]}>
+              <Input placeholder={administrationRoute === "injection" ? "单位、mg、ml" : "片、粒、ml"} />
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item label="每日用药时间" required>
+        <Row gutter={12}>
+          <Col xs={12}>
+            <NumberField
+              name="inventoryPerDose"
+              label="每次库存消耗"
+              min={0.01}
+              max={100000}
+              step={0.1}
+              required
+            />
+          </Col>
+          <Col xs={12}>
+            <Form.Item name="stockUnit" label="库存单位" rules={[{ required: true, message: "请输入库存单位" }]}>
+              <Input placeholder="片、粒、支、单位" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item
+          label={frequency === "daily" ? "每日用药时间" : "计划用药时间"}
+          required
+        >
           <Form.List name="scheduleSlots">
             {(fields, { add, remove }) => (
               <Space orientation="vertical" className="health-full-width">
@@ -2124,8 +2432,14 @@ interface Hba1cFormValues {
 interface MedicationFormValues {
   name: string;
   specification?: string;
+  administrationRoute: MedicationPlan["administrationRoute"];
+  frequency: MedicationPlan["frequency"];
+  weekdays?: number[];
+  intervalDays?: number;
+  doseUnit: string;
   stockUnit: string;
   doseQuantity: number;
+  inventoryPerDose: number;
   scheduleSlots: Array<{ id?: string; label: string; time?: Dayjs }>;
   startDate: Dayjs;
   endDate?: Dayjs;

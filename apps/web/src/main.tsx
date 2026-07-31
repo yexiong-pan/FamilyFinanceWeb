@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import "antd/dist/reset.css";
-import App from "./App";
+import AuthGate from "./AuthGate";
 import useIllustrationTheme from "./illustrationTheme";
 import "./styles.css";
 
@@ -12,7 +12,7 @@ function Root() {
 
   return (
     <ConfigProvider locale={zhCN} {...illustrationTheme}>
-      <App />
+      <AuthGate />
     </ConfigProvider>
   );
 }

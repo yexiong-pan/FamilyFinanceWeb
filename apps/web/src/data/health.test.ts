@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { BloodGlucoseRecord, BodyMeasurement, MedicationPlan, MemberHealthProfile } from "@family-finance/shared";
+import type {
+  BloodGlucoseRecord,
+  BodyMeasurement,
+  HealthFollowup,
+  MedicationPlan,
+  MemberHealthProfile
+} from "@family-finance/shared";
 import {
   buildBodySummary,
   buildExerciseSummary,
@@ -7,6 +13,7 @@ import {
   buildMedicationTasks,
   glucoseStatus,
   medicationDaysRemaining,
+  nextScheduledFollowup,
   toMinuteIso
 } from "./health";
 import dayjs from "dayjs";
@@ -105,8 +112,13 @@ describe("health summaries", () => {
       id: "med-1",
       memberId: "member-1",
       name: "测试药",
+      administrationRoute: "oral",
+      frequency: "daily",
+      weekdays: [],
+      doseUnit: "片",
       stockUnit: "片",
       doseQuantity: "1.00",
+      inventoryPerDose: "1.00",
       scheduleSlots: [
         { id: "morning", label: "早餐后", time: "08:00" },
         { id: "evening", label: "晚餐后", time: "19:00" }
@@ -118,6 +130,45 @@ describe("health summaries", () => {
     };
     expect(buildMedicationTasks([plan], [], "2026-07-10")).toHaveLength(2);
     expect(medicationDaysRemaining(plan)).toBe(7);
+
+    const weeklyPlan: MedicationPlan = {
+      ...plan,
+      id: "weekly-injection",
+      administrationRoute: "injection",
+      frequency: "weekly",
+      weekdays: [5],
+      doseUnit: "mg",
+      stockUnit: "支",
+      doseQuantity: "0.50",
+      inventoryPerDose: "1.00",
+      scheduleSlots: [{ id: "weekly", label: "晚间注射", time: "20:00" }],
+      currentStock: "4.00"
+    };
+    expect(buildMedicationTasks([weeklyPlan], [], "2026-07-10")).toHaveLength(1);
+    expect(buildMedicationTasks([weeklyPlan], [], "2026-07-11")).toHaveLength(0);
+    expect(medicationDaysRemaining(weeklyPlan)).toBe(28);
+  });
+
+  it("prioritizes a scheduled follow-up in the selected month", () => {
+    const followups = [
+      followup("2026-08-10T09:00:00.000Z"),
+      followup("2026-07-15T09:00:00.000Z")
+    ];
+
+    expect(
+      nextScheduledFollowup(followups, "2026-07-31", "2026-07")?.scheduledAt
+    ).toBe("2026-07-15T09:00:00.000Z");
+  });
+
+  it("falls back to the next future follow-up when the selected month has none", () => {
+    const followups = [
+      followup("2026-06-15T09:00:00.000Z"),
+      followup("2026-08-10T09:00:00.000Z")
+    ];
+
+    expect(
+      nextScheduledFollowup(followups, "2026-07-31", "2026-07")?.scheduledAt
+    ).toBe("2026-08-10T09:00:00.000Z");
   });
 });
 
@@ -143,5 +194,17 @@ function glucose(
     glucoseMmol,
     context,
     source: "manual"
+  };
+}
+
+function followup(scheduledAt: string): HealthFollowup {
+  return {
+    id: scheduledAt,
+    memberId: "member-1",
+    scheduledAt,
+    type: "常规复诊",
+    tests: [],
+    reminderDays: 3,
+    status: "scheduled"
   };
 }

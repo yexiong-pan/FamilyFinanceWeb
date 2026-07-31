@@ -194,7 +194,7 @@ export class FinancialPlanningService {
     assertMonth(month);
     await this.ensurePlanningData();
     const previous = shiftMonth(month, -1);
-    const [review, status, currentSummary, previousSummary, currentTransactions, previousTransactions, staleAccounts, incompleteLiabilities] =
+    const [review, status, currentSummary, previousSummary, currentTransactions, previousTransactions, staleAccounts, liabilities] =
       await Promise.all([
         this.ensureMonthlyReview(month),
         this.financeService.getMonthlyReview(month),
@@ -209,21 +209,17 @@ export class FinancialPlanningService {
             updatedAt: { lt: addUtcDays(new Date(), -30) }
           }
         }),
-        this.prisma.liability.count({
-          where: {
-            familyId: DEFAULT_FAMILY_ID,
-            deletedAt: null,
-            status: "active",
-            OR: [{ monthlyPayment: null }, { paymentDay: null }]
-          }
-        })
+        this.financeService.listLiabilitiesForMonth(month)
       ]);
-    const pendingTransactions = currentTransactions.filter(
-      (item) => item.source && item.source !== "manual" && !item.confirmedAt
+    const pendingImportedTransactions = (kind: "income" | "expense") => currentTransactions.filter(
+      (item) => item.kind === kind && item.source && item.source !== "manual" && !item.confirmedAt
     ).length;
+    const pendingIncomeTransactions = pendingImportedTransactions("income");
+    const pendingExpenseTransactions = pendingImportedTransactions("expense");
     const unclassifiedTransactions = currentTransactions.filter(
       (item) => item.categoryName === "待分类支出" || item.categoryName === "待分类收入"
     ).length;
+    const incompleteLiabilities = liabilities.filter(isIncompleteMonthlyLiability).length;
     const checks = [
       { key: "income", label: "收入已确认", complete: status.income, severity: "required" as const },
       { key: "spending", label: "支出已确认", complete: status.spending, severity: "required" as const },
@@ -231,10 +227,17 @@ export class FinancialPlanningService {
       { key: "liabilities", label: "负债已保存快照", complete: status.liabilities, severity: "required" as const },
       { key: "investments", label: "投资已保存快照", complete: status.investments, severity: "required" as const },
       {
-        key: "pending-transactions",
-        label: "没有待确认流水",
-        complete: pendingTransactions === 0,
-        detail: pendingTransactions ? `${pendingTransactions} 笔流水待确认` : undefined,
+        key: "pending-income-transactions",
+        label: "没有待确认收入流水",
+        complete: pendingIncomeTransactions === 0,
+        detail: pendingIncomeTransactions ? `${pendingIncomeTransactions} 笔收入待确认` : undefined,
+        severity: "warning" as const
+      },
+      {
+        key: "pending-expense-transactions",
+        label: "没有待确认支出流水",
+        complete: pendingExpenseTransactions === 0,
+        detail: pendingExpenseTransactions ? `${pendingExpenseTransactions} 笔支出待确认` : undefined,
         severity: "warning" as const
       },
       {
@@ -559,13 +562,15 @@ function buildLiabilityObligations(
     ownerName: string;
     monthlyPayment?: string;
     paymentDay?: number;
+    repaymentSchedule?: string;
     status: string;
   }>,
   start: Date,
   end: Date
 ): SafetyObligation[] {
   return liabilities.flatMap((item) => {
-    if (item.status !== "active" || !item.monthlyPayment || !item.paymentDay) return [];
+    if (item.repaymentSchedule === "flexible" || isIncompleteMonthlyLiability(item)) return [];
+    if (!item.monthlyPayment || !item.paymentDay) return [];
     return monthlyOccurrences(item.paymentDay, start, end).map((date) => ({
       id: `liability:${item.id}:${formatDate(date)}`,
       name: item.name,
@@ -649,7 +654,7 @@ function buildConfidenceIssues(input: {
   liquidAccounts: Array<{ updatedAt?: string }>;
   liquidAccountsExplicitlySelected: boolean;
   recurringCount: number;
-  liabilities: Array<{ status: string; monthlyPayment?: string; paymentDay?: number }>;
+  liabilities: Array<{ status: string; repaymentSchedule: string; monthlyPayment?: string; paymentDay?: number }>;
 }): string[] {
   const issues: string[] = [];
   if (input.liquidAccounts.length === 0) issues.push("尚未配置可用的流动资金账户");
@@ -664,13 +669,22 @@ function buildConfidenceIssues(input: {
     issues.push(`${stale} 个流动资金账户超过30天未更新`);
   }
   if (input.recurringCount === 0) issues.push("尚未配置周期性收入和支出");
-  const incompleteLiabilities = input.liabilities.filter(
-    (item) => item.status === "active" && (!item.monthlyPayment || !item.paymentDay)
-  ).length;
+  const incompleteLiabilities = input.liabilities.filter(isIncompleteMonthlyLiability).length;
   if (incompleteLiabilities > 0) {
     issues.push(`${incompleteLiabilities} 笔负债缺少月供或还款日`);
   }
   return issues;
+}
+
+function isIncompleteMonthlyLiability(item: {
+  status: string;
+  repaymentSchedule?: string;
+  monthlyPayment?: string;
+  paymentDay?: number;
+}): boolean {
+  return item.status === "active"
+    && (item.repaymentSchedule ?? "monthly") === "monthly"
+    && (Number(item.monthlyPayment ?? 0) <= 0 || !item.paymentDay);
 }
 
 function validateRecurringCashflow(input: RecurringCashflowInput) {

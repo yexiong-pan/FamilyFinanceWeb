@@ -1,25 +1,33 @@
 import {
+  AccountBookOutlined,
   ArrowDownOutlined,
   ArrowUpOutlined,
   CalendarOutlined,
+  CheckCircleOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   FilterOutlined,
   FireOutlined,
+  FundOutlined,
   GiftOutlined,
   MedicineBoxOutlined,
   PlusOutlined,
+  QuestionCircleOutlined,
   RightOutlined,
   ScheduleOutlined,
+  ShoppingCartOutlined,
   UserOutlined,
-  WalletOutlined
+  RiseOutlined
 } from "@ant-design/icons";
 import type {
   CalendarData,
   CalendarDayEntry,
   CalendarDayEntryType,
   CalendarDaySummary,
+  CalendarEventOccurrence,
   CalendarEventType,
+  CalendarFollowupItem,
+  CalendarMemberGlucoseSummary,
   CalendarMonthSummary,
   FamilyMemberInfo,
   HealthData,
@@ -115,6 +123,7 @@ const CALENDAR_CONTENT_OPTIONS: Array<{ label: string; value: CalendarDayEntryTy
   { label: "纪念日", value: "anniversary" }
 ];
 const ALL_CALENDAR_CONTENT = CALENDAR_CONTENT_OPTIONS.map((option) => option.value);
+const CALENDAR_MEMBER_TAG_COLORS = ["magenta", "purple", "cyan", "orange", "green", "blue", "gold", "lime"];
 export type QuickHealthKind = "medication" | "body" | "glucose" | "exercise" | "strength";
 
 interface CalendarPageProps {
@@ -227,7 +236,7 @@ export function CalendarPage({
             onChange={(value) => onTabChange(value as CalendarTabKey)}
             options={[
               { label: "月视角", value: "month", icon: <CalendarOutlined /> },
-              { label: "年视角", value: "year", icon: <WalletOutlined /> },
+              { label: "年视角", value: "year", icon: <FundOutlined /> },
               { label: "日程", value: "events", icon: <ScheduleOutlined /> }
             ]}
           />
@@ -262,6 +271,7 @@ export function CalendarPage({
             density={density}
             onDensityChange={onDensityChange}
             onSelectDate={openCalendarDate}
+            onOpenHealth={onOpenHealth}
           />
         ) : null}
         {data && tab === "year" ? (
@@ -336,7 +346,8 @@ function MonthCalendar({
   compact,
   density,
   onDensityChange,
-  onSelectDate
+  onSelectDate,
+  onOpenHealth
 }: {
   data: CalendarData;
   monthKey: string;
@@ -346,6 +357,7 @@ function MonthCalendar({
   density: MobileCalendarDensity;
   onDensityChange(density: MobileCalendarDensity): void;
   onSelectDate(date: string): void;
+  onOpenHealth(tab: HealthTabKey, memberId?: string, month?: string): void;
 }) {
   const cells = useMemo(() => buildMonthCells(monthKey), [monthKey]);
   const pinchPointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -401,7 +413,12 @@ function MonthCalendar({
   };
   return (
     <div className={`calendar-month-view ${detailActive ? "is-detail-density" : ""}`}>
-      <MonthCalendarSummary data={data} compact={compact} />
+      <MonthCalendarSummary
+        data={data}
+        compact={compact}
+        onOpenHealth={onOpenHealth}
+        onSelectDate={onSelectDate}
+      />
       <Card
         className="calendar-grid-card"
         aria-label={compact ? "双指放大查看日期详情，双指缩小恢复月历" : undefined}
@@ -550,8 +567,8 @@ function CalendarEntryRow({ entry }: { entry: CalendarDayEntry }) {
 function calendarEntryIcon(type: CalendarDayEntryType, compact = false): ReactNode {
   if (type === "anniversary") return <GiftOutlined />;
   if (type === "schedule") return <CalendarOutlined />;
-  if (type === "income") return compact ? <ArrowUpOutlined /> : <WalletOutlined />;
-  if (type === "expense") return compact ? <ArrowDownOutlined /> : <WalletOutlined />;
+  if (type === "income") return compact ? <ArrowUpOutlined /> : <RiseOutlined />;
+  if (type === "expense") return compact ? <ArrowDownOutlined /> : <ShoppingCartOutlined />;
   if (type === "glucose") return <ExperimentOutlined />;
   if (type === "exercise") return <FireOutlined />;
   if (type === "medication") return <MedicineBoxOutlined />;
@@ -680,7 +697,17 @@ function CalendarSummaryCards({
   );
 }
 
-function MonthCalendarSummary({ data, compact }: { data: CalendarData; compact: boolean }) {
+function MonthCalendarSummary({
+  data,
+  compact,
+  onOpenHealth,
+  onSelectDate
+}: {
+  data: CalendarData;
+  compact: boolean;
+  onOpenHealth(tab: HealthTabKey, memberId?: string, month?: string): void;
+  onSelectDate(date: string): void;
+}) {
   const reminders = [
     { label: "血糖异常", value: data.summary.glucoseAbnormalCount },
     { label: "漏服", value: data.summary.medication.missed },
@@ -693,10 +720,11 @@ function MonthCalendarSummary({ data, compact }: { data: CalendarData; compact: 
       .filter((item) => item.minutes > 0)
       .map((item) => `${item.memberName}${item.minutes}分`)
       .join(" · ") || "暂无";
-    const weightText = data.latestWeightByMember
+  const weightText = data.latestWeightByMember
       .filter((item) => item.weightKg)
       .map((item) => `${item.memberName}${Number(item.weightKg)}kg`)
       .join(" · ") || "暂无";
+    const glucoseMembers = calendarGlucoseMembers(data.latestGlucoseByMember);
     return (
       <Card
         className="calendar-mobile-overview"
@@ -727,68 +755,310 @@ function MonthCalendarSummary({ data, compact }: { data: CalendarData; compact: 
               : `${reminderTotal}项`}</strong>
           </span>
         </div>
+        {glucoseMembers.length ? (
+          <span
+            className="calendar-mobile-glucose"
+            aria-label={`最近血糖 ${glucoseMembers.map((item) => item.description).join("；")}`}
+          >
+            <ExperimentOutlined aria-hidden="true" />
+            {glucoseMembers.map((item) => (
+              <span className="calendar-mobile-glucose-item" key={item.memberId} title={item.description}>
+                <Tag color="purple">{item.memberName}</Tag>
+                <strong>{item.value}</strong>
+                <small className={item.status ? `is-${item.status}` : undefined}>{item.statusIcon}</small>
+              </span>
+            ))}
+          </span>
+        ) : null}
       </Card>
     );
   }
-  return (
-    <Row gutter={[12, 12]} className="calendar-summary-row calendar-month-summary-row">
-      <Col xs={12} xl={6}>
-        <Card className="calendar-summary-card metric-card--asset" title="本月收支">
-          <div className="calendar-summary-list">
-            <SummaryLine label="收入" value={formatMoney(data.summary.income)} tone="income" />
-            <SummaryLine label="支出" value={formatMoney(data.summary.expense)} tone="expense" />
-            <SummaryLine label="结余" value={formatMoney(data.summary.balance)} tone="asset" />
-          </div>
-        </Card>
-      </Col>
-      <Col xs={12} xl={6}>
-        <Card className="calendar-summary-card metric-card--neutral" title="运动情况">
-          <div className="calendar-summary-list">
-            {data.exerciseByMember.map((item) => (
-              <SummaryLine
-                key={item.memberId}
-                label={item.memberName}
-                value={item.activities.length
-                  ? item.activities.map((activity) => `${activity.type} ${activity.minutes}分`).join(" · ")
-                  : "暂无运动"}
-              />
-            ))}
-          </div>
-        </Card>
-      </Col>
-      <Col xs={12} xl={6}>
-        <Card className="calendar-summary-card metric-card--income" title="体重情况">
-          <div className="calendar-summary-list">
-            {data.latestWeightByMember.map((item) => (
-              <SummaryLine
-                key={item.memberId}
-                label={item.memberName}
-                value={item.weightKg ? `${Number(item.weightKg)} kg` : "暂无"}
-                note={item.measuredAt ? dayjs(item.measuredAt).format("M月D日") : undefined}
-              />
-            ))}
-          </div>
-        </Card>
-      </Col>
-      <Col xs={12} xl={6}>
-        <Card className="calendar-summary-card metric-card--warning" title="提醒与日程">
-          <div className="calendar-reminder-total">
-            <strong>{reminderTotal}</strong><span>项健康提醒</span>
-          </div>
-          <div className="calendar-reminder-breakdown">
-            {reminders.map((item) => <span key={item.label}>{item.label} {item.value}</span>)}
-          </div>
-          {nextEvent ? (
-            <div className="calendar-next-event" title={nextEvent.title}>
-              {calendarEntryIcon(nextEvent.type)}
-              <span>{nextEvent.title}</span>
-              <small>{nextEvent.countdownDays === 0 ? "今天" : `${nextEvent.countdownDays}天后`}</small>
-            </div>
-          ) : null}
-        </Card>
-      </Col>
-    </Row>
+  const memberColorById = new Map(
+    data.exerciseByMember.map((item, index) => [
+      item.memberId,
+      CALENDAR_MEMBER_TAG_COLORS[index % CALENDAR_MEMBER_TAG_COLORS.length]!
+    ])
   );
+  const exerciseMembers = data.exerciseByMember
+    .filter((item) => item.minutes > 0)
+    .map((item) => ({ memberId: item.memberId, memberName: item.memberName, value: `${item.minutes}分` }));
+  const weightMembers = data.latestWeightByMember
+    .filter((item) => item.weightKg)
+    .map((item) => ({
+      memberId: item.memberId,
+      memberName: item.memberName,
+      value: `${trimCalendarNumber(item.weightKg)}kg`
+    }));
+  const glucoseMembers = calendarGlucoseMembers(data.latestGlucoseByMember);
+  const priorityAlert = buildCalendarPriorityAlert(data);
+  return (
+    <Card className="calendar-month-summary-bar metric-card--asset">
+      <div className="calendar-month-summary-content">
+        <div className="calendar-summary-metrics" aria-label="本月概览">
+          <CalendarSummaryMetric
+            icon={<ArrowUpOutlined />}
+            label="收入"
+            value={compactMoney(data.summary.income)}
+            tone="income"
+          />
+          <CalendarSummaryMetric
+            icon={<ArrowDownOutlined />}
+            label="支出"
+            value={compactMoney(data.summary.expense)}
+            tone="expense"
+          />
+          <CalendarMemberSummaryMetric
+            icon={<FireOutlined />}
+            label="运动"
+            items={exerciseMembers}
+            memberColorById={memberColorById}
+            tone="exercise"
+          />
+          <CalendarMemberSummaryMetric
+            icon={<DashboardOutlined />}
+            label="体重"
+            items={weightMembers}
+            memberColorById={memberColorById}
+            tone="weight"
+          />
+          <CalendarMemberSummaryMetric
+            icon={<ExperimentOutlined />}
+            label="最近血糖"
+            items={glucoseMembers}
+            memberColorById={memberColorById}
+            tone="glucose"
+          />
+        </div>
+        <div className="calendar-priority-alerts">
+          <CalendarPriorityAlert
+            alert={priorityAlert}
+            onOpenHealth={onOpenHealth}
+            onSelectDate={onSelectDate}
+          />
+          {priorityAlert.schedule ? null : data.upcomingEvents[0] ? (
+            <CalendarPriorityAlert
+              alert={calendarScheduleAlert(data.upcomingEvents[0])}
+              onOpenHealth={onOpenHealth}
+              onSelectDate={onSelectDate}
+            />
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CalendarSummaryMetric({
+  icon,
+  label,
+  value,
+  tone
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  tone: "income" | "expense" | "exercise" | "weight";
+}) {
+  return (
+    <span className={`calendar-summary-metric is-${tone}`} title={label} aria-label={`${label} ${value}`}>
+      {icon}
+      <strong>{value}</strong>
+    </span>
+  );
+}
+
+function CalendarMemberSummaryMetric({
+  icon,
+  label,
+  items,
+  memberColorById,
+  tone
+}: {
+  icon: ReactNode;
+  label: string;
+  items: Array<{
+    memberId: string;
+    memberName: string;
+    value: string;
+    detail?: string;
+    status?: CalendarMemberGlucoseSummary["status"];
+    statusIcon?: ReactNode;
+    description?: string;
+  }>;
+  memberColorById: Map<string, string>;
+  tone: "exercise" | "weight" | "glucose";
+}) {
+  return (
+    <span className={`calendar-summary-metric calendar-member-summary-metric is-${tone}`} title={label}>
+      {icon}
+      <span className="calendar-member-summary-values" aria-label={label}>
+        {items.length ? items.map((item) => (
+          <span className="calendar-member-summary-item" key={item.memberId} title={item.description}>
+            <Tag color={memberColorById.get(item.memberId) ?? "default"}>{item.memberName}</Tag>
+            <strong>{item.value}</strong>
+            {item.statusIcon ? <small className={item.status ? `is-${item.status}` : undefined}>{item.statusIcon}</small> : null}
+          </span>
+        )) : <strong>—</strong>}
+      </span>
+    </span>
+  );
+}
+
+function calendarGlucoseMembers(readings: CalendarMemberGlucoseSummary[]) {
+  return readings.flatMap((reading) => {
+    if (!reading.value || !reading.context || !reading.status) return [];
+    const range = glucoseTargetRangeText(reading);
+    const comparison = `${calendarGlucoseStatusLabel(reading.status)}${range ? ` ${range}` : ""}`;
+    return [{
+      memberId: reading.memberId,
+      memberName: reading.memberName,
+      value: trimCalendarNumber(reading.value),
+      status: reading.status,
+      statusIcon: calendarGlucoseStatusIcon(reading.status),
+      description: `${reading.memberName} ${trimCalendarNumber(reading.value)} mmol/L，${glucoseContextLabels[reading.context]}，${comparison}`
+    }];
+  });
+}
+
+function glucoseTargetRangeText(reading: CalendarMemberGlucoseSummary) {
+  if (reading.targetMin !== undefined && reading.targetMax !== undefined) {
+    return `${trimCalendarNumber(reading.targetMin)}-${trimCalendarNumber(reading.targetMax)}`;
+  }
+  if (reading.targetMin !== undefined) return `≥${trimCalendarNumber(reading.targetMin)}`;
+  if (reading.targetMax !== undefined) return `≤${trimCalendarNumber(reading.targetMax)}`;
+  return "";
+}
+
+function calendarGlucoseStatusLabel(status: NonNullable<CalendarMemberGlucoseSummary["status"]>) {
+  if (status === "low") return "偏低";
+  if (status === "high") return "偏高";
+  if (status === "inRange") return "达标";
+  return "未设目标";
+}
+
+function calendarGlucoseStatusIcon(status: NonNullable<CalendarMemberGlucoseSummary["status"]>) {
+  if (status === "low") return <ArrowDownOutlined aria-label="偏低" />;
+  if (status === "high") return <ArrowUpOutlined aria-label="偏高" />;
+  if (status === "inRange") return <CheckCircleOutlined aria-label="达标" />;
+  return <QuestionCircleOutlined aria-label="未设目标" />;
+}
+
+function CalendarPriorityAlert({
+  alert,
+  onOpenHealth,
+  onSelectDate
+}: {
+  alert: CalendarPriorityAlertValue;
+  onOpenHealth(tab: HealthTabKey, memberId?: string, month?: string): void;
+  onSelectDate(date: string): void;
+}) {
+  const clickable = Boolean(alert.followup || alert.healthTab || alert.schedule);
+  return (
+    <button
+      type="button"
+      className={`calendar-priority-alert is-${alert.tone}`}
+      onClick={() => {
+        if (alert.followup) {
+          onOpenHealth("medication", alert.followup.memberId, alert.followup.scheduledAt.slice(0, 7));
+        } else if (alert.healthTab) {
+          onOpenHealth(alert.healthTab);
+        } else if (alert.schedule) {
+          onSelectDate(alert.schedule.date);
+        }
+      }}
+      disabled={!clickable}
+      aria-label={alert.ariaLabel}
+    >
+      <span className="calendar-priority-alert-icon">{alert.icon}</span>
+      <span className="calendar-priority-alert-main">{alert.main}</span>
+      <small>{alert.detail}</small>
+      {clickable ? <RightOutlined /> : null}
+    </button>
+  );
+}
+
+interface CalendarPriorityAlertValue {
+  tone: "warning" | "danger" | "info" | "neutral";
+  icon: ReactNode;
+  main: string;
+  detail: string;
+  ariaLabel: string;
+  followup?: CalendarFollowupItem;
+  healthTab?: HealthTabKey;
+  schedule?: CalendarEventOccurrence;
+}
+
+function buildCalendarPriorityAlert(data: CalendarData): CalendarPriorityAlertValue {
+  const isCurrentPeriod = data.period === dayjs().format("YYYY-MM");
+  const nextEvent = data.upcomingEvents[0];
+  const monthFollowup = data.days
+    .flatMap((day) => day.followups)
+    .filter((followup) => followup.status === "scheduled")
+    .sort((left, right) => left.scheduledAt.localeCompare(right.scheduledAt))[0];
+  const followup = isCurrentPeriod ? data.upcomingFollowup ?? monthFollowup : monthFollowup;
+  if (followup) {
+    const appointment = dayjs(followup.scheduledAt);
+    const daysUntil = appointment.startOf("day").diff(dayjs().startOf("day"), "day");
+    const detail = isCurrentPeriod
+      ? daysUntil < 0
+        ? `已逾期 ${Math.abs(daysUntil)} 天`
+        : daysUntil === 0
+          ? "今天"
+          : `${appointment.format("M月D日")} · ${daysUntil}天后`
+      : appointment.format("M月D日 HH:mm");
+    return {
+      tone: daysUntil <= 7 ? "warning" : "info",
+      icon: <MedicineBoxOutlined />,
+      main: followup.type,
+      detail,
+      ariaLabel: `待复诊：${followup.type}，${detail}`,
+      followup
+    };
+  }
+  if (data.summary.glucoseAbnormalCount) {
+    const detail = `异常 ${data.summary.glucoseAbnormalCount} 次`;
+    return {
+      tone: "danger",
+      icon: <ExperimentOutlined />,
+      main: "血糖",
+      detail,
+      ariaLabel: `血糖${detail}`,
+      healthTab: "glucose"
+    };
+  }
+  if (data.summary.medication.missed) {
+    const detail = `漏用 ${data.summary.medication.missed} 次`;
+    return {
+      tone: "danger",
+      icon: <MedicineBoxOutlined />,
+      main: "用药",
+      detail,
+      ariaLabel: `用药${detail}`,
+      healthTab: "medication"
+    };
+  }
+  if (nextEvent) {
+    return calendarScheduleAlert(nextEvent);
+  }
+  return {
+    tone: "neutral",
+    icon: <ScheduleOutlined />,
+    main: "暂无重要提醒",
+    detail: "",
+    ariaLabel: "暂无重要提醒"
+  };
+}
+
+function calendarScheduleAlert(event: CalendarEventOccurrence): CalendarPriorityAlertValue {
+  const detail = event.countdownDays === 0 ? "今天" : `${event.countdownDays}天后`;
+  return {
+    tone: "info",
+    icon: calendarEntryIcon(event.type),
+    main: event.title,
+    detail,
+    ariaLabel: `日程提醒：${event.title}，${detail}`,
+    schedule: event
+  };
 }
 
 function SummaryLine({
@@ -877,7 +1147,7 @@ function DayDetailDrawer({
 
           <DetailSection
             title="财务"
-            icon={<WalletOutlined />}
+            icon={<AccountBookOutlined />}
             action={(
               <Space size={6}>
                 <Button size="small" onClick={() => onOpenCashflow("income", month, memberName)}>收入</Button>
