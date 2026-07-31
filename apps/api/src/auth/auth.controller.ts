@@ -17,9 +17,13 @@ export class AuthController {
 
   @Public()
   @Post("login")
-  async login(@Body() input: LoginInput, @Res({ passthrough: true }) response: ServerResponse) {
+  async login(
+    @Body() input: LoginInput,
+    @Req() request: IncomingMessage,
+    @Res({ passthrough: true }) response: ServerResponse
+  ) {
     const result = await this.authService.login(input);
-    setSessionCookie(response, result.token);
+    setSessionCookie(response, request, result.token);
     return { user: result.user };
   }
 
@@ -37,7 +41,7 @@ export class AuthController {
   @Post("logout")
   async logout(@Req() request: IncomingMessage, @Res({ passthrough: true }) response: ServerResponse) {
     await this.authService.logout(readCookie(request.headers.cookie, COOKIE));
-    response.setHeader("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    response.setHeader("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureCookieAttribute(request)}`);
     return { ok: true };
   }
 
@@ -49,14 +53,29 @@ export class AuthController {
 
   @Public()
   @Post("invitations/accept")
-  async accept(@Body() input: AcceptInvitationInput, @Res({ passthrough: true }) response: ServerResponse) {
+  async accept(
+    @Body() input: AcceptInvitationInput,
+    @Req() request: IncomingMessage,
+    @Res({ passthrough: true }) response: ServerResponse
+  ) {
     const result = await this.authService.acceptInvitation(input);
-    setSessionCookie(response, result.token);
+    setSessionCookie(response, request, result.token);
     return { user: result.user };
   }
 }
 
-function setSessionCookie(response: ServerResponse, token: string) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  response.setHeader("Set-Cookie", `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${secure}`);
+function setSessionCookie(response: ServerResponse, request: IncomingMessage, token: string) {
+  response.setHeader(
+    "Set-Cookie",
+    `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${secureCookieAttribute(request)}`
+  );
+}
+
+function secureCookieAttribute(request: IncomingMessage): string {
+  const forced = process.env.AUTH_COOKIE_SECURE;
+  if (forced === "true") return "; Secure";
+  if (forced === "false") return "";
+  const forwardedProtocol = request.headers["x-forwarded-proto"];
+  const protocol = Array.isArray(forwardedProtocol) ? forwardedProtocol[0] : forwardedProtocol?.split(",")[0];
+  return protocol?.trim() === "https" ? "; Secure" : "";
 }
