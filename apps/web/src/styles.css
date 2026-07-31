@@ -621,8 +621,36 @@ button.expense-nature-summary:focus-visible {
   box-shadow: none !important;
 }
 
-.mobile-nav {
+.mobile-floating-navigation {
   display: none;
+}
+
+.quick-record-floating-group {
+  z-index: 1002;
+  inset-inline-end: 24px;
+  bottom: 24px;
+}
+
+.quick-record-floating-group .ant-float-btn {
+  border: 3px solid #2c2c2c;
+  box-shadow: 3px 3px 0 #2c2c2c;
+}
+
+.quick-record-floating-group .ant-float-btn-group-trigger {
+  width: 52px;
+  min-height: 52px;
+  height: 52px;
+  box-shadow: 4px 4px 0 #2c2c2c;
+}
+
+.quick-record-more-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.quick-record-more-actions .ant-btn {
+  justify-content: flex-start;
+  height: 48px;
 }
 
 .health-member-select {
@@ -643,6 +671,97 @@ button.expense-nature-summary:focus-visible {
 
 .health-goal-row {
   margin-bottom: 16px;
+}
+
+.strength-summary-list,
+.strength-movement-list,
+.strength-goal-editor {
+  width: 100%;
+}
+
+.strength-summary-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.strength-summary-item,
+.strength-movement-editor,
+.strength-goal-row {
+  border: 2px solid #2c2c2c;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.strength-summary-item {
+  padding: 10px 12px;
+}
+
+.strength-summary-item .ant-progress {
+  margin-top: 6px;
+}
+
+.strength-trend {
+  margin-top: 18px;
+}
+
+.strength-movement-section {
+  margin-bottom: 16px;
+  padding-top: 14px;
+  border-top: 2px solid #2c2c2c;
+}
+
+.strength-movement-list {
+  margin-top: 12px;
+}
+
+.strength-movement-editor,
+.strength-goal-row {
+  padding: 12px;
+}
+
+.strength-movement-heading,
+.strength-goal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.strength-goal-heading > .ant-form-item {
+  flex: 1;
+}
+
+.strength-set-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.strength-set-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.strength-set-item .ant-form-item {
+  width: 96px;
+  margin-bottom: 0;
+}
+
+.strength-set-item .ant-input-number {
+  width: 100%;
+}
+
+.calendar-strength-fields {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 2px solid #2c2c2c;
+  border-radius: 8px;
+  background: #fff;
 }
 
 .health-record-list {
@@ -1090,8 +1209,111 @@ button.expense-nature-summary:focus-visible {
   font-size: 12px;
 }
 
+.calendar-next-event {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  margin-top: 8px;
+  color: #0958d9;
+  font-size: 12px;
+}
+
+.calendar-next-event > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-next-event > small {
+  color: #8c8c8c;
+}
+
 .calendar-summary-card .ant-statistic-content {
   font-size: 21px;
+}
+
+.calendar-mobile-overview .ant-card-head {
+  min-height: 38px;
+}
+
+.calendar-mobile-overview .ant-card-head-title,
+.calendar-mobile-overview .ant-card-extra {
+  padding: 7px 0;
+}
+
+.calendar-mobile-overview .ant-card-body {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.calendar-mobile-finance,
+.calendar-mobile-supporting {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.calendar-mobile-finance > span,
+.calendar-mobile-supporting > span {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 7px;
+  border-radius: 7px;
+}
+
+.calendar-mobile-finance > span {
+  justify-content: space-between;
+}
+
+.calendar-mobile-finance > span.is-income {
+  color: #237804;
+  background: #f0fae6;
+}
+
+.calendar-mobile-finance > span.is-expense {
+  color: #b42318;
+  background: #ffecec;
+}
+
+.calendar-mobile-finance > span.is-balance {
+  color: #0958d9;
+  background: #e8f4ff;
+}
+
+.calendar-mobile-supporting > span {
+  background: #f5f5f5;
+}
+
+.calendar-mobile-supporting > span:first-child {
+  color: #0958d9;
+  background: #e8f4ff;
+}
+
+.calendar-mobile-supporting > span:nth-child(2) {
+  color: #ad6800;
+  background: #fff8d9;
+}
+
+.calendar-mobile-supporting > span.has-warning {
+  color: #b42318;
+  background: #ffecec;
+}
+
+.calendar-mobile-finance small,
+.calendar-mobile-supporting small {
+  flex: none;
+}
+
+.calendar-mobile-finance strong,
+.calendar-mobile-supporting strong {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .calendar-grid-card .ant-card-body {
@@ -1189,11 +1411,21 @@ button.expense-nature-summary:focus-visible {
 
 .calendar-day-heading {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   min-height: 26px;
   color: #0958d9;
   font-size: 17px;
   font-weight: 600;
+}
+
+.calendar-day-heading small {
+  align-self: center;
+  overflow: hidden;
+  color: #8c8c8c;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .calendar-day-content {
@@ -1245,6 +1477,14 @@ button.expense-nature-summary:focus-visible {
   color: #cf1322;
 }
 
+.calendar-entry-row.is-schedule {
+  color: #0958d9;
+}
+
+.calendar-entry-row.is-anniversary {
+  color: #c41d7f;
+}
+
 .calendar-entry-row.is-glucose {
   color: #0958d9;
 }
@@ -1254,6 +1494,10 @@ button.expense-nature-summary:focus-visible {
 }
 
 .calendar-entry-row.is-medication {
+  color: #ad6800;
+}
+
+.calendar-entry-row.is-weight {
   color: #ad6800;
 }
 
@@ -1272,6 +1516,58 @@ button.expense-nature-summary:focus-visible {
   color: #8c8c8c;
   font-size: 11px;
   line-height: 18px;
+}
+
+.calendar-entry-summary {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 17px;
+  padding: 1px 3px;
+  overflow: hidden;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.calendar-entry-summary .calendar-entry-icon {
+  flex: none;
+  width: 10px;
+  font-size: 9px;
+}
+
+.calendar-entry-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-entry-summary.tone-positive {
+  color: #237804;
+  background: #edfadd;
+}
+
+.calendar-entry-summary.tone-danger {
+  color: #cf1322;
+  background: #ffe7e7;
+}
+
+.calendar-entry-summary.tone-warning {
+  color: #ad6800;
+  background: #fff3cd;
+}
+
+.calendar-entry-summary.tone-info {
+  color: #0958d9;
+  background: #e8f4ff;
+}
+
+.calendar-entry-summary.tone-neutral {
+  color: #595959;
+  background: #f0f0f0;
 }
 
 .calendar-year-grid {
@@ -1390,6 +1686,17 @@ button.expense-nature-summary:focus-visible {
   gap: 10px;
 }
 
+.calendar-detail-entry-list {
+  display: grid;
+  gap: 7px;
+}
+
+.calendar-detail-entry-list .calendar-entry-row {
+  grid-template-columns: 18px minmax(3.5em, auto) minmax(0, 1fr);
+  font-size: 13px;
+  line-height: 22px;
+}
+
 .calendar-quick-actions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1412,6 +1719,61 @@ button.expense-nature-summary:focus-visible {
 
 .calendar-medication-task .ant-btn {
   flex: 1;
+}
+
+.calendar-event-filters {
+  margin-bottom: 10px;
+}
+
+.calendar-event-filters .ant-select {
+  min-width: 150px;
+}
+
+.calendar-event-list {
+  display: grid;
+}
+
+.calendar-event-list-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 14px 0;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.calendar-event-list-item:last-child {
+  border-bottom: 0;
+}
+
+.calendar-event-list-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #0958d9;
+  background: #e8f4ff;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.calendar-event-list-content {
+  min-width: 0;
+}
+
+.calendar-event-list-content h5.ant-typography {
+  margin: 0;
+}
+
+.calendar-event-list-actions {
+  justify-content: flex-end;
+}
+
+body:has(.ant-drawer-open) .mobile-floating-navigation-group,
+body:has(.ant-drawer-open) .quick-record-floating-group {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @media (max-width: 1100px) {
@@ -1668,7 +2030,7 @@ button.expense-nature-summary:focus-visible {
   }
 
   .app-content {
-    padding: 8px 10px 70px;
+    padding: 8px 10px calc(20px + env(safe-area-inset-bottom));
   }
 
   .app-content .ant-card-head {
@@ -1775,6 +2137,52 @@ button.expense-nature-summary:focus-visible {
     align-items: stretch;
   }
 
+  .calendar-page {
+    min-height: calc(100dvh - 73px - env(safe-area-inset-bottom));
+  }
+
+  .calendar-page > .ant-space-item:nth-child(2) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .calendar-page > .ant-space-item:nth-child(2) > .ant-spin,
+  .calendar-page > .ant-space-item:nth-child(2) > .ant-spin > .ant-spin-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .calendar-month-view {
+    height: 100%;
+  }
+
+  .calendar-month-view,
+  .calendar-grid-card,
+  .calendar-grid-card .ant-card-body,
+  .calendar-grid-scroll,
+  .calendar-grid-inner {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .calendar-month-view,
+  .calendar-grid-card .ant-card-body,
+  .calendar-grid-scroll,
+  .calendar-grid-inner {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .calendar-grid-card {
+    min-height: 0;
+    flex: 1 1 auto;
+    touch-action: pan-y;
+  }
+
   .calendar-view-actions,
   .calendar-filter-actions,
   .calendar-member-select {
@@ -1803,38 +2211,207 @@ button.expense-nature-summary:focus-visible {
     font-size: 16px;
   }
 
+  .calendar-mobile-overview .ant-card-body {
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .calendar-mobile-finance > span,
+  .calendar-mobile-supporting > span {
+    padding: 5px 6px;
+    font-size: 11px;
+  }
+
+  .calendar-mobile-finance > span {
+    display: grid;
+    gap: 1px;
+    justify-content: stretch;
+  }
+
+  .calendar-mobile-supporting > span {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .calendar-mobile-finance strong,
+  .calendar-mobile-supporting strong {
+    font-size: 11px;
+  }
+
+  .calendar-grid-scroll {
+    overflow-x: visible;
+  }
+
+  .calendar-weekdays {
+    padding: 0 6px;
+    background: #fff;
+    border-bottom-width: 1px;
+  }
+
   .calendar-weekdays span {
-    padding: 6px 2px;
-    font-size: 12px;
+    padding: 6px 0;
+    color: #8c8c8c;
+    font-size: 11px;
   }
 
   .calendar-grid-inner {
-    min-width: 910px;
+    min-width: 0;
+  }
+
+  .calendar-month-grid {
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-auto-rows: minmax(60px, 1fr);
+    gap: 3px;
+    padding: 6px;
   }
 
   .calendar-day {
-    min-height: 146px;
-    padding: 7px;
+    min-height: 60px;
+    padding: 4px 3px;
+    border: 1px solid #d9dde3;
+    border-radius: 6px;
+  }
+
+  .calendar-day:nth-child(7n) {
+    border-right: 1px solid #d9dde3;
+  }
+
+  .calendar-day.has-content {
+    background: #fff;
+  }
+
+  .calendar-day.is-outside-month {
+    background: #f6f7f9;
+  }
+
+  .calendar-day:hover,
+  .calendar-day:focus-visible,
+  .calendar-day.is-selected {
+    background: #f0fae6;
+    box-shadow: inset 0 0 0 2px #52c41a;
+  }
+
+  .calendar-day.is-today:not(.is-selected) {
+    box-shadow: inset 0 0 0 2px #2c2c2c;
   }
 
   .calendar-day-heading {
-    min-height: 24px;
-    font-size: 15px;
+    min-height: 16px;
+    color: #2c2c2c;
+    font-size: 12px;
+    line-height: 16px;
   }
 
-  .calendar-day.is-today .calendar-day-heading > span {
-    width: 24px;
-    height: 24px;
+  .calendar-day-heading small {
+    max-width: 28px;
+    font-size: 8px;
   }
 
-  .calendar-day-content {
+  .calendar-month-view.is-detail-density .calendar-day-heading small {
+    max-width: none;
+    font-size: 10px;
+  }
+
+  .calendar-event-manager .ant-card-body {
+    padding: 10px;
+  }
+
+  .calendar-event-filters .ant-select {
+    min-width: 130px;
+    flex: 1 1 130px;
+  }
+
+  .calendar-event-list-item {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+
+  .calendar-event-list-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-grid-scroll {
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-x pan-y;
+  }
+
+  .calendar-month-view.is-detail-density {
+    height: calc(100dvh - 183px - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 183px - env(safe-area-inset-bottom));
+    min-height: 0;
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-grid-inner {
+    width: 233.333%;
+    min-width: 760px;
+    height: auto;
+    min-height: 100%;
+    flex: 0 0 auto;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-weekdays {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-month-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-rows: minmax(138px, auto);
+    flex: 0 0 auto;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-day {
+    min-height: 138px;
+    padding: 7px 6px;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-day-heading {
+    min-height: 20px;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-day-content {
     gap: 3px;
     margin-top: 5px;
   }
 
-  .calendar-entry-row {
-    font-size: 11px;
-    line-height: 18px;
+  .calendar-month-view.is-detail-density .calendar-entry-row {
+    grid-template-columns: 13px auto minmax(0, 1fr);
+    gap: 3px;
+    font-size: 10px;
+    line-height: 17px;
+  }
+
+  .calendar-month-view.is-detail-density .calendar-entry-member {
+    max-width: 4em;
+  }
+
+  .calendar-day.is-today .calendar-day-heading > span {
+    display: inline;
+    width: auto;
+    height: auto;
+    color: #2c2c2c;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .calendar-day-content {
+    gap: 2px;
+    margin-top: 2px;
+  }
+
+  .calendar-more-entry {
+    padding-left: 0;
+    text-align: center;
+    font-size: 9px;
+    line-height: 13px;
   }
 
   .calendar-year-grid {
@@ -1926,6 +2503,23 @@ button.expense-nature-summary:focus-visible {
     align-items: flex-start;
   }
 
+  .strength-summary-list {
+    grid-template-columns: 1fr;
+  }
+
+  .strength-movement-editor,
+  .strength-goal-row {
+    padding: 10px;
+  }
+
+  .strength-set-list {
+    gap: 6px;
+  }
+
+  .strength-set-item .ant-form-item {
+    width: 84px;
+  }
+
   .health-record-list .ant-list-item-action {
     margin-inline-start: 6px;
   }
@@ -2014,35 +2608,101 @@ button.expense-nature-summary:focus-visible {
     padding-inline: 0;
   }
 
-  .mobile-nav {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 20;
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
-    padding: 4px max(6px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-    background: #fff;
-    border-top: 1px solid #d9dde5;
-  }
-
-  .mobile-nav .ant-btn {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 1px;
-    height: auto;
-    min-height: 44px;
-    padding: 4px 3px;
-    white-space: nowrap;
-    font-size: 10px;
-  }
-
-  .mobile-nav .ant-btn-icon {
+  .mobile-floating-navigation {
+    z-index: 1001;
     display: block;
-    margin: 0 !important;
+    width: 52px;
+    height: 52px;
+  }
+
+  .mobile-floating-navigation-group.ant-float-btn-group {
+    position: static;
+    width: 52px;
+    height: 52px;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn {
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
+    border: 3px solid #2c2c2c;
+    border-radius: 50%;
+    box-shadow: 3px 3px 0 #2c2c2c;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn-group-trigger {
+    width: 52px;
+    min-height: 52px;
+    height: 52px;
+    box-shadow: 4px 4px 0 #2c2c2c;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn-body {
+    border-radius: 50%;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn-icon {
+    width: auto;
+    font-size: 18px;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn-group-list {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mobile-floating-navigation-group .ant-float-btn:not(.ant-float-btn-group-trigger)::after,
+  .quick-record-floating-group .ant-float-btn:not(.ant-float-btn-group-trigger)::after {
+    position: absolute;
+    top: 50%;
+    min-width: 38px;
+    padding: 3px 7px;
+    color: #2c2c2c;
+    white-space: nowrap;
+    content: attr(aria-label);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 18px;
+    border: 2px solid #2c2c2c;
+    border-radius: 7px;
+    background: #fff;
+    box-shadow: 2px 2px 0 #2c2c2c;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .mobile-floating-navigation.is-left-side
+    .ant-float-btn:not(.ant-float-btn-group-trigger)::after {
+    left: calc(100% + 8px);
+  }
+
+  .mobile-floating-navigation.is-right-side
+    .ant-float-btn:not(.ant-float-btn-group-trigger)::after,
+  .quick-record-floating-group
+    .ant-float-btn:not(.ant-float-btn-group-trigger)::after {
+    right: calc(100% + 8px);
+  }
+
+  .quick-record-floating-group {
+    inset-inline-end: 16px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+
+  .quick-record-floating-group .ant-float-btn {
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .quick-record-floating-group .ant-float-btn-group-trigger {
+    width: 52px;
+    min-height: 52px;
+    height: 52px;
+  }
+
+  .quick-record-floating-group .ant-float-btn-group-list {
+    align-items: center;
+    gap: 8px;
   }
 
   .top-spending-row {

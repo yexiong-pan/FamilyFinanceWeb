@@ -3,6 +3,11 @@ import type {
   CalendarData,
   CalendarDayEntry,
   CalendarDaySummary,
+  CalendarEvent,
+  CalendarEventInput,
+  CalendarEventOccurrence,
+  CalendarEventStatus,
+  CalendarEventType,
   CalendarFollowupItem,
   CalendarGlucoseReading,
   CalendarMedicationSummary,
@@ -13,6 +18,7 @@ import type {
   GlucoseTargets,
   MedicationScheduleSlot
 } from "@family-finance/shared";
+import { buildCalendarEventOccurrences } from "@family-finance/shared";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma.service";
 
@@ -46,9 +52,26 @@ interface MutablePeriodSummary {
   medication: MutableMedicationSummary;
   followupCount: number;
   scheduledFollowupCount: number;
+  scheduleCount: number;
+  anniversaryCount: number;
   glucoseReadings: CalendarGlucoseReading[];
   followups: CalendarFollowupItem[];
 }
+
+type CalendarEventRow = Prisma.CalendarEventGetPayload<{
+  include: {
+    participants: {
+      include: {
+        member: {
+          select: {
+            id: true;
+            name: true;
+          };
+        };
+      };
+    };
+  };
+}>;
 
 interface HealthProfileThresholds {
   glucoseLowThreshold: { toString(): string };
@@ -58,6 +81,72 @@ interface HealthProfileThresholds {
 @Injectable()
 export class CalendarService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  async listEvents(
+    requestedMemberId?: string,
+    type?: CalendarEventType,
+    status?: CalendarEventStatus
+  ): Promise<CalendarEvent[]> {
+    if (type && type !== "schedule" && type !== "anniversary") {
+      throw new BadRequestException("日程类型无效");
+    }
+    if (status && status !== "scheduled" && status !== "completed" && status !== "cancelled") {
+      throw new BadRequestException("日程状态无效");
+    }
+    if (requestedMemberId && requestedMemberId !== "all") {
+      await this.requireMembers([requestedMemberId]);
+    }
+    const rows = await this.prisma.calendarEvent.findMany({
+      where: {
+        familyId: DEFAULT_FAMILY_ID,
+        ...(type ? { type } : {}),
+        ...(status ? { status } : {}),
+        ...(requestedMemberId && requestedMemberId !== "all"
+          ? { participants: { some: { memberId: requestedMemberId } } }
+          : {})
+      },
+      include: calendarEventInclude,
+      orderBy: [{ startDate: "asc" }, { createdAt: "asc" }]
+    });
+    return rows.map(mapCalendarEvent);
+  }
+
+  async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
+    const normalized = await this.normalizeEventInput(input);
+    const row = await this.prisma.calendarEvent.create({
+      data: {
+        familyId: DEFAULT_FAMILY_ID,
+        ...normalized.data,
+        participants: {
+          create: normalized.memberIds.map((memberId) => ({ memberId }))
+        }
+      },
+      include: calendarEventInclude
+    });
+    return mapCalendarEvent(row);
+  }
+
+  async updateEvent(id: string, input: CalendarEventInput): Promise<CalendarEvent> {
+    await this.requireEvent(id);
+    const normalized = await this.normalizeEventInput(input);
+    const row = await this.prisma.calendarEvent.update({
+      where: { id },
+      data: {
+        ...normalized.data,
+        participants: {
+          deleteMany: {},
+          create: normalized.memberIds.map((memberId) => ({ memberId }))
+        }
+      },
+      include: calendarEventInclude
+    });
+    return mapCalendarEvent(row);
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await this.requireEvent(id);
+    await this.prisma.calendarEvent.delete({ where: { id } });
+  }
 
   async getCalendar(view: CalendarView, period: string, requestedMemberId?: string): Promise<CalendarData> {
     validatePeriod(view, period);
@@ -88,7 +177,8 @@ export class CalendarService {
       exerciseRows,
       medicationPlans,
       medicationDoseRows,
-      followupRows
+      followupRows,
+      calendarEventRows
     ] = await Promise.all([
       this.prisma.financeTransaction.findMany({
         where: {
@@ -126,7 +216,8 @@ export class CalendarService {
           familyId: DEFAULT_FAMILY_ID,
           memberId: { in: memberIds },
           date: { gte: range.start, lt: range.end }
-        }
+        },
+        include: { movements: { orderBy: { sortOrder: "asc" } } }
       }),
       this.prisma.medicationPlan.findMany({
         where: {
@@ -159,6 +250,21 @@ export class CalendarService {
           scheduledAt: { gte: range.start, lt: range.end }
         },
         orderBy: { scheduledAt: "asc" }
+      }),
+      this.prisma.calendarEvent.findMany({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          status: { not: "cancelled" },
+          startDate: { lt: range.end },
+          OR: [
+            { recurrenceEndDate: null },
+            { recurrenceEndDate: { gte: range.start } }
+          ],
+          ...(selectedMember
+            ? { participants: { some: { memberId: selectedMember.id } } }
+            : {})
+        },
+        include: calendarEventInclude
       })
     ]);
 
@@ -176,6 +282,7 @@ export class CalendarService {
       memberId: string;
       exerciseType: string;
       minutes: number;
+      movements: Map<string, { name: string; metric: "reps" | "seconds"; total: number }>;
     }>();
     const medicationEntries = new Map<string, {
       date: string;
@@ -271,6 +378,17 @@ export class CalendarService {
       });
     }
 
+    for (const row of bodyRows) {
+      bucketFor(row.measuredAt);
+      addEntry(dateKey(row.measuredAt), {
+        id: `weight-${row.memberId}-${row.measuredAt.toISOString()}`,
+        type: "weight",
+        memberId: row.memberId,
+        memberName: memberNameById.get(row.memberId) ?? "未知成员",
+        value: Number(row.weightKg.toString()).toFixed(2)
+      });
+    }
+
     for (const row of exerciseRows) {
       bucketFor(row.date).exerciseMinutes += row.durationMinutes;
       if (view === "month") {
@@ -280,9 +398,20 @@ export class CalendarService {
           date,
           memberId: row.memberId,
           exerciseType: row.type,
-          minutes: 0
+          minutes: 0,
+          movements: new Map()
         };
         entry.minutes += row.durationMinutes;
+        for (const movement of row.movements ?? []) {
+          const movementKey = `${movement.name.toLocaleLowerCase("zh-CN")}|${movement.metric}`;
+          const current = entry.movements.get(movementKey) ?? {
+            name: movement.name,
+            metric: movement.metric,
+            total: 0
+          };
+          current.total += movement.sets.reduce((sum, value) => sum + value, 0);
+          entry.movements.set(movementKey, current);
+        }
         exerciseEntries.set(key, entry);
       }
     }
@@ -364,6 +493,28 @@ export class CalendarService {
       });
     }
 
+    const eventOccurrences = calendarEventRows.flatMap((row) => buildCalendarEventOccurrences(
+      mapCalendarEvent(row),
+      dateKey(range.start),
+      dateKey(addUtcDays(range.end, -1)),
+      dateKey(new Date())
+    ));
+    for (const occurrence of eventOccurrences) {
+      const bucket = bucketFor(dateOnlyUtc(occurrence.date));
+      if (occurrence.type === "schedule") {
+        bucket.scheduleCount += 1;
+      } else {
+        bucket.anniversaryCount += 1;
+      }
+      addEntry(occurrence.date, {
+        id: `event-${occurrence.eventId}-${occurrence.date}`,
+        type: occurrence.type,
+        memberName: occurrence.participants.map((item) => item.memberName).join("、") || "未指定成员",
+        label: occurrence.title,
+        event: occurrence
+      });
+    }
+
     for (const entry of financeEntries.values()) {
       addEntry(entry.date, {
         id: `${entry.kind}-${entry.date}-${entry.memberName}`,
@@ -375,12 +526,19 @@ export class CalendarService {
     }
     for (const entry of exerciseEntries.values()) {
       addEntry(entry.date, {
-        id: `exercise-${entry.date}-${entry.memberId}`,
+        id: `exercise-${entry.date}-${entry.memberId}-${entry.exerciseType}`,
         type: "exercise",
         memberId: entry.memberId,
         memberName: memberNameById.get(entry.memberId) ?? "未知成员",
         label: entry.exerciseType,
-        minutes: entry.minutes
+        minutes: entry.minutes,
+        ...(entry.movements.size ? {
+          detail: [...entry.movements.values()]
+            .map((movement) => (
+              `${movement.name}${movement.total}${movement.metric === "seconds" ? "秒" : "次"}`
+            ))
+            .join(" · ")
+        } : {})
       });
     }
     for (const entry of medicationEntries.values()) {
@@ -467,10 +625,163 @@ export class CalendarService {
           } : {})
         };
       }),
+      upcomingEvents: eventOccurrences
+        .filter((occurrence) => (occurrence.countdownDays ?? 0) >= 0)
+        .sort((left, right) => left.date.localeCompare(right.date))
+        .slice(0, 8),
       days,
       months
     };
   }
+
+  private async normalizeEventInput(input: CalendarEventInput) {
+    const title = input.title?.trim();
+    if (!title) throw new BadRequestException("请输入日程名称");
+    if (input.type !== "schedule" && input.type !== "anniversary") {
+      throw new BadRequestException("日程类型无效");
+    }
+    if (input.calendarSystem !== "solar" && input.calendarSystem !== "lunar") {
+      throw new BadRequestException("历法无效");
+    }
+    if (!isDateKey(input.startDate)) throw new BadRequestException("开始日期无效");
+    if (input.endDate && !isDateKey(input.endDate)) throw new BadRequestException("结束日期无效");
+    if (input.endDate && input.endDate < input.startDate) {
+      throw new BadRequestException("结束日期不能早于开始日期");
+    }
+    if (input.recurrenceEndDate && !isDateKey(input.recurrenceEndDate)) {
+      throw new BadRequestException("重复结束日期无效");
+    }
+    if (input.recurrenceEndDate && input.recurrenceEndDate < input.startDate) {
+      throw new BadRequestException("重复结束日期不能早于开始日期");
+    }
+    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(input.recurrence)) {
+      throw new BadRequestException("重复规则无效");
+    }
+    if (
+      input.status
+      && !["scheduled", "completed", "cancelled"].includes(input.status)
+    ) {
+      throw new BadRequestException("日程状态无效");
+    }
+    if (input.calendarSystem === "lunar") {
+      if (
+        !Number.isInteger(input.lunarMonth)
+        || input.lunarMonth! < 1
+        || input.lunarMonth! > 12
+        || !Number.isInteger(input.lunarDay)
+        || input.lunarDay! < 1
+        || input.lunarDay! > 30
+      ) {
+        throw new BadRequestException("农历日期无效");
+      }
+      if (input.recurrence !== "yearly") {
+        throw new BadRequestException("农历日程目前仅支持每年重复");
+      }
+    }
+    if (!input.allDay && !input.startTime) {
+      throw new BadRequestException("请输入开始时间");
+    }
+    if (!input.allDay && input.startTime && !isTime(input.startTime)) {
+      throw new BadRequestException("开始时间无效");
+    }
+    if (!input.allDay && input.endTime && !isTime(input.endTime)) {
+      throw new BadRequestException("结束时间无效");
+    }
+    const memberIds = [...new Set(input.memberIds ?? [])];
+    await this.requireMembers(memberIds);
+    return {
+      memberIds,
+      data: {
+        title,
+        type: input.type,
+        calendarSystem: input.calendarSystem,
+        startDate: dateOnlyUtc(input.startDate),
+        ...(input.endDate ? { endDate: dateOnlyUtc(input.endDate) } : { endDate: null }),
+        ...(!input.allDay && input.startTime ? { startTime: input.startTime } : { startTime: null }),
+        ...(!input.allDay && input.endTime ? { endTime: input.endTime } : { endTime: null }),
+        allDay: input.allDay,
+        recurrence: input.recurrence,
+        ...(input.recurrenceEndDate
+          ? { recurrenceEndDate: dateOnlyUtc(input.recurrenceEndDate) }
+          : { recurrenceEndDate: null }),
+        ...(input.calendarSystem === "lunar"
+          ? {
+              lunarMonth: input.lunarMonth,
+              lunarDay: input.lunarDay,
+              lunarLeapMonth: input.lunarLeapMonth ?? false
+            }
+          : { lunarMonth: null, lunarDay: null, lunarLeapMonth: false }),
+        originalYear: input.originalYear ?? null,
+        showCountdown: input.showCountdown ?? false,
+        reminderDays: [...new Set(input.reminderDays ?? [])]
+          .filter((value) => Number.isInteger(value) && value >= 0 && value <= 365)
+          .sort((left, right) => right - left),
+        location: input.location?.trim() || null,
+        note: input.note?.trim() || null,
+        status: input.status ?? "scheduled"
+      }
+    };
+  }
+
+  private async requireMembers(memberIds: string[]): Promise<void> {
+    if (!memberIds.length) return;
+    const count = await this.prisma.familyMember.count({
+      where: { familyId: DEFAULT_FAMILY_ID, id: { in: memberIds } }
+    });
+    if (count !== memberIds.length) throw new NotFoundException("家庭成员不存在");
+  }
+
+  private async requireEvent(id: string): Promise<void> {
+    const event = await this.prisma.calendarEvent.findFirst({
+      where: { id, familyId: DEFAULT_FAMILY_ID },
+      select: { id: true }
+    });
+    if (!event) throw new NotFoundException("日程不存在");
+  }
+}
+
+const calendarEventInclude = {
+  participants: {
+    include: {
+      member: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  }
+} satisfies Prisma.CalendarEventInclude;
+
+function mapCalendarEvent(row: CalendarEventRow): CalendarEvent {
+  return {
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    calendarSystem: row.calendarSystem,
+    startDate: dateKey(row.startDate),
+    ...(row.endDate ? { endDate: dateKey(row.endDate) } : {}),
+    ...(row.startTime ? { startTime: row.startTime } : {}),
+    ...(row.endTime ? { endTime: row.endTime } : {}),
+    allDay: row.allDay,
+    recurrence: row.recurrence,
+    ...(row.recurrenceEndDate ? { recurrenceEndDate: dateKey(row.recurrenceEndDate) } : {}),
+    ...(row.lunarMonth ? { lunarMonth: row.lunarMonth } : {}),
+    ...(row.lunarDay ? { lunarDay: row.lunarDay } : {}),
+    lunarLeapMonth: row.lunarLeapMonth,
+    ...(row.originalYear ? { originalYear: row.originalYear } : {}),
+    showCountdown: row.showCountdown,
+    reminderDays: row.reminderDays,
+    ...(row.location ? { location: row.location } : {}),
+    ...(row.note ? { note: row.note } : {}),
+    status: row.status,
+    participants: row.participants.map(({ member }) => ({
+      memberId: member.id,
+      memberName: member.name
+    })),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
 }
 
 function emptyMutableSummary(): MutablePeriodSummary {
@@ -485,6 +796,8 @@ function emptyMutableSummary(): MutablePeriodSummary {
     medication: emptyMutableMedication(),
     followupCount: 0,
     scheduledFollowupCount: 0,
+    scheduleCount: 0,
+    anniversaryCount: 0,
     glucoseReadings: [],
     followups: []
   };
@@ -502,12 +815,15 @@ function emptyMutableMedication(): MutableMedicationSummary {
 
 function sortDayEntries(entries: CalendarDayEntry[]): CalendarDayEntry[] {
   const priority: Record<CalendarDayEntry["type"], number> = {
-    followup: 0,
-    expense: 1,
-    income: 2,
-    glucose: 3,
-    medication: 4,
-    exercise: 5
+    anniversary: 0,
+    schedule: 1,
+    followup: 2,
+    expense: 3,
+    income: 4,
+    glucose: 5,
+    medication: 6,
+    exercise: 7,
+    weight: 8
   };
   return [...entries].sort((left, right) => {
     const leftWarning = left.abnormal || left.medication?.missed ? 0 : 1;
@@ -535,6 +851,8 @@ function combineSummaries(summaries: Iterable<MutablePeriodSummary>): MutablePer
     combined.medication.paused += summary.medication.paused;
     combined.followupCount += summary.followupCount;
     combined.scheduledFollowupCount += summary.scheduledFollowupCount;
+    combined.scheduleCount += summary.scheduleCount;
+    combined.anniversaryCount += summary.anniversaryCount;
     combined.glucoseReadings.push(...summary.glucoseReadings);
     combined.followups.push(...summary.followups);
   }
@@ -553,8 +871,20 @@ function finishSummary(summary: MutablePeriodSummary): CalendarPeriodSummary {
     exerciseMinutes: summary.exerciseMinutes,
     medication: finishMedication(summary.medication),
     followupCount: summary.followupCount,
-    scheduledFollowupCount: summary.scheduledFollowupCount
+    scheduledFollowupCount: summary.scheduledFollowupCount,
+    scheduleCount: summary.scheduleCount,
+    anniversaryCount: summary.anniversaryCount
   };
+}
+
+function isDateKey(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = dateOnlyUtc(value);
+  return dateKey(date) === value;
+}
+
+function isTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function finishMedication(summary: MutableMedicationSummary): CalendarMedicationSummary {

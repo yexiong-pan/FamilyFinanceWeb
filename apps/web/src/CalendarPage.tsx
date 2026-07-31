@@ -1,8 +1,12 @@
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   CalendarOutlined,
+  DashboardOutlined,
   ExperimentOutlined,
   FilterOutlined,
   FireOutlined,
+  GiftOutlined,
   MedicineBoxOutlined,
   PlusOutlined,
   RightOutlined,
@@ -15,15 +19,17 @@ import type {
   CalendarDayEntry,
   CalendarDayEntryType,
   CalendarDaySummary,
+  CalendarEventType,
   CalendarMonthSummary,
   FamilyMemberInfo,
   HealthData,
   MedicationDoseStatus
 } from "@family-finance/shared";
-import { formatMoney } from "@family-finance/shared";
+import { calendarLunarInfo, formatMoney } from "@family-finance/shared";
 import {
   Alert,
   App as AntApp,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -48,7 +54,14 @@ import {
   Typography
 } from "antd";
 import dayjs from "dayjs";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode
+} from "react";
 import {
   createBloodGlucose,
   createBodyMeasurement,
@@ -58,6 +71,10 @@ import {
   saveMedicationDose
 } from "./api/client";
 import {
+  CalendarEventDrawer,
+  CalendarEventsPanel
+} from "./CalendarEventsPanel";
+import {
   bodyMeasurementContextLabels,
   buildMedicationTasks,
   followupStatusLabels,
@@ -65,36 +82,50 @@ import {
   medicationDoseStatusLabels,
   toMinuteIso
 } from "./data/health";
+import {
+  buildCalendarDaySignals,
+  resolvePinchCalendarDensity,
+  type CalendarDaySignal,
+  type MobileCalendarDensity
+} from "./data/calendar";
 import type { CalendarTabKey, HealthTabKey } from "./navigation";
 
 const { Text, Title } = Typography;
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+const QUICK_STRENGTH_MOVEMENTS = ["俯卧撑", "引体向上", "深蹲", "平板支撑", "卷腹", "弓步蹲"];
 const MINUTE_DATE_TIME_PICKER_PROPS = {
   format: "YYYY-MM-DD HH:mm",
+  inputReadOnly: true,
   showTime: {
     format: "HH:mm",
     showSecond: false
   }
 } as const;
-const CALENDAR_CONTENT_STORAGE_KEY = "family-finance.calendar-visible-content";
+const CALENDAR_CONTENT_STORAGE_KEY = "family-finance.calendar-visible-content.v3";
+const QUICK_HEALTH_MEMBER_STORAGE_KEY = "family-finance.health-member";
 const CALENDAR_CONTENT_OPTIONS: Array<{ label: string; value: CalendarDayEntryType }> = [
   { label: "收入", value: "income" },
   { label: "支出", value: "expense" },
   { label: "运动", value: "exercise" },
   { label: "血糖", value: "glucose" },
   { label: "用药", value: "medication" },
-  { label: "复诊", value: "followup" }
+  { label: "体重", value: "weight" },
+  { label: "复诊", value: "followup" },
+  { label: "日程", value: "schedule" },
+  { label: "纪念日", value: "anniversary" }
 ];
 const ALL_CALENDAR_CONTENT = CALENDAR_CONTENT_OPTIONS.map((option) => option.value);
-type QuickHealthKind = "medication" | "body" | "glucose" | "exercise";
+export type QuickHealthKind = "medication" | "body" | "glucose" | "exercise" | "strength";
 
 interface CalendarPageProps {
   monthKey: string;
   tab: CalendarTabKey;
   memberId: string;
+  density: MobileCalendarDensity;
   members: FamilyMemberInfo[];
   onTabChange(tab: CalendarTabKey): void;
   onMemberChange(memberId: string): void;
+  onDensityChange(density: MobileCalendarDensity): void;
   onOpenMonth(month: string): void;
   onOpenCashflow(kind: "income" | "expense", month: string, memberName?: string): void;
   onOpenHealth(tab: HealthTabKey, memberId?: string, month?: string): void;
@@ -104,9 +135,11 @@ export function CalendarPage({
   monthKey,
   tab,
   memberId,
+  density,
   members,
   onTabChange,
   onMemberChange,
+  onDensityChange,
   onOpenMonth,
   onOpenCashflow,
   onOpenHealth
@@ -122,8 +155,10 @@ export function CalendarPage({
     readVisibleCalendarContent
   );
   const [quickHealthKind, setQuickHealthKind] = useState<QuickHealthKind>();
+  const [quickEventType, setQuickEventType] = useState<CalendarEventType>();
   const [refreshKey, setRefreshKey] = useState(0);
-  const period = tab === "year" ? monthKey.slice(0, 4) : monthKey;
+  const calendarView = tab === "year" ? "year" : "month";
+  const period = calendarView === "year" ? monthKey.slice(0, 4) : monthKey;
   const selectedMember = members.find((member) => member.id === memberId);
 
   useEffect(() => {
@@ -137,7 +172,7 @@ export function CalendarPage({
     setLoading(true);
     setError(undefined);
     setSelectedDate(undefined);
-    void getCalendarData(tab, period, memberId)
+    void getCalendarData(calendarView, period, memberId)
       .then((nextData) => {
         if (active) setData(nextData);
       })
@@ -150,7 +185,7 @@ export function CalendarPage({
     return () => {
       active = false;
     };
-  }, [memberId, period, refreshKey, tab]);
+  }, [calendarView, memberId, period, refreshKey]);
 
   const dayByDate = useMemo(
     () => new Map(data?.days.map((day) => [day.date, day]) ?? []),
@@ -192,7 +227,8 @@ export function CalendarPage({
             onChange={(value) => onTabChange(value as CalendarTabKey)}
             options={[
               { label: "月视角", value: "month", icon: <CalendarOutlined /> },
-              { label: "年视角", value: "year", icon: <WalletOutlined /> }
+              { label: "年视角", value: "year", icon: <WalletOutlined /> },
+              { label: "日程", value: "events", icon: <ScheduleOutlined /> }
             ]}
           />
           <Button icon={<CalendarOutlined />} onClick={openToday}>今天</Button>
@@ -222,6 +258,9 @@ export function CalendarPage({
             monthKey={monthKey}
             selectedDate={selectedDate}
             visibleEntryTypes={visibleEntryTypes}
+            compact={!screens.md}
+            density={density}
+            onDensityChange={onDensityChange}
             onSelectDate={openCalendarDate}
           />
         ) : null}
@@ -232,6 +271,15 @@ export function CalendarPage({
             onOpenMonth={onOpenMonth}
             onOpenCashflow={onOpenCashflow}
             onOpenHealth={(healthTab, nextMonth) => onOpenHealth(healthTab, selectedMember?.id, nextMonth)}
+          />
+        ) : null}
+        {tab === "events" ? (
+          <CalendarEventsPanel
+            members={members}
+            memberId={memberId}
+            monthKey={monthKey}
+            mobile={!screens.md}
+            onChanged={() => setRefreshKey((value) => value + 1)}
           />
         ) : null}
       </Spin>
@@ -248,6 +296,7 @@ export function CalendarPage({
         onOpenCashflow={onOpenCashflow}
         onOpenHealth={(healthTab) => onOpenHealth(healthTab, selectedMember?.id, monthKey)}
         onQuickRecord={setQuickHealthKind}
+        onCreateEvent={setQuickEventType}
       />
       <QuickHealthDrawer
         open={Boolean(quickHealthKind)}
@@ -262,6 +311,19 @@ export function CalendarPage({
           setRefreshKey((value) => value + 1);
         }}
       />
+      <CalendarEventDrawer
+        open={Boolean(quickEventType)}
+        defaultType={quickEventType}
+        defaultDate={selectedDate ?? `${monthKey}-01`}
+        members={members}
+        mobile={!screens.md}
+        onClose={() => setQuickEventType(undefined)}
+        onSaved={() => {
+          message.success("日程已保存");
+          setQuickEventType(undefined);
+          setRefreshKey((value) => value + 1);
+        }}
+      />
     </Space>
   );
 }
@@ -271,20 +333,83 @@ function MonthCalendar({
   monthKey,
   selectedDate,
   visibleEntryTypes,
+  compact,
+  density,
+  onDensityChange,
   onSelectDate
 }: {
   data: CalendarData;
   monthKey: string;
   selectedDate?: string;
   visibleEntryTypes: CalendarDayEntryType[];
+  compact: boolean;
+  density: MobileCalendarDensity;
+  onDensityChange(density: MobileCalendarDensity): void;
   onSelectDate(date: string): void;
 }) {
-  const cells = buildMonthCells(monthKey);
-  const visibleTypes = new Set(visibleEntryTypes);
+  const cells = useMemo(() => buildMonthCells(monthKey), [monthKey]);
+  const pinchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStartDistanceRef = useRef<number | undefined>(undefined);
+  const detailActive = compact && density === "detail";
+  const visibleTypes = useMemo(() => new Set(visibleEntryTypes), [visibleEntryTypes]);
+  const dayByDate = useMemo(
+    () => new Map(data.days.map((day) => [day.date, day])),
+    [data.days]
+  );
+  const todayKey = dayjs().format("YYYY-MM-DD");
+  const changeDetailDensity = (nextDetailDensity: boolean) => {
+    onDensityChange(nextDetailDensity ? "detail" : "compact");
+  };
+  const updatePinchPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (!compact || event.pointerType !== "touch") return;
+    const pointers = pinchPointersRef.current;
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size !== 2) return;
+    event.preventDefault();
+    const [first, second] = [...pointers.values()];
+    if (!first || !second) return;
+    const currentDistance = Math.hypot(first.x - second.x, first.y - second.y);
+    const startDistance = pinchStartDistanceRef.current ?? currentDistance;
+    pinchStartDistanceRef.current = startDistance;
+    const nextDensity = resolvePinchCalendarDensity(
+      startDistance,
+      currentDistance,
+      detailActive ? "detail" : "compact"
+    );
+    if ((nextDensity === "detail") !== detailActive) {
+      changeDetailDensity(nextDensity === "detail");
+      pinchStartDistanceRef.current = currentDistance;
+    }
+  };
+  const startPinchPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (!compact || event.pointerType !== "touch") return;
+    const pointers = pinchPointersRef.current;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size === 2) {
+      const [first, second] = [...pointers.values()];
+      if (first && second) {
+        pinchStartDistanceRef.current = Math.hypot(first.x - second.x, first.y - second.y);
+      }
+    }
+  };
+  const endPinchPointer = (event: PointerEvent<HTMLDivElement>) => {
+    pinchPointersRef.current.delete(event.pointerId);
+    if (pinchPointersRef.current.size < 2) {
+      pinchStartDistanceRef.current = undefined;
+    }
+  };
   return (
-    <>
-      <MonthCalendarSummary data={data} />
-      <Card className="calendar-grid-card">
+    <div className={`calendar-month-view ${detailActive ? "is-detail-density" : ""}`}>
+      <MonthCalendarSummary data={data} compact={compact} />
+      <Card
+        className="calendar-grid-card"
+        aria-label={compact ? "双指放大查看日期详情，双指缩小恢复月历" : undefined}
+        onPointerDown={startPinchPointer}
+        onPointerMove={updatePinchPointer}
+        onPointerUp={endPinchPointer}
+        onPointerCancel={endPinchPointer}
+      >
         <div className="calendar-grid-scroll">
           <div className="calendar-grid-inner">
             <div className="calendar-weekdays" aria-hidden="true">
@@ -294,8 +419,12 @@ function MonthCalendar({
               {cells.map((date) => {
                 const dateKey = date.format("YYYY-MM-DD");
                 const outsideMonth = date.format("YYYY-MM") !== monthKey;
-                const day = data.days.find((item) => item.date === dateKey);
+                const day = dayByDate.get(dateKey);
                 const entries = (day?.entries ?? []).filter((entry) => visibleTypes.has(entry.type));
+                const lunar = calendarLunarInfo(dateKey);
+                const signals = compact
+                  ? buildCalendarDaySignals(entries, dateKey, todayKey)
+                  : [];
                 return (
                   <button
                     type="button"
@@ -304,18 +433,38 @@ function MonthCalendar({
                       "calendar-day",
                       outsideMonth ? "is-outside-month" : "",
                       entries.length ? "has-content" : "",
-                      dateKey === dayjs().format("YYYY-MM-DD") ? "is-today" : "",
+                      dateKey === todayKey ? "is-today" : "",
                       dateKey === selectedDate ? "is-selected" : ""
                     ].filter(Boolean).join(" ")}
                     onClick={() => onSelectDate(dateKey)}
                     aria-label={`${date.format("M月D日")}详情`}
                   >
                     <div className="calendar-day-heading">
-                      <span>{outsideMonth ? date.format("M月D日") : date.date()}</span>
+                      <small>{lunar.shortLabel}</small>
+                      <span>{date.date()}</span>
                     </div>
                     <div className="calendar-day-content">
-                      {entries.slice(0, 6).map((entry) => <CalendarEntryRow key={entry.id} entry={entry} />)}
-                      {entries.length > 6 ? <span className="calendar-more-entry">还有 {entries.length - 6} 项</span> : null}
+                      {compact && !detailActive ? (
+                        <>
+                          {signals.slice(0, 2).map((signal) => (
+                            <CalendarCompactSignal key={signal.type} signal={signal} />
+                          ))}
+                          {signals.length > 2 ? (
+                            <span className="calendar-more-entry">+{signals.length - 2}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {entries.slice(0, detailActive ? 4 : 6).map((entry) => (
+                            <CalendarEntryRow key={entry.id} entry={entry} />
+                          ))}
+                          {entries.length > (detailActive ? 4 : 6) ? (
+                            <span className="calendar-more-entry">
+                              还有 {entries.length - (detailActive ? 4 : 6)} 项
+                            </span>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                   </button>
                 );
@@ -324,7 +473,25 @@ function MonthCalendar({
           </div>
         </div>
       </Card>
-    </>
+    </div>
+  );
+}
+
+function CalendarCompactSignal({ signal }: { signal: CalendarDaySignal }) {
+  return (
+    <span
+      className={[
+        "calendar-entry-summary",
+        `is-${signal.type}`,
+        `tone-${signal.tone}`
+      ].join(" ")}
+      aria-label={signal.label}
+    >
+      <span className="calendar-entry-icon" aria-hidden="true">
+        {calendarEntryIcon(signal.type, true)}
+      </span>
+      <strong>{signal.value}</strong>
+    </span>
   );
 }
 
@@ -367,26 +534,29 @@ function CalendarContentFilter({
 }
 
 function CalendarEntryRow({ entry }: { entry: CalendarDayEntry }) {
-  const icon = entry.type === "glucose"
-    ? <ExperimentOutlined />
-    : entry.type === "exercise"
-      ? <FireOutlined />
-      : entry.type === "medication"
-        ? <MedicineBoxOutlined />
-        : entry.type === "followup"
-          ? <ScheduleOutlined />
-          : <WalletOutlined />;
   return (
     <span className={[
       "calendar-entry-row",
       `is-${entry.type}`,
       entry.abnormal || entry.medication?.missed ? "has-warning" : ""
     ].filter(Boolean).join(" ")}>
-      <span className="calendar-entry-icon">{icon}</span>
+      <span className="calendar-entry-icon">{calendarEntryIcon(entry.type)}</span>
       <span className="calendar-entry-member">{entry.memberName}</span>
       <span className="calendar-entry-text">{calendarEntryText(entry)}</span>
     </span>
   );
+}
+
+function calendarEntryIcon(type: CalendarDayEntryType, compact = false): ReactNode {
+  if (type === "anniversary") return <GiftOutlined />;
+  if (type === "schedule") return <CalendarOutlined />;
+  if (type === "income") return compact ? <ArrowUpOutlined /> : <WalletOutlined />;
+  if (type === "expense") return compact ? <ArrowDownOutlined /> : <WalletOutlined />;
+  if (type === "glucose") return <ExperimentOutlined />;
+  if (type === "exercise") return <FireOutlined />;
+  if (type === "medication") return <MedicineBoxOutlined />;
+  if (type === "weight") return <DashboardOutlined />;
+  return <ScheduleOutlined />;
 }
 
 function YearCalendar({
@@ -437,6 +607,11 @@ function YearCalendar({
                 </span>
               </button>
               <div className="calendar-year-signals">
+                <MetricLink
+                  icon={<GiftOutlined />}
+                  label={`日程 ${month.scheduleCount}项 · 纪念日 ${month.anniversaryCount}项`}
+                  onClick={() => onOpenMonth(month.month)}
+                />
                 <MetricLink
                   icon={<ExperimentOutlined />}
                   label={`血糖 ${month.glucoseMeasurements}次${month.glucoseAbnormalCount ? ` · 异常${month.glucoseAbnormalCount}次` : ""}`}
@@ -505,13 +680,56 @@ function CalendarSummaryCards({
   );
 }
 
-function MonthCalendarSummary({ data }: { data: CalendarData }) {
+function MonthCalendarSummary({ data, compact }: { data: CalendarData; compact: boolean }) {
   const reminders = [
     { label: "血糖异常", value: data.summary.glucoseAbnormalCount },
     { label: "漏服", value: data.summary.medication.missed },
     { label: "待复诊", value: data.summary.scheduledFollowupCount }
   ];
   const reminderTotal = reminders.reduce((sum, item) => sum + item.value, 0);
+  const nextEvent = data.upcomingEvents[0];
+  if (compact) {
+    const exerciseText = data.exerciseByMember
+      .filter((item) => item.minutes > 0)
+      .map((item) => `${item.memberName}${item.minutes}分`)
+      .join(" · ") || "暂无";
+    const weightText = data.latestWeightByMember
+      .filter((item) => item.weightKg)
+      .map((item) => `${item.memberName}${Number(item.weightKg)}kg`)
+      .join(" · ") || "暂无";
+    return (
+      <Card
+        className="calendar-mobile-overview"
+        title={`${Number(data.period.slice(5))}月概览`}
+        extra={<Text type="secondary">家庭</Text>}
+      >
+        <div className="calendar-mobile-finance">
+          <span className="is-income"><small>收入</small><strong>{compactMoney(data.summary.income)}</strong></span>
+          <span className="is-expense"><small>支出</small><strong>{compactMoney(data.summary.expense)}</strong></span>
+          <span className="is-balance"><small>结余</small><strong>{compactMoney(data.summary.balance)}</strong></span>
+        </div>
+        <div className="calendar-mobile-supporting">
+          <span aria-label={`运动 ${exerciseText}`}>
+            <FireOutlined aria-hidden="true" />
+            <small>运动</small>
+            <strong>{exerciseText}</strong>
+          </span>
+          <span aria-label={`体重 ${weightText}`}>
+            <DashboardOutlined aria-hidden="true" />
+            <small>体重</small>
+            <strong>{weightText}</strong>
+          </span>
+          <span className={reminderTotal ? "has-warning" : undefined}>
+            <ScheduleOutlined aria-hidden="true" />
+            <small>{nextEvent ? "近期" : "提醒"}</small>
+            <strong>{nextEvent
+              ? `${nextEvent.title}${nextEvent.countdownDays === 0 ? " 今天" : ` ${nextEvent.countdownDays}天`}`
+              : `${reminderTotal}项`}</strong>
+          </span>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Row gutter={[12, 12]} className="calendar-summary-row calendar-month-summary-row">
       <Col xs={12} xl={6}>
@@ -553,13 +771,20 @@ function MonthCalendarSummary({ data }: { data: CalendarData }) {
         </Card>
       </Col>
       <Col xs={12} xl={6}>
-        <Card className="calendar-summary-card metric-card--warning" title="健康提醒">
+        <Card className="calendar-summary-card metric-card--warning" title="提醒与日程">
           <div className="calendar-reminder-total">
-            <strong>{reminderTotal}</strong><span>项</span>
+            <strong>{reminderTotal}</strong><span>项健康提醒</span>
           </div>
           <div className="calendar-reminder-breakdown">
             {reminders.map((item) => <span key={item.label}>{item.label} {item.value}</span>)}
           </div>
+          {nextEvent ? (
+            <div className="calendar-next-event" title={nextEvent.title}>
+              {calendarEntryIcon(nextEvent.type)}
+              <span>{nextEvent.title}</span>
+              <small>{nextEvent.countdownDays === 0 ? "今天" : `${nextEvent.countdownDays}天后`}</small>
+            </div>
+          ) : null}
         </Card>
       </Col>
     </Row>
@@ -597,7 +822,8 @@ function DayDetailDrawer({
   onClose,
   onOpenCashflow,
   onOpenHealth,
-  onQuickRecord
+  onQuickRecord,
+  onCreateEvent
 }: {
   open: boolean;
   date?: string;
@@ -610,6 +836,7 @@ function DayDetailDrawer({
   onOpenCashflow(kind: "income" | "expense", month: string, memberName?: string): void;
   onOpenHealth(tab: HealthTabKey): void;
   onQuickRecord(kind: QuickHealthKind): void;
+  onCreateEvent(type: CalendarEventType): void;
 }) {
   const month = date?.slice(0, 7) ?? "";
   return (
@@ -622,6 +849,8 @@ function DayDetailDrawer({
       <Space orientation="vertical" size={16} className="calendar-day-detail">
         <DetailSection title="快速记录" icon={<PlusOutlined />}>
           <div className="calendar-quick-actions">
+            <Button icon={<CalendarOutlined />} onClick={() => onCreateEvent("schedule")}>日程</Button>
+            <Button icon={<GiftOutlined />} onClick={() => onCreateEvent("anniversary")}>纪念日</Button>
             <Button icon={<MedicineBoxOutlined />} onClick={() => onQuickRecord("medication")}>用药</Button>
             <Button icon={<UserOutlined />} onClick={() => onQuickRecord("body")}>体重</Button>
             <Button icon={<ExperimentOutlined />} onClick={() => onQuickRecord("glucose")}>血糖</Button>
@@ -638,6 +867,14 @@ function DayDetailDrawer({
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当天暂无记录或安排" />
         ) : (
           <>
+          <DetailSection title="当天记录" icon={<CalendarOutlined />}>
+            {day.entries.length ? (
+              <div className="calendar-detail-entry-list">
+                {day.entries.map((entry) => <CalendarEntryRow key={entry.id} entry={entry} />)}
+              </div>
+            ) : <Text type="secondary">无明细记录</Text>}
+          </DetailSection>
+
           <DetailSection
             title="财务"
             icon={<WalletOutlined />}
@@ -727,6 +964,9 @@ interface QuickHealthFormValues {
   durationMinutes?: number;
   intensity?: "low" | "moderate" | "high";
   isStrengthTraining?: boolean;
+  strengthMovementName?: string;
+  strengthMetric?: "reps" | "seconds";
+  strengthSets?: string;
   steps?: number;
   estimatedCalories?: number;
   glucoseMmol?: number;
@@ -736,7 +976,7 @@ interface QuickHealthFormValues {
   note?: string;
 }
 
-function QuickHealthDrawer({
+export function QuickHealthDrawer({
   open,
   kind,
   date,
@@ -758,6 +998,7 @@ function QuickHealthDrawer({
   const { message } = AntApp.useApp();
   const [form] = Form.useForm<QuickHealthFormValues>();
   const watchedMemberId = Form.useWatch("memberId", form);
+  const isStrengthTraining = Form.useWatch("isStrengthTraining", form);
   const [healthData, setHealthData] = useState<HealthData>();
   const [loading, setLoading] = useState(false);
   const [savingDoseKey, setSavingDoseKey] = useState<string>();
@@ -767,7 +1008,8 @@ function QuickHealthDrawer({
     medication: "记录用药",
     body: "记录体重",
     glucose: "记录血糖",
-    exercise: "记录运动"
+    exercise: "记录运动",
+    strength: "记录力量训练"
   }[kind ?? "body"];
 
   useEffect(() => {
@@ -783,10 +1025,12 @@ function QuickHealthDrawer({
       measuredAt: selectedMoment,
       bodyContext: "morningFasting",
       exerciseDate: dayjs(selectedDate),
+      exerciseType: kind === "strength" ? "力量训练" : undefined,
       intensity: "moderate",
-      isStrengthTraining: false
+      isStrengthTraining: kind === "strength",
+      strengthMetric: "reps"
     });
-  }, [defaultMemberId, form, members, open, selectedDate]);
+  }, [defaultMemberId, form, kind, members, open, selectedDate]);
 
   useEffect(() => {
     if (!open || !selectedMemberId) {
@@ -813,7 +1057,7 @@ function QuickHealthDrawer({
 
   const featureEnabled = kind === "body"
     ? healthData?.profile.weightTrackingEnabled
-    : kind === "exercise"
+    : kind === "exercise" || kind === "strength"
       ? healthData?.profile.exerciseTrackingEnabled
       : kind === "glucose"
         ? healthData?.profile.glucoseTrackingEnabled
@@ -830,13 +1074,21 @@ function QuickHealthDrawer({
           context: values.bodyContext ?? "morningFasting",
           note: values.note
         });
-      } else if (kind === "exercise") {
+      } else if (kind === "exercise" || kind === "strength") {
+        const strengthTraining = kind === "strength" || values.isStrengthTraining === true;
         await createExerciseLog(values.memberId, {
           date: values.exerciseDate!.format("YYYY-MM-DD"),
           type: values.exerciseType!.trim(),
           durationMinutes: values.durationMinutes!,
           intensity: values.intensity!,
-          isStrengthTraining: values.isStrengthTraining ?? false,
+          isStrengthTraining: strengthTraining,
+          ...(strengthTraining ? {
+            movements: [{
+              name: values.strengthMovementName!.trim(),
+              metric: values.strengthMetric ?? "reps",
+              sets: parseStrengthSets(values.strengthSets)
+            }]
+          } : {}),
           ...(values.steps === undefined ? {} : { steps: values.steps }),
           ...(values.estimatedCalories === undefined ? {} : { estimatedCalories: values.estimatedCalories }),
           note: values.note
@@ -904,7 +1156,10 @@ function QuickHealthDrawer({
       <Spin spinning={loading}>
         <Form form={form} layout="vertical" onFinish={(values) => void submit(values)}>
           <Form.Item name="memberId" label="家庭成员" rules={[{ required: true, message: "请选择家庭成员" }]}>
-            <Select options={members.map((member) => ({ label: member.name, value: member.id }))} />
+            <Select
+              options={members.map((member) => ({ label: member.name, value: member.id }))}
+              onChange={(memberId) => window.localStorage.setItem(QUICK_HEALTH_MEMBER_STORAGE_KEY, memberId)}
+            />
           </Form.Item>
 
           {healthData && !featureEnabled ? (
@@ -938,10 +1193,10 @@ function QuickHealthDrawer({
             </>
           ) : null}
 
-          {featureEnabled && kind === "exercise" ? (
+          {featureEnabled && (kind === "exercise" || kind === "strength") ? (
             <>
               <Form.Item name="exerciseDate" label="运动日期" rules={[{ required: true }]}>
-                <DatePicker className="health-full-width" />
+                <DatePicker inputReadOnly className="health-full-width" />
               </Form.Item>
               <Form.Item name="exerciseType" label="运动类型" rules={[{ required: true, message: "请输入运动类型" }]}>
                 <Input placeholder="快走、跑步、游泳、力量训练..." />
@@ -956,15 +1211,58 @@ function QuickHealthDrawer({
                   { label: "高强度", value: "high" }
                 ]} />
               </Form.Item>
-              <Form.Item name="isStrengthTraining" valuePropName="checked">
-                <Checkbox>计为力量训练</Checkbox>
-              </Form.Item>
+              {kind === "exercise" ? (
+                <Form.Item name="isStrengthTraining" valuePropName="checked">
+                  <Checkbox>计为力量训练</Checkbox>
+                </Form.Item>
+              ) : null}
+              {kind === "strength" || isStrengthTraining ? (
+                <div className="calendar-strength-fields">
+                  <Form.Item
+                    name="strengthMovementName"
+                    label="力量动作"
+                    rules={[{ required: true, message: "请输入力量动作" }]}
+                  >
+                    <AutoComplete
+                      options={[
+                        ...QUICK_STRENGTH_MOVEMENTS,
+                        ...(healthData?.profile.strengthExerciseGoals.map((goal) => goal.name) ?? [])
+                      ].filter((value, index, values) => values.indexOf(value) === index).map((value) => ({ value }))}
+                      placeholder="俯卧撑、引体向上..."
+                    />
+                  </Form.Item>
+                  <Row gutter={10}>
+                    <Col span={9}>
+                      <Form.Item name="strengthMetric" label="计量" rules={[{ required: true }]}>
+                        <Segmented block options={[
+                          { label: "次数", value: "reps" },
+                          { label: "秒", value: "seconds" }
+                        ]} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={15}>
+                      <Form.Item
+                        name="strengthSets"
+                        label="每组完成数"
+                        rules={[
+                          { required: true, message: "请输入每组完成数" },
+                          { pattern: /^\s*\d+\s*(?:[+、,，]\s*\d+\s*)*$/, message: "例如：12+10+8" }
+                        ]}
+                      >
+                        <Input placeholder="例如：12+10+8" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+              ) : null}
               <Row gutter={10}>
                 <Col span={12}><Form.Item name="steps" label="步数"><InputNumber min={0} className="health-full-width" /></Form.Item></Col>
                 <Col span={12}><Form.Item name="estimatedCalories" label="估算热量"><InputNumber min={0} className="health-full-width" /></Form.Item></Col>
               </Row>
               <Form.Item name="note" label="备注"><Input.TextArea rows={3} /></Form.Item>
-              <Button type="primary" htmlType="submit">保存运动</Button>
+              <Button type="primary" htmlType="submit">
+                {kind === "strength" ? "保存力量训练" : "保存运动"}
+              </Button>
             </>
           ) : null}
 
@@ -1101,7 +1399,8 @@ function readVisibleCalendarContent(): CalendarDayEntryType[] {
 }
 
 function dayHasContent(day: CalendarDaySummary): boolean {
-  return day.incomeCount > 0
+  return day.entries.length > 0
+    || day.incomeCount > 0
     || day.expenseCount > 0
     || day.glucoseMeasurements > 0
     || day.exerciseMinutes > 0
@@ -1118,21 +1417,50 @@ function compactMoney(value: string): string {
   return `${amount < 0 ? "-" : ""}¥${Math.round(absolute).toLocaleString("zh-CN")}`;
 }
 
+function parseStrengthSets(value?: string): number[] {
+  return value
+    ?.split(/[+、,，]/)
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item) && item > 0)
+    ?? [];
+}
+
 function calendarEntryText(entry: CalendarDayEntry): string {
+  if (entry.type === "schedule" || entry.type === "anniversary") {
+    const event = entry.event;
+    if (!event) return entry.label ?? (entry.type === "anniversary" ? "纪念日" : "日程");
+    const time = event.allDay || !event.startTime ? "" : `${event.startTime} `;
+    const countdown = event.showCountdown && event.countdownDays !== undefined
+      ? event.countdownDays === 0
+        ? " · 今天"
+        : event.countdownDays > 0
+          ? ` · 还有${event.countdownDays}天`
+          : ""
+      : "";
+    return `${time}${event.title}${countdown}`;
+  }
   if (entry.type === "income") return `收入 ${compactMoney(entry.amount ?? "0")}`;
   if (entry.type === "expense") return `支出 ${compactMoney(entry.amount ?? "0")}`;
   if (entry.type === "glucose") {
     const context = entry.context ? glucoseContextLabels[entry.context] : "血糖";
     return `${context} ${entry.value ?? "--"}`;
   }
-  if (entry.type === "exercise") return `${entry.label ?? "运动"} ${entry.minutes ?? 0}分钟`;
+  if (entry.type === "exercise") {
+    return `${entry.detail ? `${entry.detail} · ` : ""}${entry.label ?? "运动"} ${entry.minutes ?? 0}分钟`;
+  }
   if (entry.type === "followup") return entry.label ?? "复诊";
+  if (entry.type === "weight") return `体重 ${trimCalendarNumber(entry.value)} kg`;
 
   const medication = entry.medication;
   if (!medication) return "用药";
   if (medication.missed > 0) return `用药 漏服${medication.missed}次`;
   if (medication.scheduled > 0) return `用药 ${medication.taken}/${medication.scheduled}`;
   return "用药";
+}
+
+function trimCalendarNumber(value?: string): string {
+  if (value === undefined) return "--";
+  return String(Number(value));
 }
 
 function formatChangeRate(value?: number): string {

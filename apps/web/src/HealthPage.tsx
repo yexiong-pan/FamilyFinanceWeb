@@ -4,6 +4,7 @@ import {
   EditOutlined,
   ExperimentOutlined,
   MedicineBoxOutlined,
+  MinusCircleOutlined,
   PlusOutlined,
   SettingOutlined
 } from "@ant-design/icons";
@@ -16,11 +17,13 @@ import type {
   HealthData,
   HealthFollowup,
   MedicationPlan,
-  MemberHealthProfile
+  MemberHealthProfile,
+  StrengthExerciseGoal
 } from "@family-finance/shared";
 import {
   Alert,
   App,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -45,6 +48,7 @@ import {
   Switch,
   Tabs,
   Tag,
+  TimePicker,
   Typography
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
@@ -85,6 +89,7 @@ import {
   bodyMeasurementContextLabels,
   buildBodySummary,
   buildExerciseSummary,
+  buildStrengthTrend,
   buildGlucoseSummary,
   buildMedicationTasks,
   exerciseIntensityLabels,
@@ -95,6 +100,7 @@ import {
   medicationDaysRemaining,
   medicationDoseStatusLabels,
   nextScheduledFollowup,
+  strengthSessionText,
   toMinuteIso
 } from "./data/health";
 import { Column, Line } from "./LazyCharts";
@@ -102,8 +108,18 @@ import type { HealthTabKey } from "./navigation";
 
 const { Text, Title } = Typography;
 const MEMBER_STORAGE_KEY = "family-finance.health-member";
+const DEFAULT_STRENGTH_MOVEMENTS = [
+  "俯卧撑",
+  "引体向上",
+  "深蹲",
+  "平板支撑",
+  "卷腹",
+  "弓步蹲",
+  "双杠臂屈伸"
+];
 const MINUTE_DATE_TIME_PICKER_PROPS = {
   format: "YYYY-MM-DD HH:mm",
+  inputReadOnly: true,
   showTime: {
     format: "HH:mm",
     showSecond: false
@@ -315,6 +331,8 @@ export function HealthPage({ monthKey, members, tab, onTabChange }: HealthPagePr
           <ExerciseEditor
             open={editor === "exercise"}
             record={editingRecord && "durationMinutes" in editingRecord ? editingRecord : undefined}
+            profile={data.profile}
+            recentLogs={data.exerciseLogs}
             onClose={() => setEditor(null)}
             onSave={(values) => void runMutation(
               () => editingRecord && "durationMinutes" in editingRecord
@@ -673,6 +691,9 @@ function BodyExercisePanel({
     data.profile,
     monthKey === dayjs().format("YYYY-MM") ? dayjs().format("YYYY-MM-DD") : dayjs(`${monthKey}-01`).endOf("month").format("YYYY-MM-DD")
   );
+  const strengthTrend = buildStrengthTrend(data.exerciseLogs);
+  const repTrend = strengthTrend.filter((item) => item.metric === "reps");
+  const secondsTrend = strengthTrend.filter((item) => item.metric === "seconds");
 
   return (
     <Space orientation="vertical" size={16} className="page-stack">
@@ -739,6 +760,30 @@ function BodyExercisePanel({
               <Statistic title="有记录日平均步数" value={exercise.averageSteps ?? "—"} suffix={exercise.averageSteps ? "步" : ""} />
             </Col>
           </Row>
+          {exercise.strengthMovements.length ? (
+            <div className="strength-summary-list">
+              {exercise.strengthMovements.map((movement) => {
+                const unit = movement.metric === "seconds" ? "秒" : "次";
+                const weeklyGoal = movement.goal?.weeklyGoal;
+                return (
+                  <div className="strength-summary-item" key={`${movement.name}-${movement.metric}`}>
+                    <Flex justify="space-between" align="center" gap={8} wrap>
+                      <Text strong>{movement.name}</Text>
+                      <Text type="secondary">
+                        本周 {movement.total}{unit} · 最大单组 {movement.maxSet}{unit} · {movement.sessions}次训练
+                      </Text>
+                    </Flex>
+                    {weeklyGoal ? (
+                      <Progress
+                        percent={goalPercent(movement.total, weeklyGoal)}
+                        format={() => `${movement.total}/${weeklyGoal}${unit}`}
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           {data.exerciseLogs.length ? (
             <Column
               data={data.exerciseLogs.map((record) => ({
@@ -753,6 +798,34 @@ function BodyExercisePanel({
               axis={{ y: { title: "分钟" } }}
             />
           ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="记录后显示运动时长" />}
+          {repTrend.length ? (
+            <div className="strength-trend">
+              <Text strong>力量动作趋势（次数）</Text>
+              <Line
+                data={repTrend}
+                xField="date"
+                yField="total"
+                colorField="name"
+                height={mobile ? 220 : 260}
+                point={{ size: 4 }}
+                axis={{ y: { title: "次" } }}
+              />
+            </div>
+          ) : null}
+          {secondsTrend.length ? (
+            <div className="strength-trend">
+              <Text strong>计时动作趋势（秒）</Text>
+              <Line
+                data={secondsTrend}
+                xField="date"
+                yField="total"
+                colorField="name"
+                height={mobile ? 220 : 260}
+                point={{ size: 4 }}
+                axis={{ y: { title: "秒" } }}
+              />
+            </div>
+          ) : null}
           <HealthRecordList
             empty="暂无运动记录"
             items={[...data.exerciseLogs].reverse().map((record) => ({
@@ -763,7 +836,12 @@ function BodyExercisePanel({
                 ...(record.isStrengthTraining ? [<Tag key="strength" color="purple">力量训练</Tag>] : []),
                 ...(record.estimatedCalories === undefined ? [] : [<Tag key="calories">估算 {record.estimatedCalories} kcal</Tag>])
               ],
-              description: `${dayjs(record.date).format("YYYY-MM-DD")}${record.steps === undefined ? "" : ` · ${record.steps} 步`}${record.note ? ` · ${record.note}` : ""}`,
+              description: [
+                dayjs(record.date).format("YYYY-MM-DD"),
+                record.movements.length ? strengthSessionText(record) : undefined,
+                record.steps === undefined ? undefined : `${record.steps} 步`,
+                record.note
+              ].filter(Boolean).join(" · "),
               onEdit: () => onOpen("exercise", record),
               onDelete: () => onDelete("exercise", record.id)
             }))}
@@ -841,6 +919,7 @@ function MedicationPanel({
         title="每日用药"
         extra={
           <DatePicker
+            inputReadOnly
             value={dayjs(selectedDate)}
             onChange={(value) => setSelectedDate((value ?? dayjs()).format("YYYY-MM-DD"))}
             disabledDate={(value) => value.format("YYYY-MM") !== monthKey}
@@ -1100,6 +1179,7 @@ function HealthSettingsDrawer({
       beforeMealMax: profile.glucoseTargets.beforeMeal?.max,
       afterMeal2hMin: profile.glucoseTargets.afterMeal2h?.min,
       afterMeal2hMax: profile.glucoseTargets.afterMeal2h?.max,
+      strengthExerciseGoals: profile.strengthExerciseGoals,
       hba1cTargetMax: numberOrUndefined(profile.hba1cTargetMax)
     });
   }, [form, open, profile]);
@@ -1119,6 +1199,16 @@ function HealthSettingsDrawer({
           targetDate: values.targetDate?.format("YYYY-MM-DD") ?? "",
           weeklyExerciseMinutesGoal: values.weeklyExerciseMinutesGoal,
           weeklyStrengthSessionsGoal: values.weeklyStrengthSessionsGoal,
+          strengthExerciseGoals: (values.strengthExerciseGoals ?? [])
+            .filter((goal) => goal.name?.trim())
+            .map((goal) => ({
+              id: goal.id || crypto.randomUUID(),
+              name: goal.name.trim(),
+              metric: goal.metric,
+              ...(goal.weeklyGoal ? { weeklyGoal: goal.weeklyGoal } : {}),
+              ...(goal.singleSessionGoal ? { singleSessionGoal: goal.singleSessionGoal } : {}),
+              ...(goal.maxSetGoal ? { maxSetGoal: goal.maxSetGoal } : {})
+            })),
           dailyStepsGoal: values.dailyStepsGoal,
           glucoseIntervalDays: values.glucoseIntervalDays,
           glucoseLowThreshold: String(values.glucoseLowThreshold),
@@ -1141,11 +1231,69 @@ function HealthSettingsDrawer({
         <Title level={5}>身体与运动目标</Title>
         <Row gutter={12}>
           <Col xs={12}><NumberField name="targetWeightKg" label="目标体重 (kg)" min={20} max={400} /></Col>
-          <Col xs={12}><Form.Item name="targetDate" label="目标日期"><DatePicker className="health-full-width" /></Form.Item></Col>
+          <Col xs={12}><Form.Item name="targetDate" label="目标日期"><DatePicker inputReadOnly className="health-full-width" /></Form.Item></Col>
           <Col xs={12}><NumberField name="weeklyExerciseMinutesGoal" label="每周运动 (分钟)" min={0} max={10080} /></Col>
           <Col xs={12}><NumberField name="weeklyStrengthSessionsGoal" label="每周力量训练 (次)" min={0} max={14} /></Col>
           <Col xs={12}><NumberField name="dailyStepsGoal" label="每日步数" min={0} max={100000} /></Col>
         </Row>
+        <Title level={5}>力量动作目标</Title>
+        <Text type="secondary">动作名称也会作为记录力量训练时的快捷选项。</Text>
+        <Form.List name="strengthExerciseGoals">
+          {(fields, { add, remove }) => (
+            <Space orientation="vertical" size={10} className="strength-goal-editor">
+              {fields.map((field) => (
+                <div className="strength-goal-row" key={field.key}>
+                  <Form.Item name={[field.name, "id"]} hidden><Input /></Form.Item>
+                  <div className="strength-goal-heading">
+                    <Form.Item
+                      name={[field.name, "name"]}
+                      label="动作"
+                      rules={[{ required: true, message: "请输入动作名称" }]}
+                    >
+                      <AutoComplete
+                        options={DEFAULT_STRENGTH_MOVEMENTS.map((value) => ({ value }))}
+                        placeholder="俯卧撑、引体向上..."
+                      />
+                    </Form.Item>
+                    <Button
+                      type="text"
+                      danger
+                      icon={<MinusCircleOutlined />}
+                      aria-label="删除动作目标"
+                      onClick={() => remove(field.name)}
+                    />
+                  </div>
+                  <Row gutter={10}>
+                    <Col xs={24} sm={8}>
+                      <Form.Item name={[field.name, "metric"]} label="计量" rules={[{ required: true }]}>
+                        <Segmented block options={[
+                          { label: "次数", value: "reps" },
+                          { label: "秒", value: "seconds" }
+                        ]} />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={8}>
+                      <NumberField name={[field.name, "weeklyGoal"]} label="每周累计" min={1} max={100000} />
+                    </Col>
+                    <Col xs={8}>
+                      <NumberField name={[field.name, "singleSessionGoal"]} label="单次目标" min={1} max={100000} />
+                    </Col>
+                    <Col xs={8}>
+                      <NumberField name={[field.name, "maxSetGoal"]} label="最大单组" min={1} max={100000} />
+                    </Col>
+                  </Row>
+                </div>
+              ))}
+              <Button
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={() => add({ metric: "reps" })}
+              >
+                添加动作目标
+              </Button>
+            </Space>
+          )}
+        </Form.List>
         <Title level={5}>血糖与复查</Title>
         <Alert type="info" showIcon title="以下范围应按本人医生建议填写" className="health-settings-alert" />
         <Row gutter={12}>
@@ -1205,8 +1353,24 @@ function BodyEditor({ open, record, onClose, onSave }: EditorProps<BodyMeasureme
   );
 }
 
-function ExerciseEditor({ open, record, onClose, onSave }: EditorProps<ExerciseLog, ExerciseLogInput>) {
+function ExerciseEditor({
+  open,
+  record,
+  profile,
+  recentLogs,
+  onClose,
+  onSave
+}: EditorProps<ExerciseLog, ExerciseLogInput> & {
+  profile: MemberHealthProfile;
+  recentLogs: ExerciseLog[];
+}) {
   const [form] = Form.useForm<ExerciseFormValues>();
+  const isStrengthTraining = Form.useWatch("isStrengthTraining", form);
+  const movements = Form.useWatch("movements", form);
+  const movementOptions = [...new Set([
+    ...DEFAULT_STRENGTH_MOVEMENTS,
+    ...profile.strengthExerciseGoals.map((goal) => goal.name)
+  ])].map((value) => ({ value }));
   useEffect(() => {
     if (!open) return;
     form.resetFields();
@@ -1218,11 +1382,44 @@ function ExerciseEditor({ open, record, onClose, onSave }: EditorProps<ExerciseL
       isStrengthTraining: record?.isStrengthTraining ?? false,
       steps: record?.steps,
       estimatedCalories: record?.estimatedCalories,
+      movements: record?.movements.map((movement) => ({
+        name: movement.name,
+        metric: movement.metric,
+        sets: movement.sets.map((value) => ({ value })),
+        variant: movement.variant,
+        addedWeightKg: numberOrUndefined(movement.addedWeightKg),
+        assistanceWeightKg: numberOrUndefined(movement.assistanceWeightKg),
+        note: movement.note
+      })),
       note: record?.note
     });
   }, [form, open, record]);
+  const copyPreviousStrength = () => {
+    const previous = [...recentLogs]
+      .reverse()
+      .find((log) => log.id !== record?.id && log.movements.length > 0);
+    if (!previous) return;
+    form.setFieldsValue({
+      type: previous.type,
+      durationMinutes: previous.durationMinutes,
+      intensity: previous.intensity,
+      isStrengthTraining: true,
+      movements: previous.movements.map((movement) => ({
+        name: movement.name,
+        metric: movement.metric,
+        sets: movement.sets.map((value) => ({ value })),
+        variant: movement.variant,
+        addedWeightKg: numberOrUndefined(movement.addedWeightKg),
+        assistanceWeightKg: numberOrUndefined(movement.assistanceWeightKg),
+        note: movement.note
+      }))
+    });
+  };
+  const previousStrengthAvailable = recentLogs.some((log) => (
+    log.id !== record?.id && log.movements.length > 0
+  ));
   return (
-    <EditorDrawer title={record ? "编辑运动记录" : "记录运动"} open={open} onClose={onClose}>
+    <EditorDrawer title={record ? "编辑运动记录" : "记录运动"} size={680} open={open} onClose={onClose}>
       <Form form={form} layout="vertical" onFinish={(values) => onSave({
         date: values.date.toISOString(),
         type: values.type,
@@ -1231,9 +1428,20 @@ function ExerciseEditor({ open, record, onClose, onSave }: EditorProps<ExerciseL
         isStrengthTraining: values.isStrengthTraining,
         steps: values.steps,
         estimatedCalories: values.estimatedCalories,
+        movements: values.isStrengthTraining
+          ? (values.movements ?? []).map((movement) => ({
+            name: movement.name,
+            metric: movement.metric,
+            sets: movement.sets.map((set) => set.value),
+            variant: movement.variant,
+            addedWeightKg: stringOrEmpty(movement.addedWeightKg),
+            assistanceWeightKg: stringOrEmpty(movement.assistanceWeightKg),
+            note: movement.note
+          }))
+          : [],
         note: values.note
       })}>
-        <Form.Item name="date" label="日期" rules={[{ required: true }]}><DatePicker className="health-full-width" /></Form.Item>
+        <Form.Item name="date" label="日期" rules={[{ required: true }]}><DatePicker inputReadOnly className="health-full-width" /></Form.Item>
         <Form.Item name="type" label="运动类型" rules={[{ required: true, message: "请输入运动类型" }]}><Input placeholder="快走、跑步、游泳、力量训练..." /></Form.Item>
         <NumberField name="durationMinutes" label="时长 (分钟)" min={1} max={1440} required />
         <Form.Item name="intensity" label="强度" rules={[{ required: true }]}>
@@ -1244,6 +1452,111 @@ function ExerciseEditor({ open, record, onClose, onSave }: EditorProps<ExerciseL
           ]} />
         </Form.Item>
         <Form.Item name="isStrengthTraining" valuePropName="checked"><Checkbox>计为力量训练</Checkbox></Form.Item>
+        {isStrengthTraining ? (
+          <div className="strength-movement-section">
+            <Flex justify="space-between" align="center" gap={8}>
+              <div>
+                <Text strong>动作与分组</Text>
+                <div><Text type="secondary">每组只填完成次数，平板支撑等动作可切换为秒。</Text></div>
+              </div>
+              {previousStrengthAvailable ? (
+                <Button onClick={copyPreviousStrength}>带入上次训练</Button>
+              ) : null}
+            </Flex>
+            <Form.List name="movements">
+              {(fields, { add, remove }) => (
+                <Space orientation="vertical" size={12} className="strength-movement-list">
+                  {fields.map((field, movementIndex) => {
+                    const movement = movements?.[movementIndex];
+                    const movementTotal = movement?.sets?.reduce(
+                      (total, set) => total + (Number(set?.value) || 0),
+                      0
+                    ) ?? 0;
+                    const movementUnit = movement?.metric === "seconds" ? "秒" : "次";
+                    return (
+                      <div className="strength-movement-editor" key={field.key}>
+                        <div className="strength-movement-heading">
+                          <Text strong>动作 {movementIndex + 1}</Text>
+                          <Space size={8}>
+                            <Tag color="blue">合计 {movementTotal}{movementUnit}</Tag>
+                            <Button
+                              type="text"
+                              danger
+                              icon={<MinusCircleOutlined />}
+                              aria-label="删除动作"
+                              onClick={() => remove(field.name)}
+                            />
+                          </Space>
+                        </div>
+                        <Row gutter={10}>
+                          <Col xs={24} sm={14}>
+                            <Form.Item
+                              name={[field.name, "name"]}
+                              label="动作"
+                              rules={[{ required: true, message: "请输入动作名称" }]}
+                            >
+                              <AutoComplete options={movementOptions} placeholder="俯卧撑、引体向上..." />
+                            </Form.Item>
+                          </Col>
+                          <Col xs={24} sm={10}>
+                            <Form.Item name={[field.name, "metric"]} label="计量" rules={[{ required: true }]}>
+                              <Segmented block options={[
+                                { label: "次数", value: "reps" },
+                                { label: "秒", value: "seconds" }
+                              ]} />
+                            </Form.Item>
+                          </Col>
+                        </Row>
+                        <Form.List name={[field.name, "sets"]}>
+                          {(setFields, { add: addSet, remove: removeSet }) => (
+                            <div className="strength-set-list">
+                              {setFields.map((setField, setIndex) => (
+                                <div className="strength-set-item" key={setField.key}>
+                                  <Form.Item
+                                    name={[setField.name, "value"]}
+                                    label={`第${setIndex + 1}组`}
+                                    rules={[{ required: true, message: "请输入完成数" }]}
+                                  >
+                                    <InputNumber min={1} max={10000} precision={0} />
+                                  </Form.Item>
+                                  {setFields.length > 1 ? (
+                                    <Button
+                                      type="text"
+                                      danger
+                                      icon={<MinusCircleOutlined />}
+                                      aria-label={`删除第${setIndex + 1}组`}
+                                      onClick={() => removeSet(setField.name)}
+                                    />
+                                  ) : null}
+                                </div>
+                              ))}
+                              <Button type="dashed" icon={<PlusOutlined />} onClick={() => addSet({ value: 1 })}>
+                                增加一组
+                              </Button>
+                            </div>
+                          )}
+                        </Form.List>
+                        <Row gutter={10}>
+                          <Col xs={24} sm={8}><Form.Item name={[field.name, "variant"]} label="动作变式"><Input placeholder="宽距、跪姿..." /></Form.Item></Col>
+                          <Col xs={12} sm={8}><NumberField name={[field.name, "addedWeightKg"]} label="负重 (kg)" min={0} max={500} step={0.5} /></Col>
+                          <Col xs={12} sm={8}><NumberField name={[field.name, "assistanceWeightKg"]} label="助力 (kg)" min={0} max={500} step={0.5} /></Col>
+                        </Row>
+                        <Form.Item name={[field.name, "note"]} label="动作备注"><Input /></Form.Item>
+                      </div>
+                    );
+                  })}
+                  <Button
+                    type="dashed"
+                    icon={<PlusOutlined />}
+                    onClick={() => add({ metric: "reps", sets: [{ value: 10 }] })}
+                  >
+                    添加动作
+                  </Button>
+                </Space>
+              )}
+            </Form.List>
+          </div>
+        ) : null}
         <NumberField name="steps" label="步数（可选）" min={0} max={200000} />
         <NumberField name="estimatedCalories" label="估算消耗 (kcal，可选)" min={0} max={10000} />
         <Form.Item name="note" label="备注"><Input.TextArea rows={3} /></Form.Item>
@@ -1334,11 +1647,11 @@ function Hba1cEditor({ open, record, onClose, onSave }: EditorProps<Hba1cRecord,
         doctorAdvice: values.doctorAdvice,
         nextReviewDate: values.nextReviewDate?.format("YYYY-MM-DD")
       })}>
-        <Form.Item name="measuredAt" label="检查日期" rules={[{ required: true }]}><DatePicker className="health-full-width" /></Form.Item>
+        <Form.Item name="measuredAt" label="检查日期" rules={[{ required: true }]}><DatePicker inputReadOnly className="health-full-width" /></Form.Item>
         <NumberField name="valuePercent" label="HbA1c (%)" min={2} max={25} step={0.1} required />
         <Form.Item name="facility" label="检查机构"><Input /></Form.Item>
         <Form.Item name="doctorAdvice" label="医生建议"><Input.TextArea rows={3} /></Form.Item>
-        <Form.Item name="nextReviewDate" label="下次复查日期"><DatePicker className="health-full-width" /></Form.Item>
+        <Form.Item name="nextReviewDate" label="下次复查日期"><DatePicker inputReadOnly className="health-full-width" /></Form.Item>
         <Button type="primary" htmlType="submit">保存</Button>
       </Form>
     </EditorDrawer>
@@ -1361,8 +1674,11 @@ function MedicationEditor({
       stockUnit: record?.stockUnit ?? "片",
       doseQuantity: numberOrUndefined(record?.doseQuantity) ?? 1,
       scheduleSlots: record?.scheduleSlots.length
-        ? record.scheduleSlots
-        : [{ id: "morning", label: "早餐后", time: "08:00" }],
+        ? record.scheduleSlots.map((slot) => ({
+          ...slot,
+          time: slot.time ? dayjs(`2000-01-01T${slot.time}:00`) : undefined
+        }))
+        : [{ id: "morning", label: "早餐后", time: dayjs("2000-01-01T08:00:00") }],
       startDate: record ? dayjs(record.startDate) : dayjs(),
       endDate: record?.endDate ? dayjs(record.endDate) : undefined,
       purpose: record?.purpose,
@@ -1389,7 +1705,7 @@ function MedicationEditor({
         scheduleSlots: values.scheduleSlots.map((slot, index) => ({
           id: slot.id || `slot-${index + 1}`,
           label: slot.label,
-          ...(slot.time?.trim() ? { time: slot.time.trim() } : {})
+          ...(slot.time ? { time: slot.time.format("HH:mm") } : {})
         })),
         startDate: values.startDate.format("YYYY-MM-DD"),
         endDate: values.endDate?.format("YYYY-MM-DD"),
@@ -1426,7 +1742,13 @@ function MedicationEditor({
                       <Input placeholder="早餐后" />
                     </Form.Item>
                     <Form.Item name={[field.name, "time"]} className="medication-slot-time">
-                      <Input placeholder="08:00" />
+                      <TimePicker
+                        inputReadOnly
+                        format="HH:mm"
+                        minuteStep={5}
+                        placeholder="选择时间"
+                        className="health-full-width"
+                      />
                     </Form.Item>
                     <Button
                       icon={<DeleteOutlined />}
@@ -1436,7 +1758,11 @@ function MedicationEditor({
                     />
                   </Flex>
                 ))}
-                <Button icon={<PlusOutlined />} onClick={() => add({ id: `slot-${Date.now()}-${fields.length + 1}`, label: "" })}>
+                <Button icon={<PlusOutlined />} onClick={() => add({
+                  id: `slot-${Date.now()}-${fields.length + 1}`,
+                  label: "",
+                  time: dayjs("2000-01-01T08:00:00")
+                })}>
                   添加用药时间
                 </Button>
               </Space>
@@ -1444,8 +1770,8 @@ function MedicationEditor({
           </Form.List>
         </Form.Item>
         <Row gutter={12}>
-          <Col xs={12}><Form.Item name="startDate" label="开始日期" rules={[{ required: true }]}><DatePicker className="health-full-width" /></Form.Item></Col>
-          <Col xs={12}><Form.Item name="endDate" label="结束日期"><DatePicker className="health-full-width" /></Form.Item></Col>
+          <Col xs={12}><Form.Item name="startDate" label="开始日期" rules={[{ required: true }]}><DatePicker inputReadOnly className="health-full-width" /></Form.Item></Col>
+          <Col xs={12}><Form.Item name="endDate" label="结束日期"><DatePicker inputReadOnly className="health-full-width" /></Form.Item></Col>
         </Row>
         {!record ? <NumberField name="currentStock" label="当前剩余药量" min={0} max={10000000} step={0.5} /> : null}
         <NumberField name="lowStockDays" label="剩余多少天时提醒" min={0} max={365} />
@@ -1587,16 +1913,18 @@ function FollowupEditor({
 
 function EditorDrawer({
   title,
+  size = 480,
   open,
   onClose,
   children
 }: {
   title: string;
+  size?: number;
   open: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
-  return <Drawer title={title} size={480} open={open} onClose={onClose}>{children}</Drawer>;
+  return <Drawer title={title} size={size} open={open} onClose={onClose}>{children}</Drawer>;
 }
 
 function NumberField({
@@ -1607,7 +1935,7 @@ function NumberField({
   step = 1,
   required = false
 }: {
-  name: string;
+  name: string | Array<string | number>;
   label: string;
   min: number;
   max: number;
@@ -1673,6 +2001,10 @@ function signed(value: number): string {
   return `${rounded > 0 ? "+" : ""}${rounded}`;
 }
 
+function goalPercent(value: number, goal: number): number {
+  return goal > 0 ? Math.min(100, Math.round(value / goal * 100)) : 0;
+}
+
 function numberOrUndefined(value?: string): number | undefined {
   return value === undefined ? undefined : Number(value);
 }
@@ -1723,6 +2055,7 @@ interface HealthSettingsValues {
   targetDate?: Dayjs;
   weeklyExerciseMinutesGoal: number;
   weeklyStrengthSessionsGoal: number;
+  strengthExerciseGoals?: StrengthGoalFormValue[];
   dailyStepsGoal: number;
   glucoseIntervalDays: number;
   glucoseLowThreshold: number;
@@ -1733,6 +2066,10 @@ interface HealthSettingsValues {
   afterMeal2hMin?: number;
   afterMeal2hMax?: number;
   hba1cTargetMax?: number;
+}
+
+interface StrengthGoalFormValue extends Omit<StrengthExerciseGoal, "id"> {
+  id?: string;
 }
 
 interface BodyFormValues {
@@ -1751,6 +2088,17 @@ interface ExerciseFormValues {
   isStrengthTraining: boolean;
   steps?: number;
   estimatedCalories?: number;
+  movements?: StrengthMovementFormValue[];
+  note?: string;
+}
+
+interface StrengthMovementFormValue {
+  name: string;
+  metric: ExerciseLog["movements"][number]["metric"];
+  sets: Array<{ value: number }>;
+  variant?: string;
+  addedWeightKg?: number;
+  assistanceWeightKg?: number;
   note?: string;
 }
 
@@ -1778,7 +2126,7 @@ interface MedicationFormValues {
   specification?: string;
   stockUnit: string;
   doseQuantity: number;
-  scheduleSlots: Array<{ id?: string; label: string; time?: string }>;
+  scheduleSlots: Array<{ id?: string; label: string; time?: Dayjs }>;
   startDate: Dayjs;
   endDate?: Dayjs;
   purpose?: string;

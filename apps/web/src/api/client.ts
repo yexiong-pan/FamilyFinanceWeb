@@ -2,6 +2,10 @@ import type {
   Account,
   AccountTypeOption,
   CalendarData,
+  CalendarEvent,
+  CalendarEventInput,
+  CalendarEventStatus,
+  CalendarEventType,
   CalendarView,
   DashboardSummary,
   FamilyMemberInfo,
@@ -327,6 +331,32 @@ export async function getCalendarData(
   return getJson(`/calendar?${params.toString()}`);
 }
 
+export async function getCalendarEvents(
+  memberId = "all",
+  type?: CalendarEventType,
+  status?: CalendarEventStatus
+): Promise<CalendarEvent[]> {
+  const params = new URLSearchParams({ memberId });
+  if (type) params.set("type", type);
+  if (status) params.set("status", status);
+  return getJson(`/calendar/events?${params.toString()}`);
+}
+
+export async function createCalendarEvent(input: CalendarEventInput): Promise<CalendarEvent> {
+  return postJson("/calendar/events", input);
+}
+
+export async function updateCalendarEvent(
+  id: string,
+  input: CalendarEventInput
+): Promise<CalendarEvent> {
+  return patchJson(`/calendar/events/${id}`, input);
+}
+
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  return del(`/calendar/events/${id}`);
+}
+
 export async function deleteAccount(id: string): Promise<void> {
   return del(`/accounts/${id}`);
 }
@@ -444,6 +474,16 @@ export type ExerciseLogInput = {
   isStrengthTraining?: boolean;
   steps?: number;
   estimatedCalories?: number;
+  movements?: StrengthExerciseMovementInput[];
+  note?: string;
+};
+export type StrengthExerciseMovementInput = {
+  name: string;
+  metric: ExerciseLog["movements"][number]["metric"];
+  sets: number[];
+  variant?: string;
+  addedWeightKg?: string;
+  assistanceWeightKg?: string;
   note?: string;
 };
 export type BloodGlucoseInput = {

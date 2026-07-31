@@ -518,12 +518,12 @@ export function FinancialSafetyPage({
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="startMonth" label="开始月份">
-                <DatePicker picker="month" className="full-width" />
+                <DatePicker inputReadOnly picker="month" className="full-width" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="endMonth" label="结束月份">
-                <DatePicker picker="month" className="full-width" />
+                <DatePicker inputReadOnly picker="month" className="full-width" />
               </Form.Item>
             </Col>
           </Row>

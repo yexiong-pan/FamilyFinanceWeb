@@ -9,7 +9,9 @@ import type {
   MealType,
   MedicationDoseStatus,
   MedicationPlanStatus,
-  MedicationScheduleSlot
+  MedicationScheduleSlot,
+  StrengthExerciseGoal,
+  StrengthMovementMetric
 } from "@family-finance/shared";
 
 export interface HealthProfileInput {
@@ -22,6 +24,7 @@ export interface HealthProfileInput {
   targetDate?: string;
   weeklyExerciseMinutesGoal?: number;
   weeklyStrengthSessionsGoal?: number;
+  strengthExerciseGoals?: StrengthExerciseGoal[];
   dailyStepsGoal?: number;
   glucoseIntervalDays?: number;
   glucoseLowThreshold?: string;
@@ -45,6 +48,17 @@ export interface ExerciseLogInput {
   isStrengthTraining?: boolean;
   steps?: number;
   estimatedCalories?: number;
+  movements?: StrengthExerciseMovementInput[];
+  note?: string;
+}
+
+export interface StrengthExerciseMovementInput {
+  name: string;
+  metric: StrengthMovementMetric;
+  sets: number[];
+  variant?: string;
+  addedWeightKg?: string;
+  assistanceWeightKg?: string;
   note?: string;
 }
 

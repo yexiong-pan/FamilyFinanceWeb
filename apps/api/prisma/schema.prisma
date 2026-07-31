@@ -66,6 +66,11 @@ enum ExerciseIntensity {
   high
 }
 
+enum StrengthMovementMetric {
+  reps
+  seconds
+}
+
 enum BodyMeasurementContext {
   morningFasting
   other
@@ -123,6 +128,30 @@ enum HealthFollowupStatus {
   cancelled
 }
 
+enum CalendarEventType {
+  schedule
+  anniversary
+}
+
+enum CalendarSystem {
+  solar
+  lunar
+}
+
+enum CalendarRecurrence {
+  none
+  daily
+  weekly
+  monthly
+  yearly
+}
+
+enum CalendarEventStatus {
+  scheduled
+  completed
+  cancelled
+}
+
 enum MonthlyActionStatus {
   pending
   completed
@@ -170,6 +199,7 @@ model Family {
   medicationDoses     MedicationDoseRecord[]
   medicationInventory MedicationInventoryEvent[]
   healthFollowups     HealthFollowup[]
+  calendarEvents      CalendarEvent[]
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
 }
@@ -192,6 +222,7 @@ model FamilyMember {
   medicationPlans  MedicationPlan[]
   medicationDoses  MedicationDoseRecord[]
   healthFollowups  HealthFollowup[]
+  calendarEvents   CalendarEventParticipant[]
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
@@ -465,6 +496,7 @@ model MemberHealthProfile {
   targetDate                 DateTime?
   weeklyExerciseMinutesGoal  Int          @default(150)
   weeklyStrengthSessionsGoal Int          @default(2)
+  strengthExerciseGoals      Json?
   dailyStepsGoal             Int          @default(8000)
   glucoseIntervalDays        Int          @default(7)
   glucoseLowThreshold        Decimal      @default(3.9) @db.Decimal(5, 2)
@@ -477,40 +509,60 @@ model MemberHealthProfile {
 }
 
 model BodyMeasurement {
-  id         String       @id @default(uuid())
+  id         String                 @id @default(uuid())
   familyId   String
   memberId   String
   measuredAt DateTime
-  weightKg   Decimal      @db.Decimal(6, 2)
-  waistCm    Decimal?     @db.Decimal(6, 2)
+  weightKg   Decimal                @db.Decimal(6, 2)
+  waistCm    Decimal?               @db.Decimal(6, 2)
   context    BodyMeasurementContext @default(other)
   note       String?
-  family     Family       @relation(fields: [familyId], references: [id])
-  member     FamilyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  family     Family                 @relation(fields: [familyId], references: [id])
+  member     FamilyMember           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
 
   @@index([memberId, measuredAt])
 }
 
 model ExerciseLog {
-  id                 String            @id @default(uuid())
+  id                 String                     @id @default(uuid())
   familyId           String
   memberId           String
   date               DateTime
   type               String
   durationMinutes    Int
   intensity          ExerciseIntensity
-  isStrengthTraining Boolean           @default(false)
+  isStrengthTraining Boolean                    @default(false)
   steps              Int?
   estimatedCalories  Int?
   note               String?
-  family             Family            @relation(fields: [familyId], references: [id])
-  member             FamilyMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  family             Family                     @relation(fields: [familyId], references: [id])
+  member             FamilyMember               @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  movements          StrengthExerciseMovement[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 
   @@index([memberId, date])
+}
+
+model StrengthExerciseMovement {
+  id                 String                 @id @default(uuid())
+  exerciseLogId      String
+  name               String
+  metric             StrengthMovementMetric @default(reps)
+  sets               Int[]
+  variant            String?
+  addedWeightKg      Decimal?               @db.Decimal(6, 2)
+  assistanceWeightKg Decimal?               @db.Decimal(6, 2)
+  note               String?
+  sortOrder          Int                    @default(0)
+  exerciseLog        ExerciseLog            @relation(fields: [exerciseLogId], references: [id], onDelete: Cascade)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([exerciseLogId, sortOrder])
+  @@index([name])
 }
 
 model BloodGlucoseRecord {
@@ -655,6 +707,47 @@ model HealthFollowup {
   updatedAt     DateTime             @updatedAt
 
   @@index([memberId, scheduledAt])
+}
+
+model CalendarEvent {
+  id                String                     @id @default(uuid())
+  familyId          String
+  title             String
+  type              CalendarEventType
+  calendarSystem    CalendarSystem             @default(solar)
+  startDate         DateTime                   @db.Date
+  endDate           DateTime?                  @db.Date
+  startTime         String?
+  endTime           String?
+  allDay            Boolean                    @default(true)
+  recurrence        CalendarRecurrence         @default(none)
+  recurrenceEndDate DateTime?                  @db.Date
+  lunarMonth        Int?
+  lunarDay          Int?
+  lunarLeapMonth    Boolean                    @default(false)
+  originalYear      Int?
+  showCountdown     Boolean                    @default(false)
+  reminderDays      Int[]                      @default([])
+  location          String?
+  note              String?
+  status            CalendarEventStatus        @default(scheduled)
+  family            Family                     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  participants      CalendarEventParticipant[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([familyId, status, startDate])
+  @@index([familyId, type])
+}
+
+model CalendarEventParticipant {
+  eventId  String
+  memberId String
+  event    CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member   FamilyMember  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, memberId])
+  @@index([memberId])
 }
 
 model AccountSnapshot {

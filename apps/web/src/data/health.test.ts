@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BloodGlucoseRecord, BodyMeasurement, MedicationPlan, MemberHealthProfile } from "@family-finance/shared";
 import {
   buildBodySummary,
+  buildExerciseSummary,
   buildGlucoseSummary,
   buildMedicationTasks,
   glucoseStatus,
@@ -20,6 +21,13 @@ const profile: MemberHealthProfile = {
   targetWeightKg: "70.00",
   weeklyExerciseMinutesGoal: 150,
   weeklyStrengthSessionsGoal: 2,
+  strengthExerciseGoals: [{
+    id: "push-up",
+    name: "俯卧撑",
+    metric: "reps",
+    weeklyGoal: 60,
+    maxSetGoal: 20
+  }],
   dailyStepsGoal: 8000,
   glucoseIntervalDays: 7,
   glucoseLowThreshold: "3.90",
@@ -63,6 +71,33 @@ describe("health summaries", () => {
     expect(glucoseStatus(glucose("2026-07-01", "3.50", "random"), profile)).toBe("low");
     expect(glucoseStatus(glucose("2026-07-01", "6.00", "fasting"), profile)).toBe("inRange");
     expect(glucoseStatus(glucose("2026-07-01", "8.00", "fasting"), profile)).toBe("high");
+  });
+
+  it("summarizes strength sets and matches movement goals", () => {
+    const summary = buildExerciseSummary([{
+      id: "exercise-1",
+      memberId: "member-1",
+      date: "2026-07-29T08:00:00.000Z",
+      type: "力量训练",
+      durationMinutes: 20,
+      intensity: "moderate",
+      isStrengthTraining: true,
+      movements: [{
+        id: "movement-1",
+        name: "俯卧撑",
+        metric: "reps",
+        sets: [12, 10, 8],
+        total: 30
+      }]
+    }], profile, "2026-07-29");
+
+    expect(summary.strengthMovements[0]).toMatchObject({
+      name: "俯卧撑",
+      total: 30,
+      maxSet: 12,
+      sessions: 1,
+      goal: { weeklyGoal: 60 }
+    });
   });
 
   it("builds each scheduled medication dose and estimates remaining days", () => {

@@ -79,13 +79,67 @@ export function buildExerciseSummary(logs: ExerciseLog[], profile: MemberHealthP
   const stepLogs = weekLogs.filter((log) => log.steps !== undefined);
   const minutes = sum(weekLogs.map((log) => log.durationMinutes));
   const strengthSessions = weekLogs.filter((log) => log.isStrengthTraining).length;
+  const movementMap = new Map<string, {
+    name: string;
+    metric: ExerciseLog["movements"][number]["metric"];
+    total: number;
+    maxSet: number;
+    sessions: number;
+  }>();
+  for (const log of weekLogs) {
+    for (const movement of log.movements) {
+      const key = `${movement.name.toLocaleLowerCase("zh-CN")}|${movement.metric}`;
+      const current = movementMap.get(key) ?? {
+        name: movement.name,
+        metric: movement.metric,
+        total: 0,
+        maxSet: 0,
+        sessions: 0
+      };
+      current.total += movement.total;
+      current.maxSet = Math.max(current.maxSet, ...movement.sets);
+      current.sessions += 1;
+      movementMap.set(key, current);
+    }
+  }
+  const strengthMovements = [...movementMap.values()]
+    .map((movement) => ({
+      ...movement,
+      goal: profile.strengthExerciseGoals.find((goal) => (
+        goal.name.localeCompare(movement.name, "zh-CN", { sensitivity: "base" }) === 0
+        && goal.metric === movement.metric
+      ))
+    }))
+    .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name, "zh-CN"));
   return {
     minutes,
     strengthSessions,
+    strengthMovements,
     averageSteps: stepLogs.length ? Math.round(sum(stepLogs.map((log) => log.steps ?? 0)) / stepLogs.length) : undefined,
     minutesPercent: ratio(minutes, profile.weeklyExerciseMinutesGoal),
     strengthPercent: ratio(strengthSessions, profile.weeklyStrengthSessionsGoal)
   };
+}
+
+export function buildStrengthTrend(logs: ExerciseLog[]) {
+  return logs.flatMap((log) => log.movements.map((movement) => ({
+    date: dayjs(log.date).format("MM-DD"),
+    name: movement.name,
+    metric: movement.metric,
+    total: movement.total,
+    maxSet: Math.max(...movement.sets)
+  })));
+}
+
+export function strengthMovementText(
+  movement: Pick<ExerciseLog["movements"][number], "name" | "metric" | "sets" | "total">
+): string {
+  const unit = movement.metric === "seconds" ? "秒" : "次";
+  return `${movement.name} ${movement.sets.join("+")}，共${movement.total}${unit}`;
+}
+
+export function strengthSessionText(log: ExerciseLog): string {
+  return log.movements.map(strengthMovementText).join("；");
 }
 
 export type GlucoseStatus = "low" | "inRange" | "high" | "unconfigured";

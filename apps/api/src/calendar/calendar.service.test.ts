@@ -42,8 +42,13 @@ describe("CalendarService", () => {
         findMany: vi.fn(async () => [{
           memberId: "member-1",
           date: date("2026-07-03"),
-          type: "跑步",
-          durationMinutes: 30
+          type: "力量训练",
+          durationMinutes: 30,
+          movements: [{
+            name: "俯卧撑",
+            metric: "reps",
+            sets: [12, 10, 8]
+          }]
         }])
       },
       medicationPlan: {
@@ -73,12 +78,43 @@ describe("CalendarService", () => {
           hospital: "社区医院",
           department: "内分泌科"
         }])
+      },
+      calendarEvent: {
+        findMany: vi.fn(async () => [{
+          id: "event-1",
+          familyId: "default-family",
+          title: "家庭聚餐",
+          type: "schedule",
+          calendarSystem: "solar",
+          startDate: date("2026-07-03"),
+          endDate: null,
+          startTime: "18:30",
+          endTime: null,
+          allDay: false,
+          recurrence: "none",
+          recurrenceEndDate: null,
+          lunarMonth: null,
+          lunarDay: null,
+          lunarLeapMonth: false,
+          originalYear: null,
+          showCountdown: true,
+          reminderDays: [1],
+          location: "家里",
+          note: null,
+          status: "scheduled",
+          participants: [{
+            member: { id: "member-1", name: "雄哥" }
+          }],
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-01T00:00:00.000Z")
+        }])
       }
     }));
 
     const result = await service.getCalendar("month", "2026-07", "member-1");
     const financeDay = result.days.find((day) => day.date === "2026-07-03");
     const glucoseDay = result.days.find((day) => day.date === "2026-07-01");
+    const weightDay = result.days.find((day) => day.date === "2026-07-20");
 
     expect(result.summary).toMatchObject({
       income: "1000.00",
@@ -89,6 +125,8 @@ describe("CalendarService", () => {
       exerciseMinutes: 30,
       followupCount: 1,
       scheduledFollowupCount: 1,
+      scheduleCount: 1,
+      anniversaryCount: 0,
       medication: {
         scheduled: 2,
         taken: 1,
@@ -100,7 +138,7 @@ describe("CalendarService", () => {
       memberId: "member-1",
       memberName: "雄哥",
       minutes: 30,
-      activities: [{ type: "跑步", minutes: 30 }]
+      activities: [{ type: "力量训练", minutes: 30 }]
     }]);
     expect(result.latestWeightByMember).toEqual([{
       memberId: "member-1",
@@ -123,13 +161,23 @@ describe("CalendarService", () => {
       expect.objectContaining({
         type: "exercise",
         memberName: "雄哥",
-        label: "跑步",
-        minutes: 30
+        label: "力量训练",
+        minutes: 30,
+        detail: "俯卧撑30次"
       }),
       expect.objectContaining({
         type: "followup",
         memberName: "雄哥",
         label: "糖尿病复诊"
+      }),
+      expect.objectContaining({
+        type: "schedule",
+        memberName: "雄哥",
+        label: "家庭聚餐",
+        event: expect.objectContaining({
+          startTime: "18:30",
+          location: "家里"
+        })
       })
     ]));
     expect(glucoseDay?.glucoseReadings[0]).toMatchObject({
@@ -151,6 +199,13 @@ describe("CalendarService", () => {
           scheduled: 1,
           taken: 1
         })
+      })
+    ]));
+    expect(weightDay?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "weight",
+        memberName: "雄哥",
+        value: "76.50"
       })
     ]));
     expect(financeDay?.followups[0]?.department).toBe("内分泌科");
@@ -194,7 +249,12 @@ describe("CalendarService", () => {
 });
 
 function mockPrisma(value: object): PrismaService {
-  return value as PrismaService;
+  return {
+    calendarEvent: {
+      findMany: vi.fn(async () => [])
+    },
+    ...value
+  } as unknown as PrismaService;
 }
 
 function transaction(day: string, kind: "income" | "expense", amount: string) {

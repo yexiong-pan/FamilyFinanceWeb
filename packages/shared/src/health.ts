@@ -1,5 +1,6 @@
 export type HealthMoneyValue = string;
 export type ExerciseIntensity = "low" | "moderate" | "high";
+export type StrengthMovementMetric = "reps" | "seconds";
 export type BodyMeasurementContext = "morningFasting" | "other";
 export type GlucoseContext =
   | "fasting"
@@ -38,6 +39,7 @@ export interface MemberHealthProfile {
   targetDate?: string;
   weeklyExerciseMinutesGoal: number;
   weeklyStrengthSessionsGoal: number;
+  strengthExerciseGoals: StrengthExerciseGoal[];
   dailyStepsGoal: number;
   glucoseIntervalDays: number;
   glucoseLowThreshold: HealthMoneyValue;
@@ -55,6 +57,27 @@ export interface BodyMeasurement {
   note?: string;
 }
 
+export interface StrengthExerciseGoal {
+  id: string;
+  name: string;
+  metric: StrengthMovementMetric;
+  weeklyGoal?: number;
+  singleSessionGoal?: number;
+  maxSetGoal?: number;
+}
+
+export interface StrengthExerciseMovement {
+  id: string;
+  name: string;
+  metric: StrengthMovementMetric;
+  sets: number[];
+  total: number;
+  variant?: string;
+  addedWeightKg?: HealthMoneyValue;
+  assistanceWeightKg?: HealthMoneyValue;
+  note?: string;
+}
+
 export interface ExerciseLog {
   id: string;
   memberId: string;
@@ -65,6 +88,7 @@ export interface ExerciseLog {
   isStrengthTraining: boolean;
   steps?: number;
   estimatedCalories?: number;
+  movements: StrengthExerciseMovement[];
   note?: string;
 }
 

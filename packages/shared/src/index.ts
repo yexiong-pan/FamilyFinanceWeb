@@ -5,6 +5,7 @@ export type MoneyAmount = string;
 export * from "./financial-planning.js";
 export * from "./health.js";
 export * from "./calendar.js";
+export * from "./calendar-events.js";
 
 export type AccountType = string;
 export type AssetPurpose = "daily" | "emergency" | "goal" | "investment" | "restricted";

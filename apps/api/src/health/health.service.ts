@@ -13,6 +13,8 @@ import type {
   MedicationPlan,
   MedicationScheduleSlot,
   MemberHealthProfile,
+  StrengthExerciseGoal,
+  StrengthExerciseMovement,
   WeeklyHealthReview
 } from "@family-finance/shared";
 import type { Prisma } from "@prisma/client";
@@ -73,6 +75,7 @@ export class HealthService {
           memberId,
           date: { gte: monthStartDate, lt: monthEnd }
         },
+        include: { movements: { orderBy: { sortOrder: "asc" } } },
         orderBy: { date: "asc" }
       }),
       this.prisma.bloodGlucoseRecord.findMany({
@@ -190,8 +193,10 @@ export class HealthService {
       data: {
         familyId: DEFAULT_FAMILY_ID,
         memberId,
-        ...exerciseLogData(input)
-      }
+        ...exerciseLogData(input),
+        movements: { create: strengthMovementCreateData(input) }
+      },
+      include: { movements: { orderBy: { sortOrder: "asc" } } }
     }));
   }
 
@@ -200,7 +205,14 @@ export class HealthService {
     await this.assertRecord("exerciseLog", id);
     return mapExerciseLog(await this.prisma.exerciseLog.update({
       where: { id },
-      data: exerciseLogData(input)
+      data: {
+        ...exerciseLogData(input),
+        movements: {
+          deleteMany: {},
+          create: strengthMovementCreateData(input)
+        }
+      },
+      include: { movements: { orderBy: { sortOrder: "asc" } } }
     }));
   }
 
@@ -474,6 +486,7 @@ export class HealthService {
       }),
       this.prisma.exerciseLog.findMany({
         where: { familyId: DEFAULT_FAMILY_ID, memberId, date: { gte: start, lt: end } },
+        include: { movements: { orderBy: { sortOrder: "asc" } } },
         orderBy: { date: "asc" }
       }),
       this.prisma.bloodGlucoseRecord.findMany({
@@ -513,7 +526,7 @@ export class HealthService {
         row.context === "morningFasting" ? "晨起空腹" : "其他时间", "", "", "", row.note ?? ""
       ]),
       ...exerciseRows.map((row) => [
-        "运动", row.date.toISOString(), "", row.type, String(row.durationMinutes), row.steps?.toString() ?? "",
+        "运动", row.date.toISOString(), "", exerciseTypeWithMovements(row), String(row.durationMinutes), row.steps?.toString() ?? "",
         "", row.note ?? ""
       ]),
       ...glucoseRows.map((row) => [
@@ -616,6 +629,9 @@ function profileData(input: HealthProfileInput) {
     ...("targetDate" in input ? { targetDate: optionalDate(input.targetDate, "目标日期") } : {}),
     ...(input.weeklyExerciseMinutesGoal === undefined ? {} : { weeklyExerciseMinutesGoal: input.weeklyExerciseMinutesGoal }),
     ...(input.weeklyStrengthSessionsGoal === undefined ? {} : { weeklyStrengthSessionsGoal: input.weeklyStrengthSessionsGoal }),
+    ...(input.strengthExerciseGoals === undefined ? {} : {
+      strengthExerciseGoals: input.strengthExerciseGoals as unknown as Prisma.InputJsonValue
+    }),
     ...(input.dailyStepsGoal === undefined ? {} : { dailyStepsGoal: input.dailyStepsGoal }),
     ...(input.glucoseIntervalDays === undefined ? {} : { glucoseIntervalDays: input.glucoseIntervalDays }),
     ...(input.glucoseLowThreshold === undefined ? {} : { glucoseLowThreshold: decimal(input.glucoseLowThreshold, "低血糖警戒值") }),
@@ -642,11 +658,24 @@ function exerciseLogData(input: ExerciseLogInput) {
     type: input.type.trim(),
     durationMinutes: input.durationMinutes,
     intensity: input.intensity,
-    isStrengthTraining: input.isStrengthTraining ?? false,
+    isStrengthTraining: Boolean(input.isStrengthTraining || input.movements?.length),
     steps: input.steps ?? null,
     estimatedCalories: input.estimatedCalories ?? null,
     note: cleanText(input.note)
   };
+}
+
+function strengthMovementCreateData(input: ExerciseLogInput) {
+  return (input.movements ?? []).map((movement, index) => ({
+    name: movement.name.trim(),
+    metric: movement.metric,
+    sets: movement.sets,
+    variant: cleanText(movement.variant),
+    addedWeightKg: optionalDecimal(movement.addedWeightKg),
+    assistanceWeightKg: optionalDecimal(movement.assistanceWeightKg),
+    note: cleanText(movement.note),
+    sortOrder: index
+  }));
 }
 
 function bloodGlucoseData(input: BloodGlucoseInput) {
@@ -708,6 +737,7 @@ function validateProfile(input: HealthProfileInput) {
   validateOptionalNumber(input.targetWeightKg, 20, 400, "目标体重");
   validateInteger(input.weeklyExerciseMinutesGoal, 0, 10080, "每周运动目标");
   validateInteger(input.weeklyStrengthSessionsGoal, 0, 14, "力量训练目标");
+  validateStrengthGoals(input.strengthExerciseGoals);
   validateInteger(input.dailyStepsGoal, 0, 100000, "每日步数目标");
   validateInteger(input.glucoseIntervalDays, 1, 365, "血糖测量间隔");
   validateOptionalNumber(input.glucoseLowThreshold, 1, 10, "低血糖警戒值");
@@ -741,7 +771,43 @@ function validateExerciseLog(input: ExerciseLogInput) {
   if (!["low", "moderate", "high"].includes(input.intensity)) {
     throw new BadRequestException("运动强度无效");
   }
+  validateStrengthMovements(input);
   parseDateTime(input.date, "运动日期");
+}
+
+function validateStrengthMovements(input: ExerciseLogInput): void {
+  const movements = input.movements ?? [];
+  if (movements.length > 20) throw new BadRequestException("单次训练最多记录20个动作");
+  for (const movement of movements) {
+    if (!movement.name?.trim()) throw new BadRequestException("力量动作名称不能为空");
+    if (movement.name.trim().length > 50) throw new BadRequestException("力量动作名称不能超过50个字");
+    if (!["reps", "seconds"].includes(movement.metric)) {
+      throw new BadRequestException("力量动作计量方式无效");
+    }
+    if (!movement.sets?.length) throw new BadRequestException(`${movement.name}至少需要记录一组`);
+    if (movement.sets.length > 30) throw new BadRequestException(`${movement.name}最多记录30组`);
+    movement.sets.forEach((value) => validateInteger(value, 1, 10000, `${movement.name}每组数值`));
+    validateOptionalNumber(movement.addedWeightKg, 0, 500, `${movement.name}负重`);
+    validateOptionalNumber(movement.assistanceWeightKg, 0, 500, `${movement.name}助力`);
+  }
+}
+
+function validateStrengthGoals(goals?: StrengthExerciseGoal[]): void {
+  if (!goals) return;
+  if (goals.length > 30) throw new BadRequestException("力量动作目标最多设置30项");
+  const names = new Set<string>();
+  for (const goal of goals) {
+    if (!goal.name?.trim()) throw new BadRequestException("力量动作目标名称不能为空");
+    const normalizedName = goal.name.trim().toLocaleLowerCase("zh-CN");
+    if (names.has(normalizedName)) throw new BadRequestException(`力量动作目标重复：${goal.name}`);
+    names.add(normalizedName);
+    if (!["reps", "seconds"].includes(goal.metric)) {
+      throw new BadRequestException("力量动作目标计量方式无效");
+    }
+    validateInteger(goal.weeklyGoal, 1, 100000, `${goal.name}周目标`);
+    validateInteger(goal.singleSessionGoal, 1, 100000, `${goal.name}单次目标`);
+    validateInteger(goal.maxSetGoal, 1, 100000, `${goal.name}单组目标`);
+  }
 }
 
 function validateBloodGlucose(input: BloodGlucoseInput) {
@@ -816,6 +882,7 @@ function mapProfile(row: {
   targetDate: Date | null;
   weeklyExerciseMinutesGoal: number;
   weeklyStrengthSessionsGoal: number;
+  strengthExerciseGoals: unknown;
   dailyStepsGoal: number;
   glucoseIntervalDays: number;
   glucoseLowThreshold: { toString(): string };
@@ -833,6 +900,7 @@ function mapProfile(row: {
     ...(row.targetDate ? { targetDate: formatDate(row.targetDate) } : {}),
     weeklyExerciseMinutesGoal: row.weeklyExerciseMinutesGoal,
     weeklyStrengthSessionsGoal: row.weeklyStrengthSessionsGoal,
+    strengthExerciseGoals: parseStrengthGoals(row.strengthExerciseGoals),
     dailyStepsGoal: row.dailyStepsGoal,
     glucoseIntervalDays: row.glucoseIntervalDays,
     glucoseLowThreshold: money(row.glucoseLowThreshold),
@@ -872,6 +940,16 @@ function mapExerciseLog(row: {
   steps: number | null;
   estimatedCalories: number | null;
   note: string | null;
+  movements?: Array<{
+    id: string;
+    name: string;
+    metric: "reps" | "seconds";
+    sets: number[];
+    variant: string | null;
+    addedWeightKg: { toString(): string } | null;
+    assistanceWeightKg: { toString(): string } | null;
+    note: string | null;
+  }>;
 }): ExerciseLog {
   return {
     id: row.id,
@@ -883,6 +961,30 @@ function mapExerciseLog(row: {
     isStrengthTraining: row.isStrengthTraining,
     ...(row.steps === null ? {} : { steps: row.steps }),
     ...(row.estimatedCalories === null ? {} : { estimatedCalories: row.estimatedCalories }),
+    movements: (row.movements ?? []).map(mapStrengthMovement),
+    ...(row.note ? { note: row.note } : {})
+  };
+}
+
+function mapStrengthMovement(row: {
+  id: string;
+  name: string;
+  metric: "reps" | "seconds";
+  sets: number[];
+  variant: string | null;
+  addedWeightKg: { toString(): string } | null;
+  assistanceWeightKg: { toString(): string } | null;
+  note: string | null;
+}): StrengthExerciseMovement {
+  return {
+    id: row.id,
+    name: row.name,
+    metric: row.metric,
+    sets: row.sets,
+    total: row.sets.reduce((total, value) => total + value, 0),
+    ...(row.variant ? { variant: row.variant } : {}),
+    ...(row.addedWeightKg ? { addedWeightKg: money(row.addedWeightKg) } : {}),
+    ...(row.assistanceWeightKg ? { assistanceWeightKg: money(row.assistanceWeightKg) } : {}),
     ...(row.note ? { note: row.note } : {})
   };
 }
@@ -1084,6 +1186,41 @@ function parseStringArray(value: unknown): string[] {
 function parseGlucoseTargets(value: unknown): GlucoseTargets {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return value as GlucoseTargets;
+}
+
+function parseStrengthGoals(value: unknown): StrengthExerciseGoal[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const candidate = item as Record<string, unknown>;
+    if (
+      typeof candidate.id !== "string"
+      || typeof candidate.name !== "string"
+      || (candidate.metric !== "reps" && candidate.metric !== "seconds")
+    ) {
+      return [];
+    }
+    return [{
+      id: candidate.id,
+      name: candidate.name,
+      metric: candidate.metric,
+      ...(typeof candidate.weeklyGoal === "number" ? { weeklyGoal: candidate.weeklyGoal } : {}),
+      ...(typeof candidate.singleSessionGoal === "number" ? { singleSessionGoal: candidate.singleSessionGoal } : {}),
+      ...(typeof candidate.maxSetGoal === "number" ? { maxSetGoal: candidate.maxSetGoal } : {})
+    }];
+  });
+}
+
+function exerciseTypeWithMovements(row: {
+  type: string;
+  movements?: Array<{ name: string; metric: "reps" | "seconds"; sets: number[] }>;
+}): string {
+  if (!row.movements?.length) return row.type;
+  const details = row.movements.map((movement) => {
+    const total = movement.sets.reduce((sum, value) => sum + value, 0);
+    return `${movement.name} ${total}${movement.metric === "seconds" ? "秒" : "次"}`;
+  });
+  return `${row.type}（${details.join("；")}）`;
 }
 
 function validateRequiredNumber(value: string | number | undefined, min: number, max: number, label: string) {

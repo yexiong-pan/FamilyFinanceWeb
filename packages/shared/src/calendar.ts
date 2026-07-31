@@ -4,6 +4,94 @@ import type {
 } from "./health.js";
 
 export type CalendarView = "month" | "year";
+export type CalendarEventType = "schedule" | "anniversary";
+export type CalendarSystem = "solar" | "lunar";
+export type CalendarRecurrence = "none" | "daily" | "weekly" | "monthly" | "yearly";
+export type CalendarEventStatus = "scheduled" | "completed" | "cancelled";
+
+export interface CalendarEventParticipant {
+  memberId: string;
+  memberName: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  type: CalendarEventType;
+  calendarSystem: CalendarSystem;
+  startDate: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  recurrence: CalendarRecurrence;
+  recurrenceEndDate?: string;
+  lunarMonth?: number;
+  lunarDay?: number;
+  lunarLeapMonth: boolean;
+  originalYear?: number;
+  showCountdown: boolean;
+  reminderDays: number[];
+  location?: string;
+  note?: string;
+  status: CalendarEventStatus;
+  participants: CalendarEventParticipant[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalendarEventInput {
+  title: string;
+  type: CalendarEventType;
+  calendarSystem: CalendarSystem;
+  startDate: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  recurrence: CalendarRecurrence;
+  recurrenceEndDate?: string;
+  lunarMonth?: number;
+  lunarDay?: number;
+  lunarLeapMonth?: boolean;
+  originalYear?: number;
+  showCountdown?: boolean;
+  reminderDays?: number[];
+  location?: string;
+  note?: string;
+  status?: CalendarEventStatus;
+  memberIds: string[];
+}
+
+export interface CalendarEventOccurrence {
+  eventId: string;
+  date: string;
+  title: string;
+  type: CalendarEventType;
+  calendarSystem: CalendarSystem;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  showCountdown: boolean;
+  countdownDays?: number;
+  anniversaryYears?: number;
+  lunarLabel?: string;
+  location?: string;
+  status: CalendarEventStatus;
+  participants: CalendarEventParticipant[];
+}
+
+export interface CalendarLunarInfo {
+  date: string;
+  year: number;
+  month: number;
+  day: number;
+  leapMonth: boolean;
+  shortLabel: string;
+  fullLabel: string;
+  festival?: string;
+  solarTerm?: string;
+}
 
 export interface CalendarGlucoseReading {
   id: string;
@@ -41,7 +129,10 @@ export type CalendarDayEntryType =
   | "glucose"
   | "exercise"
   | "medication"
-  | "followup";
+  | "weight"
+  | "followup"
+  | "schedule"
+  | "anniversary";
 
 export interface CalendarDayEntry {
   id: string;
@@ -54,7 +145,9 @@ export interface CalendarDayEntry {
   minutes?: number;
   medication?: CalendarMedicationSummary;
   label?: string;
+  detail?: string;
   abnormal?: boolean;
+  event?: CalendarEventOccurrence;
 }
 
 export interface CalendarPeriodSummary {
@@ -69,6 +162,8 @@ export interface CalendarPeriodSummary {
   medication: CalendarMedicationSummary;
   followupCount: number;
   scheduledFollowupCount: number;
+  scheduleCount: number;
+  anniversaryCount: number;
 }
 
 export interface CalendarDaySummary extends CalendarPeriodSummary {
@@ -108,6 +203,7 @@ export interface CalendarData {
   summary: CalendarPeriodSummary;
   exerciseByMember: CalendarMemberExerciseSummary[];
   latestWeightByMember: CalendarMemberWeightSummary[];
+  upcomingEvents: CalendarEventOccurrence[];
   days: CalendarDaySummary[];
   months: CalendarMonthSummary[];
 }

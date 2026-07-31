@@ -172,6 +172,10 @@ import { assetPurposeOptions, renderAssetPurpose } from "./assetPurpose";
 import { RatioProgress } from "./RatioProgress";
 import { FinancialSafetyPage } from "./FinancialSafetyPage";
 import { MonthlyReviewPanel } from "./MonthlyReviewPanel";
+import { MobileFloatingNavigation } from "./MobileFloatingNavigation";
+import { QuickRecordFloatButton } from "./QuickRecordFloatButton";
+import type { QuickHealthKind } from "./CalendarPage";
+import type { MobileCalendarDensity } from "./data/calendar";
 import {
   ExpenseNatureHelp,
   expenseNatureColor,
@@ -184,6 +188,7 @@ const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 const HealthPage = lazy(async () => ({ default: (await import("./HealthPage")).HealthPage }));
 const CalendarPage = lazy(async () => ({ default: (await import("./CalendarPage")).CalendarPage }));
+const QuickHealthDrawer = lazy(async () => ({ default: (await import("./CalendarPage")).QuickHealthDrawer }));
 const MOBILE_TRANSACTION_PAGE_SIZE = 20;
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "family-finance.sidebar-collapsed";
 
@@ -311,9 +316,16 @@ function AppShell() {
   const [calendarMember, setCalendarMember] = useState(
     () => new URLSearchParams(window.location.search).get("member") ?? "all"
   );
+  const [calendarDensity, setCalendarDensity] = useState<MobileCalendarDensity>(
+    () => new URLSearchParams(window.location.search).get("density") === "detail"
+      ? "detail"
+      : "compact"
+  );
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quickHealthKind, setQuickHealthKind] = useState<QuickHealthKind>();
+  const [healthDataVersion, setHealthDataVersion] = useState(0);
   const [siderCollapsed, setSiderCollapsed] = useState(
     () => window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
   );
@@ -328,15 +340,21 @@ function AppShell() {
       const routeCalendarMember = route.page === "calendar"
         ? new URLSearchParams(window.location.search).get("member") ?? "all"
         : "all";
+      const routeCalendarDensity = route.page === "calendar"
+        && new URLSearchParams(window.location.search).get("density") === "detail"
+        ? "detail"
+        : "compact";
       setActiveRoute(route);
       setMonth(routeMonth);
       setCashflowFilters(routeFilters);
       setCalendarMember(routeCalendarMember);
+      setCalendarDensity(routeCalendarDensity);
       const canonicalUrl = urlForRoute(
         route,
         routeMonth.format("YYYY-MM"),
         routeFilters,
-        routeCalendarMember
+        routeCalendarMember,
+        routeCalendarDensity
       );
       if (`${window.location.pathname}${window.location.search}` !== canonicalUrl) {
         window.history.replaceState(null, "", canonicalUrl);
@@ -412,11 +430,17 @@ function AppShell() {
     );
     setActiveRoute(route);
     setCashflowFilters(nextFilters);
-    const nextUrl = urlForRoute(route, month.format("YYYY-MM"), nextFilters, calendarMember);
+    const nextUrl = urlForRoute(
+      route,
+      month.format("YYYY-MM"),
+      nextFilters,
+      calendarMember,
+      calendarDensity
+    );
     if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
       window.history.pushState(null, "", nextUrl);
     }
-  }, [activeRoute, calendarMember, cashflowFilters, month]);
+  }, [activeRoute, calendarDensity, calendarMember, cashflowFilters, month]);
 
   const replaceCashflowFilters = useCallback((filters: CashflowFilters) => {
     const normalized = parseCashflowFilters(writeCashflowFilters(new URLSearchParams(), filters));
@@ -429,6 +453,9 @@ function AppShell() {
 
   const navigateToPage = useCallback((page: PageKey) => {
     navigateToRoute(defaultRouteForPage(page));
+  }, [navigateToRoute]);
+  const navigateToHealth = useCallback((tab: HealthTabKey) => {
+    navigateToRoute({ page: "health", tab });
   }, [navigateToRoute]);
 
   const navigateToMonthReport = useCallback((monthKey: string) => {
@@ -443,8 +470,12 @@ function AppShell() {
     const route: AppRoute = { page: "calendar", tab: "month" };
     setMonth(dayjs(`${nextMonthKey}-01`));
     setActiveRoute(route);
-    window.history.pushState(null, "", urlForRoute(route, nextMonthKey, {}, calendarMember));
-  }, [calendarMember]);
+    window.history.pushState(
+      null,
+      "",
+      urlForRoute(route, nextMonthKey, {}, calendarMember, calendarDensity)
+    );
+  }, [calendarDensity, calendarMember]);
 
   const changePeriodBy = useCallback((offset: -1 | 1) => {
     const nextMonthKey = shiftMonthKey(monthKey, isYearView ? offset * 12 : offset);
@@ -452,9 +483,13 @@ function AppShell() {
     window.history.pushState(
       null,
       "",
-      urlForRoute(activeRoute, nextMonthKey, cashflowFilters, calendarMember)
+      urlForRoute(activeRoute, nextMonthKey, cashflowFilters, calendarMember, calendarDensity)
     );
-  }, [activeRoute, calendarMember, cashflowFilters, isYearView, monthKey]);
+  }, [activeRoute, calendarDensity, calendarMember, cashflowFilters, isYearView, monthKey]);
+  const storedHealthMemberId = window.localStorage.getItem("family-finance.health-member");
+  const quickRecordDefaultMemberId = data.familyMembers.some((member) => member.id === storedHealthMemberId)
+    ? storedHealthMemberId ?? undefined
+    : data.familyMembers[0]?.id;
 
   return (
     <Layout className="app-shell">
@@ -514,6 +549,7 @@ function AppShell() {
                   onClick={() => changePeriodBy(-1)}
                 />
                 <DatePicker
+                  inputReadOnly
                   picker={isYearView ? "year" : "month"}
                   format={isYearView ? "YYYY年" : "YYYY年M月"}
                   value={month}
@@ -528,7 +564,8 @@ function AppShell() {
                         activeRoute,
                         nextMonth.format("YYYY-MM"),
                         cashflowFilters,
-                        calendarMember
+                        calendarMember,
+                        calendarDensity
                       )
                     );
                   }}
@@ -595,6 +632,7 @@ function AppShell() {
               {activeRoute.page === "health" ? (
                 <Suspense fallback={<Spin />}>
                   <HealthPage
+                    key={`health-${healthDataVersion}`}
                     monthKey={monthKey}
                     members={data.familyMembers}
                     tab={activeRoute.tab}
@@ -605,17 +643,27 @@ function AppShell() {
               {activeRoute.page === "calendar" ? (
                 <Suspense fallback={<Spin />}>
                   <CalendarPage
+                    key={`calendar-${healthDataVersion}`}
                     monthKey={monthKey}
                     members={data.familyMembers}
                     tab={activeRoute.tab}
                     memberId={calendarMember}
+                    density={calendarDensity}
                     onTabChange={(tab: CalendarTabKey) => navigateToRoute({ page: "calendar", tab })}
                     onMemberChange={(memberId: string) => {
                       setCalendarMember(memberId);
                       window.history.replaceState(
                         null,
                         "",
-                        urlForRoute(activeRoute, monthKey, {}, memberId)
+                        urlForRoute(activeRoute, monthKey, {}, memberId, calendarDensity)
+                      );
+                    }}
+                    onDensityChange={(density: MobileCalendarDensity) => {
+                      setCalendarDensity(density);
+                      window.history.replaceState(
+                        null,
+                        "",
+                        urlForRoute(activeRoute, monthKey, {}, calendarMember, density)
                       );
                     }}
                     onOpenMonth={navigateToMonthCalendar}
@@ -647,18 +695,36 @@ function AppShell() {
               {activePage === "settings" ? <SettingsPage {...commonProps} /> : null}
             </Spin>
           </Content>
-          <nav className="mobile-nav" aria-label="主导航">
-            {pageMenuItems.map((item) => (
-              <Button
-                key={item.key}
-                type={activePage === item.key ? "primary" : "text"}
-                icon={pageIcons[item.key]}
-                onClick={() => navigateToPage(item.key)}
-              >
-                {item.key === "checkup" ? "盘点" : item.label}
-              </Button>
-            ))}
-          </nav>
+          <MobileFloatingNavigation
+            activePage={activePage}
+            items={pageMenuItems.map((item) => ({
+              ...item,
+              icon: pageIcons[item.key]
+            }))}
+            onNavigate={navigateToPage}
+          />
+          <QuickRecordFloatButton
+            onSelect={setQuickHealthKind}
+            onOpenHealth={navigateToHealth}
+          />
+          {quickHealthKind ? (
+            <Suspense fallback={null}>
+              <QuickHealthDrawer
+                open
+                kind={quickHealthKind}
+                date={dayjs().format("YYYY-MM-DD")}
+                members={data.familyMembers}
+                defaultMemberId={quickRecordDefaultMemberId}
+                mobile={!screens.md}
+                onClose={() => setQuickHealthKind(undefined)}
+                onSaved={() => {
+                  message.success("健康记录已保存");
+                  setHealthDataVersion((value) => value + 1);
+                  void reload();
+                }}
+              />
+            </Suspense>
+          ) : null}
         </Layout>
       </Layout>
   );
@@ -3130,6 +3196,7 @@ function MonthlySnapshotPage(props: PageProps) {
             title="月度对比"
             extra={
               <DatePicker
+                inputReadOnly
                 picker="month"
                 allowClear={false}
                 value={dayjs(`${compareMonth}-01`)}
@@ -3960,7 +4027,7 @@ function TransactionFormFields({
   return (
     <>
       <Form.Item name="date" label="日期" rules={[{ required: true }]}>
-        <DatePicker className="full-width" />
+        <DatePicker inputReadOnly className="full-width" />
       </Form.Item>
       <Form.Item name="categoryName" label="分类" rules={[{ required: true }]}>
         <Select options={data.categories.filter((category) => category.kind === kind).map(toSelectOption)} />

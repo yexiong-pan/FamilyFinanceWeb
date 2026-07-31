@@ -4,7 +4,7 @@ export type PageKey = "report" | "spending" | "income" | "checkup" | "calendar" 
 export type CashflowTabKey = "summary" | "details";
 export type CheckupTabKey = "assets" | "safety" | "liabilities" | "investments" | "history";
 export type ReportTabKey = "monthly" | "yearly";
-export type CalendarTabKey = "month" | "year";
+export type CalendarTabKey = "month" | "year" | "events";
 export type HealthTabKey = "overview" | "glucose" | "medication" | "body";
 export type MonthlyReviewItemKey = "income" | "spending" | "assets" | "liabilities" | "investments";
 
@@ -53,6 +53,7 @@ const routePaths = new Map<string, AppRoute>([
   ["/calendar", { page: "calendar", tab: "month" }],
   ["/calendar/month", { page: "calendar", tab: "month" }],
   ["/calendar/year", { page: "calendar", tab: "year" }],
+  ["/calendar/events", { page: "calendar", tab: "events" }],
   ["/health", { page: "health", tab: "overview" }],
   ["/health/overview", { page: "health", tab: "overview" }],
   ["/health/glucose", { page: "health", tab: "glucose" }],
@@ -102,7 +103,8 @@ export function urlForRoute(
   route: AppRoute,
   month: string,
   filters: CashflowFilters = {},
-  calendarMember = "all"
+  calendarMember = "all",
+  calendarDensity: "compact" | "detail" = "compact"
 ): string {
   const params = new URLSearchParams();
   if (
@@ -115,6 +117,9 @@ export function urlForRoute(
   }
   if (route.page === "calendar" && calendarMember !== "all") {
     params.set("member", calendarMember);
+  }
+  if (route.page === "calendar" && route.tab === "month" && calendarDensity === "detail") {
+    params.set("density", "detail");
   }
 
   const routeParams = route.page === "spending" || route.page === "income"

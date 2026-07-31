@@ -56,6 +56,7 @@ describe("page navigation paths", () => {
     expect(pathForRoute({ page: "checkup", tab: "history" })).toBe("/checkup/history");
     expect(pathForRoute({ page: "calendar", tab: "month" })).toBe("/calendar/month");
     expect(pathForRoute({ page: "calendar", tab: "year" })).toBe("/calendar/year");
+    expect(pathForRoute({ page: "calendar", tab: "events" })).toBe("/calendar/events");
     expect(pathForRoute({ page: "health", tab: "overview" })).toBe("/health/overview");
     expect(pathForRoute({ page: "health", tab: "glucose" })).toBe("/health/glucose");
     expect(pathForRoute({ page: "health", tab: "medication" })).toBe("/health/medication");
@@ -67,6 +68,7 @@ describe("page navigation paths", () => {
     expect(routeFromPath("/checkup/safety")).toEqual({ page: "checkup", tab: "safety" });
     expect(routeFromPath("/checkup/history")).toEqual({ page: "checkup", tab: "history" });
     expect(routeFromPath("/calendar/year")).toEqual({ page: "calendar", tab: "year" });
+    expect(routeFromPath("/calendar/events")).toEqual({ page: "calendar", tab: "events" });
     expect(routeFromPath("/accounts")).toEqual({ page: "checkup", tab: "assets" });
   });
 
@@ -112,6 +114,13 @@ describe("page navigation paths", () => {
       {},
       "all"
     )).toBe("/calendar/year?year=2026");
+    expect(urlForRoute(
+      { page: "calendar", tab: "month" },
+      "2026-07",
+      {},
+      "all",
+      "detail"
+    )).toBe("/calendar/month?month=2026-07&density=detail");
   });
 
   it("keeps cashflow filters across months and tabs on the same page", () => {

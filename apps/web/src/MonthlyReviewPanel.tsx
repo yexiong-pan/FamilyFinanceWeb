@@ -374,7 +374,7 @@ export function MonthlyReviewPanel({
             <Select allowClear options={members.map((item) => ({ label: item, value: item }))} />
           </Form.Item>
           <Form.Item name="dueDate" label="完成日期">
-            <DatePicker className="full-width" />
+            <DatePicker inputReadOnly className="full-width" />
           </Form.Item>
           <Form.Item name="targetAmount" label="目标金额">
             <InputNumber min={0} precision={2} className="full-width" />

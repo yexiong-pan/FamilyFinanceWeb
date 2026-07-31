@@ -68,6 +68,67 @@ describe("HealthService", () => {
     expect(result.context).toBe("morningFasting");
   });
 
+  it("stores strength movements and returns calculated totals", async () => {
+    const create = vi.fn(async ({ data }: {
+      data: {
+        movements: {
+          create: Array<{
+            name: string;
+            metric: "reps" | "seconds";
+            sets: number[];
+            sortOrder: number;
+          }>;
+        };
+      };
+    }) => ({
+      id: "exercise-1",
+      memberId: "member-1",
+      date: new Date("2026-07-29T08:00:00.000Z"),
+      type: "力量训练",
+      durationMinutes: 20,
+      intensity: "moderate" as const,
+      isStrengthTraining: true,
+      steps: null,
+      estimatedCalories: null,
+      note: null,
+      movements: data.movements.create.map((movement, index) => ({
+        id: `movement-${index}`,
+        ...movement,
+        variant: null,
+        addedWeightKg: null,
+        assistanceWeightKg: null,
+        note: null
+      }))
+    }));
+    const service = new HealthService(mockPrisma({
+      familyMember: { findFirst: vi.fn(async () => ({ id: "member-1" })) },
+      exerciseLog: { create }
+    }));
+
+    const result = await service.createExerciseLog("member-1", {
+      date: "2026-07-29T08:00:00.000Z",
+      type: "力量训练",
+      durationMinutes: 20,
+      intensity: "moderate",
+      movements: [{
+        name: "俯卧撑",
+        metric: "reps",
+        sets: [12, 10, 8]
+      }]
+    });
+
+    expect(create.mock.calls[0]?.[0].data.movements.create[0]).toMatchObject({
+      name: "俯卧撑",
+      sets: [12, 10, 8],
+      sortOrder: 0
+    });
+    expect(result.isStrengthTraining).toBe(true);
+    expect(result.movements[0]).toMatchObject({
+      name: "俯卧撑",
+      total: 30
+    });
+  });
+
   it("exports one header and one correctly shaped exercise row", async () => {
     const service = new HealthService(mockPrisma({
       familyMember: { findFirst: vi.fn(async () => ({ id: "member-1" })) },
