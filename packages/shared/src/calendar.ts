@@ -129,6 +129,7 @@ export interface CalendarMedicationSummary {
 export type CalendarDayEntryType =
   | "income"
   | "expense"
+  | "liability"
   | "glucose"
   | "exercise"
   | "medication"

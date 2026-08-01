@@ -120,6 +120,16 @@ describe("CalendarService", () => {
           createdAt: new Date("2026-07-01T00:00:00.000Z"),
           updatedAt: new Date("2026-07-01T00:00:00.000Z")
         }])
+      },
+      liability: {
+        findMany: vi.fn(async () => [{
+          id: "liability-1",
+          name: "信用卡分期",
+          ownerName: "雄哥",
+          currentBalance: decimal("800.00"),
+          monthlyPayment: decimal("1200.00"),
+          paymentDay: 31
+        }])
       }
     }));
 
@@ -127,6 +137,7 @@ describe("CalendarService", () => {
     const financeDay = result.days.find((day) => day.date === "2026-07-03");
     const glucoseDay = result.days.find((day) => day.date === "2026-07-01");
     const weightDay = result.days.find((day) => day.date === "2026-07-20");
+    const liabilityDay = result.days.find((day) => day.date === "2026-07-31");
 
     expect(result.summary).toMatchObject({
       income: "1000.00",
@@ -230,6 +241,14 @@ describe("CalendarService", () => {
         value: "76.50"
       })
     ]));
+    expect(liabilityDay?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "liability",
+        memberName: "雄哥",
+        label: "信用卡分期",
+        amount: "800.00"
+      })
+    ]));
     expect(financeDay?.followups[0]?.department).toBe("内分泌科");
     expect(result.upcomingFollowup).toMatchObject({
       id: "followup-next",
@@ -281,6 +300,9 @@ describe("CalendarService", () => {
 function mockPrisma(value: object): PrismaService {
   return {
     calendarEvent: {
+      findMany: vi.fn(async () => [])
+    },
+    liability: {
       findMany: vi.fn(async () => [])
     },
     ...value

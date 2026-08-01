@@ -4,6 +4,7 @@ import {
   ArrowUpOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   FilterOutlined,
@@ -114,6 +115,7 @@ const QUICK_HEALTH_MEMBER_STORAGE_KEY = "family-finance.health-member";
 const CALENDAR_CONTENT_OPTIONS: Array<{ label: string; value: CalendarDayEntryType }> = [
   { label: "收入", value: "income" },
   { label: "支出", value: "expense" },
+  { label: "还款", value: "liability" },
   { label: "运动", value: "exercise" },
   { label: "血糖", value: "glucose" },
   { label: "用药", value: "medication" },
@@ -569,6 +571,7 @@ function calendarEntryIcon(type: CalendarDayEntryType, compact = false): ReactNo
   if (type === "schedule") return <CalendarOutlined />;
   if (type === "income") return compact ? <ArrowUpOutlined /> : <RiseOutlined />;
   if (type === "expense") return compact ? <ArrowDownOutlined /> : <ShoppingCartOutlined />;
+  if (type === "liability") return <CreditCardOutlined />;
   if (type === "glucose") return <ExperimentOutlined />;
   if (type === "exercise") return <FireOutlined />;
   if (type === "medication") return <MedicineBoxOutlined />;
@@ -1711,6 +1714,7 @@ function calendarEntryText(entry: CalendarDayEntry): string {
   }
   if (entry.type === "income") return `收入 ${compactMoney(entry.amount ?? "0")}`;
   if (entry.type === "expense") return `支出 ${compactMoney(entry.amount ?? "0")}`;
+  if (entry.type === "liability") return `${entry.label ?? "负债"} 待还 ${compactMoney(entry.amount ?? "0")}`;
   if (entry.type === "glucose") {
     const context = entry.context ? glucoseContextLabels[entry.context] : "血糖";
     return `${context} ${entry.value ?? "--"}`;

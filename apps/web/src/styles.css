@@ -1877,6 +1877,10 @@ button.expense-nature-summary:focus-visible {
   color: #cf1322;
 }
 
+.calendar-entry-row.is-liability {
+  color: #d46b08;
+}
+
 .calendar-entry-row.is-schedule {
   color: #0958d9;
 }

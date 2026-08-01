@@ -20,6 +20,7 @@ const SIGNAL_PRIORITY: CalendarDayEntryType[] = [
   "anniversary",
   "schedule",
   "followup",
+  "liability",
   "expense",
   "income",
   "glucose",
@@ -93,6 +94,18 @@ function signalForType(
       label: `${type === "income" ? "收入" : "支出"} ${value}`,
       tone: type === "income" ? "positive" : "danger",
       warning: false
+    };
+  }
+
+  if (type === "liability") {
+    const amount = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0);
+    const value = compactSignalMoney(amount);
+    return {
+      type,
+      value,
+      label: `待还 ${value}`,
+      tone: "warning",
+      warning: date < today
     };
   }
 

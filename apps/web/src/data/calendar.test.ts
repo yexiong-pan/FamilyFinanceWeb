@@ -56,6 +56,20 @@ describe("buildCalendarDaySignals", () => {
       expect.objectContaining({ type: "weight", value: "89.3" })
     ]);
   });
+
+  it("aggregates pending repayments into a warning signal", () => {
+    const entries: CalendarDayEntry[] = [{
+      id: "liability-1",
+      type: "liability",
+      memberName: "雄哥",
+      amount: "1200.00",
+      label: "信用卡分期"
+    }];
+
+    expect(buildCalendarDaySignals(entries, "2026-07-15", "2026-07-30")).toEqual([
+      expect.objectContaining({ type: "liability", value: "¥1.2k", tone: "warning" })
+    ]);
+  });
 });
 
 describe("resolvePinchCalendarDensity", () => {

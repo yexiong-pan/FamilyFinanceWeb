@@ -187,7 +187,8 @@ export class CalendarService {
       followupRows,
       upcomingFollowupRow,
       calendarEventRows,
-      upcomingCalendarEventRows
+      upcomingCalendarEventRows,
+      liabilities
     ] = await Promise.all([
       this.prisma.financeTransaction.findMany({
         where: {
@@ -314,6 +315,26 @@ export class CalendarService {
             : {})
         },
         include: calendarEventInclude
+      }),
+      this.prisma.liability.findMany({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          deletedAt: null,
+          status: "active",
+          repaymentSchedule: "monthly",
+          currentBalance: { gt: 0 },
+          monthlyPayment: { gt: 0 },
+          paymentDay: { not: null },
+          ...(selectedMember ? { ownerName: selectedMember.name } : {})
+        },
+        select: {
+          id: true,
+          name: true,
+          ownerName: true,
+          currentBalance: true,
+          monthlyPayment: true,
+          paymentDay: true
+        }
       })
     ]);
 
@@ -622,6 +643,25 @@ export class CalendarService {
         memberName: memberNameById.get(entry.memberId) ?? "未知成员",
         medication: finishMedication(entry.summary)
       });
+    }
+    if (view === "month") {
+      for (const liability of liabilities) {
+        if (!liability.monthlyPayment || !liability.paymentDay) continue;
+        const scheduledAt = liabilityPaymentDate(period, liability.paymentDay);
+        const remainingCents = amountToCents(liability.currentBalance);
+        const monthlyPaymentCents = amountToCents(liability.monthlyPayment);
+        bucketFor(scheduledAt);
+        addEntry(dateKey(scheduledAt), {
+          id: `liability-${liability.id}-${period}`,
+          type: "liability",
+          ...(memberIdByName.get(liability.ownerName)
+            ? { memberId: memberIdByName.get(liability.ownerName) }
+            : {}),
+          memberName: liability.ownerName,
+          amount: centsToMoney(Math.min(remainingCents, monthlyPaymentCents)),
+          label: liability.name
+        });
+      }
     }
 
     const days: CalendarDaySummary[] = view === "month"
@@ -942,12 +982,13 @@ function sortDayEntries(entries: CalendarDayEntry[]): CalendarDayEntry[] {
     anniversary: 0,
     schedule: 1,
     followup: 2,
-    expense: 3,
-    income: 4,
-    glucose: 5,
-    medication: 6,
-    exercise: 7,
-    weight: 8
+    liability: 3,
+    expense: 4,
+    income: 5,
+    glucose: 6,
+    medication: 7,
+    exercise: 8,
+    weight: 9
   };
   return [...entries].sort((left, right) => {
     const leftWarning = left.abnormal || left.medication?.missed ? 0 : 1;
@@ -1105,6 +1146,15 @@ function amountToCents(value: { toString(): string }): number {
 
 function centsToMoney(cents: number): string {
   return (cents / 100).toFixed(2);
+}
+
+function liabilityPaymentDate(month: string, paymentDay: number | null): Date {
+  const [yearPart, monthPart] = month.split("-");
+  const year = Number(yearPart);
+  const monthIndex = Number(monthPart) - 1;
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const day = Math.min(paymentDay ?? daysInMonth, daysInMonth);
+  return new Date(Date.UTC(year, monthIndex, day));
 }
 
 function dateKey(date: Date): string {
