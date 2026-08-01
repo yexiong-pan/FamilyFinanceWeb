@@ -1625,6 +1625,8 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
   const confirmationStatus = props.filters.status;
   const amountMin = props.filters.min;
   const amountMax = props.filters.max;
+  const detailSortBy = props.filters.sortBy ?? "date";
+  const detailSortOrder = props.filters.sortOrder ?? "desc";
   const pageSize = isMobile ? MOBILE_TRANSACTION_PAGE_SIZE : 50;
   const [detailPageNumber, setDetailPageNumber] = useState(1);
   const [detailPage, setDetailPage] = useState<TransactionPage>({ items: [], total: 0, totalAmount: "0.00" });
@@ -1728,7 +1730,7 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
   useEffect(() => {
     setDetailPageNumber(1);
     setSelectedTransactionIds([]);
-  }, [amountMax, amountMin, category, confirmationStatus, expenseNature, member, props.monthKey, props.kind]);
+  }, [amountMax, amountMin, category, confirmationStatus, detailSortBy, detailSortOrder, expenseNature, member, props.monthKey, props.kind]);
 
   useEffect(() => {
     if (props.view !== "details") return;
@@ -1831,8 +1833,8 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
       title: "日期",
       dataIndex: "date",
       width: 120,
-      sorter: (a, b) => a.date.localeCompare(b.date),
-      defaultSortOrder: "descend"
+      sorter: true,
+      sortOrder: detailSortBy === "date" ? (detailSortOrder === "asc" ? "ascend" : "descend") : null
     },
     {
       title: "分类",
@@ -1851,7 +1853,8 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
       dataIndex: "amount",
       width: 120,
       align: "right",
-      sorter: (a, b) => Number(a.amount) - Number(b.amount),
+      sorter: true,
+      sortOrder: detailSortBy === "amount" ? (detailSortOrder === "asc" ? "ascend" : "descend") : null,
       render: (value: string, record) => (
         <Tag color={record.kind === "expense" ? "red" : "green"}>{formatMoney(value)}</Tag>
       )
@@ -2219,6 +2222,21 @@ function CashflowPage(props: PageProps & CashflowRouteProps & { kind: "expense" 
                 total: detailTotal,
                 showSizeChanger: false,
                 onChange: setDetailPageNumber
+              }}
+              onChange={(_pagination, _filters, sorter, extra) => {
+                if (extra.action !== "sort") return;
+                const current = Array.isArray(sorter) ? sorter[0] : sorter;
+                const field = current?.field;
+                const order = current?.order;
+                if ((field !== "date" && field !== "amount") || !order) {
+                  updateFilters({ sortBy: undefined, sortOrder: undefined });
+                } else {
+                  updateFilters({
+                    sortBy: field,
+                    sortOrder: order === "ascend" ? "asc" : "desc"
+                  });
+                }
+                setDetailPageNumber(1);
               }}
             />
           )

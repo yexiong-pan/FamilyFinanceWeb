@@ -1,6 +1,8 @@
 import type { ExpenseNature } from "@family-finance/shared";
 
 export type CashflowConfirmationStatus = "pending" | "confirmed";
+export type CashflowSortField = "date" | "amount";
+export type CashflowSortOrder = "asc" | "desc";
 
 export interface CashflowFilters {
   category?: string;
@@ -9,9 +11,11 @@ export interface CashflowFilters {
   expenseNature?: ExpenseNature;
   min?: number;
   max?: number;
+  sortBy?: CashflowSortField;
+  sortOrder?: CashflowSortOrder;
 }
 
-const filterKeys = ["category", "member", "status", "expenseNature", "min", "max"] as const;
+const filterKeys = ["category", "member", "status", "expenseNature", "min", "max", "sortBy", "sortOrder"] as const;
 
 function parseText(value: string | null): string | undefined {
   const normalized = value?.trim();
@@ -38,6 +42,10 @@ export function parseCashflowFilters(params: URLSearchParams): CashflowFilters {
   ) ? rawExpenseNature : undefined;
   const min = parseAmount(params.get("min"));
   const max = parseAmount(params.get("max"));
+  const rawSortBy = params.get("sortBy");
+  const sortBy = rawSortBy === "date" || rawSortBy === "amount" ? rawSortBy : undefined;
+  const rawSortOrder = params.get("sortOrder");
+  const sortOrder = rawSortOrder === "asc" || rawSortOrder === "desc" ? rawSortOrder : undefined;
 
   return {
     ...(category ? { category } : {}),
@@ -45,7 +53,9 @@ export function parseCashflowFilters(params: URLSearchParams): CashflowFilters {
     ...(status ? { status } : {}),
     ...(expenseNature ? { expenseNature } : {}),
     ...(min !== undefined ? { min } : {}),
-    ...(max !== undefined ? { max } : {})
+    ...(max !== undefined ? { max } : {}),
+    ...(sortBy ? { sortBy } : {}),
+    ...(sortOrder ? { sortOrder } : {})
   };
 }
 
@@ -62,6 +72,10 @@ export function writeCashflowFilters(
   if (filters.expenseNature) next.set("expenseNature", filters.expenseNature);
   if (filters.min !== undefined && Number.isFinite(filters.min) && filters.min >= 0) next.set("min", String(filters.min));
   if (filters.max !== undefined && Number.isFinite(filters.max) && filters.max >= 0) next.set("max", String(filters.max));
+  if (filters.sortBy && filters.sortOrder) {
+    next.set("sortBy", filters.sortBy);
+    next.set("sortOrder", filters.sortOrder);
+  }
 
   return next;
 }

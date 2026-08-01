@@ -8,7 +8,7 @@ import {
 describe("cashflow filter route params", () => {
   it("parses every supported filter from the route", () => {
     const params = new URLSearchParams(
-      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&expenseNature=necessary&min=10.5&max=500"
+      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=confirmed&expenseNature=necessary&min=10.5&max=500&sortBy=amount&sortOrder=asc"
     );
 
     expect(parseCashflowFilters(params)).toEqual({
@@ -17,7 +17,9 @@ describe("cashflow filter route params", () => {
       status: "confirmed",
       expenseNature: "necessary",
       min: 10.5,
-      max: 500
+      max: 500,
+      sortBy: "amount",
+      sortOrder: "asc"
     });
   });
 
@@ -36,11 +38,13 @@ describe("cashflow filter route params", () => {
       status: "pending",
       expenseNature: "necessary",
       min: 0,
-      max: 88.8
+      max: 88.8,
+      sortBy: "date",
+      sortOrder: "desc"
     });
 
     expect(params.toString()).toBe(
-      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&expenseNature=necessary&min=0&max=88.8"
+      "month=2026-07&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&expenseNature=necessary&min=0&max=88.8&sortBy=date&sortOrder=desc"
     );
   });
 

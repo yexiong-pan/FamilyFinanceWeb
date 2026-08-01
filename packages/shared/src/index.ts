@@ -59,6 +59,8 @@ export interface TransactionPageFilter {
   expenseNature?: ExpenseNature;
   min?: number;
   max?: number;
+  sortBy?: "date" | "amount";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface TransactionPage {

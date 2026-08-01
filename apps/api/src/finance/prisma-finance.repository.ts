@@ -415,11 +415,15 @@ export class PrismaFinanceRepository implements FinanceRepository {
         }
       } : {})
     };
+    const direction: Prisma.SortOrder = filter.sortOrder === "asc" ? "asc" : "desc";
+    const orderBy: Prisma.FinanceTransactionOrderByWithRelationInput[] = filter.sortBy === "amount"
+      ? [{ amount: direction }, { date: "desc" }, { createdAt: "desc" }]
+      : [{ date: direction }, { createdAt: direction }];
     const [items, total, aggregate] = await Promise.all([
       this.prisma.financeTransaction.findMany({
         where,
         include: { category: { select: { name: true } } },
-        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        orderBy,
         skip: (filter.page - 1) * filter.pageSize,
         take: filter.pageSize
       }),

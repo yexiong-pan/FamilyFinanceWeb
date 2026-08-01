@@ -40,7 +40,9 @@ describe("PrismaFinanceRepository transaction paging", () => {
       status: "pending",
       expenseNature: "necessary",
       min: 10,
-      max: 500
+      max: 500,
+      sortBy: "amount",
+      sortOrder: "asc"
     });
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -53,7 +55,8 @@ describe("PrismaFinanceRepository transaction paging", () => {
         confirmedAt: null,
         category: { expenseNature: "necessary" },
         amount: { gte: "10.00", lte: "500.00" }
-      })
+      }),
+      orderBy: [{ amount: "asc" }, { date: "desc" }, { createdAt: "desc" }]
     }));
     expect(page).toEqual({ items: [expect.objectContaining({ id: "transaction-1" })], total: 21, totalAmount: "1688.00" });
   });

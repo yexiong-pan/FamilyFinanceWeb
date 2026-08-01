@@ -14,9 +14,11 @@ describe("cashflow detail paging", () => {
         status: "pending",
         expenseNature: "necessary",
         min: 10,
-        max: 500
+        max: 500,
+        sortBy: "amount",
+        sortOrder: "asc"
       }
-    })).toBe("month=2026-06&kind=expense&page=2&pageSize=20&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&expenseNature=necessary&min=10&max=500");
+    })).toBe("month=2026-06&kind=expense&page=2&pageSize=20&category=%E9%A4%90%E9%A5%AE&member=%E9%9B%84%E5%93%A5&status=pending&expenseNature=necessary&min=10&max=500&sortBy=amount&sortOrder=asc");
   });
 
   it("counts only filters that constrain results", () => {

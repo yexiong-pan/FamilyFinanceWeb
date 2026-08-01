@@ -191,7 +191,9 @@ export class FinanceController {
     @Query("status") status?: "pending" | "confirmed",
     @Query("expenseNature") expenseNature?: "fixed" | "necessary" | "flexible" | "goal",
     @Query("min") min?: string,
-    @Query("max") max?: string
+    @Query("max") max?: string,
+    @Query("sortBy") sortBy?: "date" | "amount",
+    @Query("sortOrder") sortOrder?: "asc" | "desc"
   ) {
     return this.financeService.listTransactionsPage({
       month,
@@ -203,7 +205,9 @@ export class FinanceController {
       status,
       expenseNature,
       ...(min === undefined ? {} : { min: Number(min) }),
-      ...(max === undefined ? {} : { max: Number(max) })
+      ...(max === undefined ? {} : { max: Number(max) }),
+      ...(sortBy === "date" || sortBy === "amount" ? { sortBy } : {}),
+      ...(sortOrder === "asc" || sortOrder === "desc" ? { sortOrder } : {})
     });
   }
 

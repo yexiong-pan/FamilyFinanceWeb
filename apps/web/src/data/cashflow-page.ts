@@ -13,13 +13,17 @@ export function buildTransactionPageQuery(input: {
     page: String(input.page),
     pageSize: String(input.pageSize)
   });
-  const { category, member, status, expenseNature, min, max } = input.filters;
+  const { category, member, status, expenseNature, min, max, sortBy, sortOrder } = input.filters;
   if (category) params.set("category", category);
   if (member) params.set("member", member);
   if (status) params.set("status", status);
   if (expenseNature) params.set("expenseNature", expenseNature);
   if (min !== undefined) params.set("min", String(min));
   if (max !== undefined) params.set("max", String(max));
+  if (sortBy && sortOrder) {
+    params.set("sortBy", sortBy);
+    params.set("sortOrder", sortOrder);
+  }
   return params.toString();
 }
 
