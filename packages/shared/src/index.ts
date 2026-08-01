@@ -122,6 +122,15 @@ export interface Liability {
   updatedAt?: string;
 }
 
+export interface LiabilityRepaymentRecord {
+  id: string;
+  liabilityId: string;
+  date: string;
+  amount: MoneyAmount;
+  note?: string;
+  createdAt: string;
+}
+
 export interface CategoryBreakdownItem {
   categoryName: string;
   amount: MoneyAmount;

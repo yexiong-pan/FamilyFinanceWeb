@@ -66,6 +66,8 @@ export type CreateInvestmentHoldingInput = Omit<InvestmentHolding, "id">;
 export type CreateLiabilityInput = Omit<Liability, "id" | "status"> & { status?: Liability["status"] };
 export interface RepayLiabilityInput {
   amount: MoneyAmount;
+  date: string;
+  note?: string;
 }
 
 export interface ImportTransactionsInput {

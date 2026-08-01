@@ -39,6 +39,7 @@ import type {
   FinanceTransaction,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlySnapshotData,
   TransactionPage,
   YearlyReportData
@@ -104,9 +105,11 @@ import {
   deleteCategoryMapping,
   deleteInvestment,
   deleteLiability,
+  deleteLiabilityRepayment,
   deleteMember,
   deleteTransaction,
   getMonthlySnapshot,
+  getLiabilityRepayments,
   getTransactionPage,
   getYearlyReport,
   importTransactions,
@@ -2758,8 +2761,12 @@ function LiabilitiesPage(props: PageProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Liability | null>(null);
   const [repaying, setRepaying] = useState<Liability | null>(null);
+  const [repaymentHistoryLiability, setRepaymentHistoryLiability] = useState<Liability | null>(null);
+  const [repaymentRecords, setRepaymentRecords] = useState<LiabilityRepaymentRecord[]>([]);
+  const [repaymentRecordsLoading, setRepaymentRecordsLoading] = useState(false);
   const [form] = Form.useForm();
   const [repayForm] = Form.useForm();
+  const historicalMonth = dayjs().format("YYYY-MM") !== props.monthKey;
   const { summary } = props.data;
   const liabilityProgress = useMemo(
     () => buildLiabilityProgress(props.data.liabilities),
@@ -2817,9 +2824,26 @@ function LiabilitiesPage(props: PageProps) {
   useEffect(() => {
     if (!repaying) return;
     repayForm.setFieldsValue({
-      amount: Number(repaying.monthlyPayment ?? repaying.currentBalance)
+      amount: Number(repaying.monthlyPayment ?? repaying.currentBalance),
+      date: dayjs().format("YYYY-MM") === props.monthKey ? dayjs() : dayjs(`${props.monthKey}-01`),
+      note: undefined
     });
-  }, [repaying, repayForm]);
+  }, [repaying, repayForm, props.monthKey]);
+  const loadRepaymentRecords = useCallback(async (liabilityId: string) => {
+    setRepaymentRecordsLoading(true);
+    try {
+      setRepaymentRecords(await getLiabilityRepayments(liabilityId));
+    } finally {
+      setRepaymentRecordsLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!repaymentHistoryLiability) {
+      setRepaymentRecords([]);
+      return;
+    }
+    void loadRepaymentRecords(repaymentHistoryLiability.id);
+  }, [repaymentHistoryLiability, loadRepaymentRecords]);
   return (
     <Space orientation="vertical" size={16} className="page-stack">
       <Row gutter={[12, 12]}>
@@ -2930,6 +2954,7 @@ function LiabilitiesPage(props: PageProps) {
                     {liability.status === "active" ? (
                       <Button type="link" size="small" onClick={() => setRepaying(liability)}>还款</Button>
                     ) : null}
+                    <Button type="link" size="small" onClick={() => setRepaymentHistoryLiability(liability)}>还款记录</Button>
                     <RowActions
                       onEdit={() => { setEditing(liability); setOpen(true); }}
                       onDelete={() => props.submit(() => deleteLiability(liability.id), { success: "负债已删除" })}
@@ -2998,6 +3023,9 @@ function LiabilitiesPage(props: PageProps) {
                       还款
                     </Button>
                   ) : null}
+                  <Button type="link" size="small" onClick={() => setRepaymentHistoryLiability(record)}>
+                    还款记录
+                  </Button>
                   <RowActions
                     onEdit={() => {
                       setEditing(record);
@@ -3019,6 +3047,15 @@ function LiabilitiesPage(props: PageProps) {
         size={420}
         destroyOnHidden
       >
+        {editing && historicalMonth ? (
+          <Alert
+            type="info"
+            showIcon
+            title="正在修正历史月份"
+            description="仅会更新该月的余额、还款安排、状态和剩余期数；名称、归属和初始金额保持当前资料。"
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         <Form
           form={form}
           layout="vertical"
@@ -3057,12 +3094,16 @@ function LiabilitiesPage(props: PageProps) {
               note: values.note
             };
             return props.submit(
-              () => (editing ? updateLiability(editing.id, payload) : createLiability(payload)),
+              () => (editing ? updateLiability(editing.id, payload, props.monthKey) : createLiability(payload)),
               { success: editing ? "负债已更新" : "负债已新增", onSuccess: () => setOpen(false) }
             );
           }}
         >
-          <LiabilityFormFields members={props.data.members} onSubmit={() => form.submit()} />
+          <LiabilityFormFields
+            members={props.data.members}
+            historical={Boolean(editing && historicalMonth)}
+            onSubmit={() => form.submit()}
+          />
         </Form>
       </Drawer>
       <Drawer
@@ -3076,10 +3117,17 @@ function LiabilitiesPage(props: PageProps) {
           <Form
             form={repayForm}
             layout="vertical"
-            initialValues={{ amount: Number(repaying.monthlyPayment ?? repaying.currentBalance) }}
+            initialValues={{
+              amount: Number(repaying.monthlyPayment ?? repaying.currentBalance),
+              date: dayjs().format("YYYY-MM") === props.monthKey ? dayjs() : dayjs(`${props.monthKey}-01`)
+            }}
             onFinish={(values) =>
               props.submit(
-                () => repayLiability(repaying.id, { amount: String(values.amount) }),
+                () => repayLiability(repaying.id, {
+                  amount: String(values.amount),
+                  date: (values.date as Dayjs).format("YYYY-MM-DD"),
+                  note: values.note
+                }, props.monthKey),
                 { success: "已登记还款", onSuccess: () => setRepaying(null) }
               )
             }
@@ -3091,14 +3139,66 @@ function LiabilitiesPage(props: PageProps) {
               </Text>
             </div>
             <Form.Item name="amount" label="本次还款金额" rules={[{ required: true }]}>
-              <InputNumber min={0} precision={2} className="full-width" />
+              <InputNumber min={0.01} precision={2} className="full-width" />
             </Form.Item>
-            <Text type="secondary">确认后将从余额中扣除，剩余期数自动减一，扣清后标记为已结清。</Text>
+            <Form.Item name="date" label="还款日期" rules={[{ required: true, message: "请选择还款日期" }]}>
+              <DatePicker
+                className="full-width"
+                inputReadOnly
+                disabledDate={(date) => date.format("YYYY-MM") !== props.monthKey}
+              />
+            </Form.Item>
+            <Form.Item name="note" label="备注（可选）">
+              <Input.TextArea rows={2} placeholder="如：提前还款、当月账单" />
+            </Form.Item>
+            <Text type="secondary">还款会写入 {props.monthKey} 的负债快照，并自动更新余额和剩余期数。</Text>
             <Button type="primary" htmlType="button" onClick={() => repayForm.submit()} block style={{ marginTop: 12 }}>
               确认还款
             </Button>
           </Form>
         ) : null}
+      </Drawer>
+      <Drawer
+        title={repaymentHistoryLiability ? `还款记录 · ${repaymentHistoryLiability.name}` : "还款记录"}
+        open={repaymentHistoryLiability != null}
+        onClose={() => setRepaymentHistoryLiability(null)}
+        size={440}
+        destroyOnHidden
+      >
+        <Spin spinning={repaymentRecordsLoading}>
+          {repaymentRecords.length ? (
+            <Space orientation="vertical" size={8} className="full-width">
+              {repaymentRecords.map((record) => (
+                <Card size="small" key={record.id}>
+                  <Flex justify="space-between" align="center" gap={8}>
+                    <div>
+                      <Text strong>{record.date}</Text>
+                      {record.note ? <div><Text type="secondary">{record.note}</Text></div> : null}
+                    </div>
+                    <Space size={4}>
+                      <Tag color="green">{formatMoney(record.amount)}</Tag>
+                      <Popconfirm
+                        title="撤销这笔还款记录？"
+                        description="将恢复对应月份的负债余额和期数。"
+                        onConfirm={() => props.submit(
+                          () => deleteLiabilityRepayment(record.id),
+                          {
+                            success: "还款记录已撤销",
+                            onSuccess: () => repaymentHistoryLiability && loadRepaymentRecords(repaymentHistoryLiability.id)
+                          }
+                        )}
+                      >
+                        <Button type="link" danger size="small">撤销</Button>
+                      </Popconfirm>
+                    </Space>
+                  </Flex>
+                </Card>
+              ))}
+            </Space>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无还款记录" />
+          )}
+        </Spin>
       </Drawer>
     </Space>
   );
@@ -4400,17 +4500,25 @@ function AccountFormFields({
   );
 }
 
-function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmit: () => void }) {
+function LiabilityFormFields({
+  members,
+  historical = false,
+  onSubmit
+}: {
+  members: string[];
+  historical?: boolean;
+  onSubmit: () => void;
+}) {
   return (
     <>
       <Form.Item name="name" label="负债名称" rules={[{ required: true }]}>
-        <Input placeholder="如：招行首套房贷" />
+        <Input placeholder="如：招行首套房贷" disabled={historical} />
       </Form.Item>
       <Form.Item name="type" label="类型" rules={[{ required: true }]}>
-        <Select options={liabilityTypeOptions} />
+        <Select options={liabilityTypeOptions} disabled={historical} />
       </Form.Item>
       <Form.Item name="ownerName" label="归属" rules={[{ required: true }]}>
-        <Select options={members.map((member) => ({ label: member, value: member }))} />
+        <Select options={members.map((member) => ({ label: member, value: member }))} disabled={historical} />
       </Form.Item>
       <Form.Item
         name="initialBalance"
@@ -4427,7 +4535,7 @@ function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmi
           })
         ]}
       >
-        <InputNumber min={0} precision={2} className="full-width" />
+        <InputNumber min={0} precision={2} className="full-width" disabled={historical} />
       </Form.Item>
       <Form.Item name="currentBalance" label="当前余额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />
@@ -4457,13 +4565,13 @@ function LiabilityFormFields({ members, onSubmit }: { members: string[]; onSubmi
         <InputNumber min={0} precision={0} className="full-width" />
       </Form.Item>
       <Form.Item name="lender" label="债权机构（可选）">
-        <Input placeholder="如：招商银行" />
+        <Input placeholder="如：招商银行" disabled={historical} />
       </Form.Item>
       <Form.Item name="status" label="状态" rules={[{ required: true }]}>
         <Select options={liabilityStatusOptions} />
       </Form.Item>
       <Form.Item name="note" label="备注">
-        <Input.TextArea rows={3} />
+        <Input.TextArea rows={3} disabled={historical} />
       </Form.Item>
       <Button type="primary" htmlType="button" onClick={onSubmit} block>
         保存

@@ -11,6 +11,7 @@ import type {
   ImportTransactionsResult,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlyReviewStatus,
   MonthlySnapshotData,
   MoneyAmount,
@@ -251,13 +252,35 @@ export class FinanceService {
     return this.repository.createLiability(input);
   }
 
-  async updateLiability(id: string, input: CreateLiabilityInput): Promise<Liability> {
+  async updateLiability(id: string, input: CreateLiabilityInput, month?: string): Promise<Liability> {
     validateLiabilityInput(input);
-    return this.repository.updateLiability(id, input);
+    return this.repository.updateLiability(id, input, month);
   }
 
-  async repayLiability(id: string, input: RepayLiabilityInput): Promise<Liability> {
-    return this.repository.repayLiability(id, input);
+  async repayLiability(id: string, input: RepayLiabilityInput, month?: string): Promise<Liability> {
+    const repaymentDate = new Date(`${input.date}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(input.date)
+      || Number.isNaN(repaymentDate.getTime())
+      || repaymentDate.toISOString().slice(0, 10) !== input.date
+    ) {
+      throw new BadRequestException("还款日期格式必须为 YYYY-MM-DD");
+    }
+    if (!Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0) {
+      throw new BadRequestException("还款金额必须大于 0");
+    }
+    if (month && input.date.slice(0, 7) !== month) {
+      throw new BadRequestException("还款日期必须属于当前选择月份");
+    }
+    return this.repository.repayLiability(id, input, month);
+  }
+
+  async listLiabilityRepayments(liabilityId: string): Promise<LiabilityRepaymentRecord[]> {
+    return this.repository.listLiabilityRepayments(liabilityId);
+  }
+
+  async deleteLiabilityRepayment(id: string): Promise<void> {
+    return this.repository.deleteLiabilityRepayment(id);
   }
 
   async deleteLiability(id: string): Promise<void> {

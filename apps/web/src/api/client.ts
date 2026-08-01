@@ -36,6 +36,7 @@ import type {
   ImportTransactionItem,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlyReviewStatus,
   MonthlyReviewAction,
   MonthlyReviewContent,
@@ -417,12 +418,26 @@ export async function createLiability(input: LiabilityInput): Promise<Liability>
   return postJson("/liabilities", input);
 }
 
-export async function updateLiability(id: string, input: LiabilityInput): Promise<Liability> {
-  return patchJson(`/liabilities/${id}`, input);
+export async function updateLiability(id: string, input: LiabilityInput, month?: string): Promise<Liability> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return patchJson(`/liabilities/${id}${query}`, input);
 }
 
-export async function repayLiability(id: string, input: { amount: string }): Promise<Liability> {
-  return postJson(`/liabilities/${id}/repay`, input);
+export async function repayLiability(
+  id: string,
+  input: { amount: string; date: string; note?: string },
+  month?: string
+): Promise<Liability> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return postJson(`/liabilities/${id}/repay${query}`, input);
+}
+
+export async function getLiabilityRepayments(liabilityId: string): Promise<LiabilityRepaymentRecord[]> {
+  return getJson(`/liabilities/${liabilityId}/repayments`);
+}
+
+export async function deleteLiabilityRepayment(id: string): Promise<void> {
+  return del(`/liability-repayments/${id}`);
 }
 
 export type CategoryInput = {

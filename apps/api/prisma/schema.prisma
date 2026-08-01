@@ -225,6 +225,7 @@ model Family {
   budgets             Budget[]
   holdings            InvestmentHolding[]
   liabilities         Liability[]
+  liabilityRepayments LiabilityRepayment[]
   snapshots           AccountSnapshot[]
   liabilitySnapshots  LiabilitySnapshot[]
   investmentSnapshots InvestmentSnapshot[]
@@ -420,8 +421,25 @@ model Liability {
   deletedAt        DateTime?
   family           Family              @relation(fields: [familyId], references: [id])
   snapshots        LiabilitySnapshot[]
+  repayments       LiabilityRepayment[]
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
+}
+
+model LiabilityRepayment {
+  id            String    @id @default(uuid())
+  familyId      String
+  liabilityId   String
+  date          DateTime
+  amount        Decimal   @db.Decimal(18, 2)
+  note          String?
+  appliedToLive Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  family        Family    @relation(fields: [familyId], references: [id])
+  liability     Liability @relation(fields: [liabilityId], references: [id])
+
+  @@index([familyId, date])
+  @@index([liabilityId, date])
 }
 
 model LiabilitySnapshot {

@@ -217,6 +217,32 @@ describe("FinanceService", () => {
       repaymentSchedule: "flexible"
     })).resolves.toMatchObject({ repaymentSchedule: "flexible" });
   });
+
+  it("validates repayment dates and forwards the selected month to the repository", async () => {
+    const repository = createRepository();
+    const repayLiability = vi.fn(async (id: string) => ({
+      id,
+      name: "房贷",
+      type: "mortgage" as const,
+      ownerName: "雄哥",
+      currentBalance: "800000.00",
+      repaymentSchedule: "monthly" as const,
+      status: "active" as const
+    }));
+    Object.assign(repository, { repayLiability });
+    const service = new FinanceService(repository);
+
+    await expect(service.repayLiability("liability-1", {
+      amount: "100.00",
+      date: "2026-07-15",
+      note: "提前还款"
+    }, "2026-07")).resolves.toMatchObject({ id: "liability-1" });
+    expect(repayLiability).toHaveBeenCalledWith("liability-1", expect.objectContaining({ date: "2026-07-15" }), "2026-07");
+    await expect(service.repayLiability("liability-1", {
+      amount: "100.00",
+      date: "2026-07-32"
+    }, "2026-07")).rejects.toThrow("还款日期格式必须为 YYYY-MM-DD");
+  });
 });
 
 function createRepository(): FinanceRepository {
@@ -555,6 +581,12 @@ function createRepository(): FinanceRepository {
       liability.remainingPeriods = remaining;
       if (balance === 0 || remaining === 0) liability.status = "paidOff";
       return liability;
+    },
+    async listLiabilityRepayments() {
+      return [];
+    },
+    async deleteLiabilityRepayment() {
+      return undefined;
     },
     async deleteLiability(id: string) {
       const index = liabilities.findIndex((item) => item.id === id);

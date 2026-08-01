@@ -9,6 +9,7 @@ import type {
   ImportTransactionsResult,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlyReviewStatus,
   MonthlySnapshotData,
   MoneyAmount,
@@ -90,7 +91,9 @@ export interface FinanceRepository {
   listAnnualSnapshotSummaries(year: string): Promise<YearlySnapshotInput[]>;
   confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus>;
   createLiability(input: CreateLiabilityInput): Promise<Liability>;
-  updateLiability(id: string, input: CreateLiabilityInput): Promise<Liability>;
-  repayLiability(id: string, input: RepayLiabilityInput): Promise<Liability>;
+  updateLiability(id: string, input: CreateLiabilityInput, month?: string): Promise<Liability>;
+  repayLiability(id: string, input: RepayLiabilityInput, month?: string): Promise<Liability>;
+  listLiabilityRepayments(liabilityId: string): Promise<LiabilityRepaymentRecord[]>;
+  deleteLiabilityRepayment(id: string): Promise<void>;
   deleteLiability(id: string): Promise<void>;
 }

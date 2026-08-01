@@ -1,5 +1,5 @@
-import { Inject, Injectable } from "@nestjs/common";
-import type { Prisma, Account as DbAccount, AccountTypeOption as DbAccountTypeOption, Budget as DbBudget, Category as DbCategory, CategoryMapping as DbCategoryMapping, FamilyMember, FinanceTransaction as DbTransaction, InvestmentHolding as DbHolding, Liability as DbLiability } from "@prisma/client";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import type { Prisma, Account as DbAccount, AccountTypeOption as DbAccountTypeOption, Budget as DbBudget, Category as DbCategory, CategoryMapping as DbCategoryMapping, FamilyMember, FinanceTransaction as DbTransaction, InvestmentHolding as DbHolding, Liability as DbLiability, LiabilityRepayment as DbLiabilityRepayment } from "@prisma/client";
 import { normalizeMoney } from "@family-finance/shared";
 import type {
   Account,
@@ -12,6 +12,7 @@ import type {
   ImportTransactionsResult,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlyReviewStatus,
   MonthlySnapshotData,
   MoneyAmount
@@ -1073,8 +1074,40 @@ export class PrismaFinanceRepository implements FinanceRepository {
     return { month, count: holdings.length };
   }
 
-  async updateLiability(id: string, input: CreateLiabilityInput): Promise<Liability> {
+  async updateLiability(id: string, input: CreateLiabilityInput, month?: string): Promise<Liability> {
     await this.ensureBaseData();
+    if (month && !isCurrentMonth(month)) {
+      return this.prisma.$transaction(async (tx) => {
+        const liability = await tx.liability.findFirstOrThrow({
+          where: { id, familyId: DEFAULT_FAMILY_ID, deletedAt: null }
+        });
+        const snapshot = await tx.liabilitySnapshot.upsert({
+          where: { liabilityId_month: { liabilityId: id, month } },
+          create: {
+            familyId: DEFAULT_FAMILY_ID,
+            liabilityId: id,
+            month,
+            currentBalance: normalizeMoney(input.currentBalance),
+            monthlyPayment: input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
+            paymentDay: input.paymentDay ?? null,
+            repaymentSchedule: input.repaymentSchedule,
+            remainingPeriods: input.remainingPeriods ?? null,
+            status: input.status ?? "active"
+          },
+          update: {
+            currentBalance: normalizeMoney(input.currentBalance),
+            monthlyPayment: input.monthlyPayment === undefined ? null : normalizeMoney(input.monthlyPayment),
+            paymentDay: input.paymentDay ?? null,
+            repaymentSchedule: input.repaymentSchedule,
+            remainingPeriods: input.remainingPeriods ?? null,
+            status: input.status ?? "active",
+            confirmedAt: new Date()
+          }
+        });
+        await markLiabilitiesReviewed(tx, month);
+        return mapLiabilitySnapshot(liability, snapshot);
+      });
+    }
     const liability = await this.prisma.liability.update({
       where: { id },
       data: {
@@ -1098,29 +1131,120 @@ export class PrismaFinanceRepository implements FinanceRepository {
 
   // A repayment reduces the outstanding balance (clamped at 0) and, when set,
   // decrements the remaining periods. Reaching zero balance/periods settles it.
-  async repayLiability(id: string, input: RepayLiabilityInput): Promise<Liability> {
+  async repayLiability(id: string, input: RepayLiabilityInput, month?: string): Promise<Liability> {
     await this.ensureBaseData();
+    const repaymentMonth = month ?? input.date.slice(0, 7);
+    const amount = normalizeMoney(input.amount);
+    const amountCents = moneyToCents(amount);
+    const historical = !isCurrentMonth(repaymentMonth);
     const updated = await this.prisma.$transaction(async (tx) => {
-      const current = await tx.liability.findFirstOrThrow({
+      const liability = await tx.liability.findFirstOrThrow({
         where: { id, familyId: DEFAULT_FAMILY_ID, deletedAt: null }
       });
-      const balanceCents = Math.max(
-        0,
-        moneyToCents(decimalToMoney(current.currentBalance)) - moneyToCents(normalizeMoney(input.amount))
-      );
+      const existingSnapshot = historical
+        ? await tx.liabilitySnapshot.findUnique({ where: { liabilityId_month: { liabilityId: id, month: repaymentMonth } } })
+        : null;
+      const source = existingSnapshot ?? liability;
+      const sourceBalance = moneyToCents(decimalToMoney(source.currentBalance));
+      if (amountCents > sourceBalance) throw new BadRequestException("还款金额不能大于当前余额");
+      const balanceCents = sourceBalance - amountCents;
       const remaining =
-        current.remainingPeriods === null ? null : Math.max(0, current.remainingPeriods - 1);
+        source.remainingPeriods === null ? null : Math.max(0, source.remainingPeriods - 1);
       const settled = balanceCents === 0 || remaining === 0;
-      return tx.liability.update({
-        where: { id },
-        data: {
+      const status = settled ? "paidOff" : source.status;
+      const snapshot = await tx.liabilitySnapshot.upsert({
+        where: { liabilityId_month: { liabilityId: id, month: repaymentMonth } },
+        create: {
+          familyId: DEFAULT_FAMILY_ID,
+          liabilityId: id,
+          month: repaymentMonth,
           currentBalance: centsToMoney(balanceCents),
+          monthlyPayment: source.monthlyPayment,
+          paymentDay: source.paymentDay,
+          repaymentSchedule: source.repaymentSchedule,
           remainingPeriods: remaining,
-          status: settled ? "paidOff" : current.status
+          status
+        },
+        update: {
+          currentBalance: centsToMoney(balanceCents),
+          monthlyPayment: source.monthlyPayment,
+          paymentDay: source.paymentDay,
+          repaymentSchedule: source.repaymentSchedule,
+          remainingPeriods: remaining,
+          status,
+          confirmedAt: new Date()
         }
       });
+      await tx.liabilityRepayment.create({
+        data: {
+          familyId: DEFAULT_FAMILY_ID,
+          liabilityId: id,
+          date: parseDate(input.date),
+          amount,
+          note: input.note?.trim() || null,
+          appliedToLive: !historical
+        }
+      });
+      if (historical) await markLiabilitiesReviewed(tx, repaymentMonth);
+      if (!historical) {
+        const live = await tx.liability.update({
+          where: { id },
+          data: { currentBalance: centsToMoney(balanceCents), remainingPeriods: remaining, status }
+        });
+        return mapLiability(live);
+      }
+      return mapLiabilitySnapshot(liability, snapshot);
     });
-    return mapLiability(updated);
+    return updated;
+  }
+
+  async listLiabilityRepayments(liabilityId: string): Promise<LiabilityRepaymentRecord[]> {
+    await this.ensureBaseData();
+    const repayments = await this.prisma.liabilityRepayment.findMany({
+      where: { liabilityId, familyId: DEFAULT_FAMILY_ID },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }]
+    });
+    return repayments.map(mapLiabilityRepayment);
+  }
+
+  async deleteLiabilityRepayment(id: string): Promise<void> {
+    await this.ensureBaseData();
+    await this.prisma.$transaction(async (tx) => {
+      const repayment = await tx.liabilityRepayment.findFirstOrThrow({
+        where: { id, familyId: DEFAULT_FAMILY_ID },
+        include: { liability: true }
+      });
+      const month = formatDate(repayment.date).slice(0, 7);
+      const amountCents = moneyToCents(decimalToMoney(repayment.amount));
+      if (repayment.appliedToLive) {
+        const liability = repayment.liability;
+        const currentBalance = centsToMoney(moneyToCents(decimalToMoney(liability.currentBalance)) + amountCents);
+        const remainingPeriods = liability.remainingPeriods === null ? null : liability.remainingPeriods + 1;
+        await tx.liability.update({
+          where: { id: liability.id },
+          data: {
+            currentBalance,
+            remainingPeriods,
+            status: liability.status === "paidOff" ? "active" : liability.status
+          }
+        });
+      }
+      const snapshot = await tx.liabilitySnapshot.findUniqueOrThrow({
+        where: { liabilityId_month: { liabilityId: repayment.liabilityId, month } }
+      });
+      const currentBalance = centsToMoney(moneyToCents(decimalToMoney(snapshot.currentBalance)) + amountCents);
+      const remainingPeriods = snapshot.remainingPeriods === null ? null : snapshot.remainingPeriods + 1;
+      await tx.liabilitySnapshot.update({
+        where: { id: snapshot.id },
+        data: {
+          currentBalance,
+          remainingPeriods,
+          status: snapshot.status === "paidOff" ? "active" : snapshot.status,
+          confirmedAt: new Date()
+        }
+      });
+      await tx.liabilityRepayment.delete({ where: { id } });
+    });
   }
 
   async deleteLiability(id: string): Promise<void> {
@@ -1154,12 +1278,6 @@ export class PrismaFinanceRepository implements FinanceRepository {
             remainingPeriods: liability.remainingPeriods
           },
           update: {
-            currentBalance: liability.currentBalance,
-            monthlyPayment: liability.monthlyPayment,
-            paymentDay: liability.paymentDay,
-            repaymentSchedule: liability.repaymentSchedule,
-            status: liability.status,
-            remainingPeriods: liability.remainingPeriods,
             confirmedAt: new Date()
           }
         });
@@ -1596,6 +1714,47 @@ function mapLiability(liability: DbLiability): Liability {
     createdAt: liability.createdAt.toISOString(),
     updatedAt: liability.updatedAt.toISOString()
   };
+}
+
+function mapLiabilitySnapshot(
+  liability: DbLiability,
+  snapshot: {
+    currentBalance: Prisma.Decimal;
+    monthlyPayment: Prisma.Decimal | null;
+    paymentDay: number | null;
+    repaymentSchedule: DbLiability["repaymentSchedule"];
+    remainingPeriods: number | null;
+    status: DbLiability["status"];
+  }
+): Liability {
+  return {
+    ...mapLiability(liability),
+    currentBalance: decimalToMoney(snapshot.currentBalance),
+    monthlyPayment: snapshot.monthlyPayment === null ? undefined : decimalToMoney(snapshot.monthlyPayment),
+    paymentDay: snapshot.paymentDay ?? undefined,
+    repaymentSchedule: snapshot.repaymentSchedule,
+    remainingPeriods: snapshot.remainingPeriods ?? undefined,
+    status: snapshot.status
+  };
+}
+
+function mapLiabilityRepayment(repayment: DbLiabilityRepayment): LiabilityRepaymentRecord {
+  return {
+    id: repayment.id,
+    liabilityId: repayment.liabilityId,
+    date: formatDate(repayment.date),
+    amount: decimalToMoney(repayment.amount),
+    note: repayment.note ?? undefined,
+    createdAt: repayment.createdAt.toISOString()
+  };
+}
+
+async function markLiabilitiesReviewed(tx: Prisma.TransactionClient, month: string): Promise<void> {
+  await tx.monthlyReview.upsert({
+    where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } },
+    create: { familyId: DEFAULT_FAMILY_ID, month, liabilitiesConfirmedAt: new Date() },
+    update: { liabilitiesConfirmedAt: new Date() }
+  });
 }
 
 function mapCategory(category: DbCategory): Category {

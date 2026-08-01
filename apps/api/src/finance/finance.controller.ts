@@ -10,6 +10,7 @@ import type {
   ImportTransactionsResult,
   InvestmentHolding,
   Liability,
+  LiabilityRepaymentRecord,
   MonthlyReviewStatus,
   MonthlySnapshotData,
   YearlyReportData
@@ -303,13 +304,31 @@ export class FinanceController {
   }
 
   @Patch("liabilities/:id")
-  updateLiability(@Param("id") id: string, @Body() input: CreateLiabilityInput): Promise<Liability> {
-    return this.financeService.updateLiability(id, input);
+  updateLiability(
+    @Param("id") id: string,
+    @Body() input: CreateLiabilityInput,
+    @Query("month") month?: string
+  ): Promise<Liability> {
+    return this.financeService.updateLiability(id, input, month);
   }
 
   @Post("liabilities/:id/repay")
-  repayLiability(@Param("id") id: string, @Body() input: RepayLiabilityInput): Promise<Liability> {
-    return this.financeService.repayLiability(id, input);
+  repayLiability(
+    @Param("id") id: string,
+    @Body() input: RepayLiabilityInput,
+    @Query("month") month?: string
+  ): Promise<Liability> {
+    return this.financeService.repayLiability(id, input, month);
+  }
+
+  @Get("liabilities/:id/repayments")
+  listLiabilityRepayments(@Param("id") id: string): Promise<LiabilityRepaymentRecord[]> {
+    return this.financeService.listLiabilityRepayments(id);
+  }
+
+  @Delete("liability-repayments/:id")
+  deleteLiabilityRepayment(@Param("id") id: string): Promise<void> {
+    return this.financeService.deleteLiabilityRepayment(id);
   }
 
   @Delete("liabilities/:id")

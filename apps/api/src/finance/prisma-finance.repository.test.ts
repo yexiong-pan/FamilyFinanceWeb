@@ -217,7 +217,7 @@ describe("PrismaFinanceRepository liability balances", () => {
     expect(liability.initialBalance).toBe("1000000.00");
   });
 
-  it("snapshots the repayment arrangement needed by historical monthly reviews", async () => {
+  it("keeps an existing historical repayment arrangement when confirming a monthly review", async () => {
     const upsert = vi.fn();
     const repository = new PrismaFinanceRepository({
       liability: {
@@ -252,7 +252,7 @@ describe("PrismaFinanceRepository liability balances", () => {
 
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({ paymentDay: 8, repaymentSchedule: "monthly", status: "active" }),
-      update: expect.objectContaining({ paymentDay: 8, repaymentSchedule: "monthly", status: "active" })
+      update: expect.objectContaining({ confirmedAt: expect.any(Date) })
     }));
   });
 

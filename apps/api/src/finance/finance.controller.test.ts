@@ -229,6 +229,12 @@ function createEmptyRepository(): FinanceRepository {
         status: "paidOff"
       };
     },
+    async listLiabilityRepayments() {
+      return [];
+    },
+    async deleteLiabilityRepayment() {
+      return undefined;
+    },
     async deleteLiability() {
       return undefined;
     }
