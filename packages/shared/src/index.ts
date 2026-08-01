@@ -9,6 +9,7 @@ export * from "./calendar-events.js";
 
 export type AccountType = string;
 export type AssetPurpose = "daily" | "emergency" | "goal" | "investment" | "restricted";
+export type FinancialSnapshotStatus = "available" | "missing";
 export type TransactionKind = "expense" | "income" | "transfer" | "adjustment";
 export type TransactionSource = "manual" | "alipay" | "wechat";
 export type InvestmentHoldingType = "fund" | "stock" | "etf";
@@ -29,6 +30,8 @@ export interface Account {
   purpose?: AssetPurpose;
   ownerName: string;
   currentValue: MoneyAmount;
+  cashBalance?: MoneyAmount;
+  snapshotStatus?: FinancialSnapshotStatus;
   note?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -85,6 +88,7 @@ export interface InvestmentHolding {
   marketValue: MoneyAmount;
   investedAmount?: MoneyAmount;
   profit: MoneyAmount;
+  snapshotStatus?: FinancialSnapshotStatus;
   note?: string;
   createdAt?: string;
   updatedAt?: string;

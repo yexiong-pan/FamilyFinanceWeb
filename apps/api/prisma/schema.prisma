@@ -283,6 +283,7 @@ model Account {
   purpose            AssetPurpose?
   ownerName          String
   currentValue       Decimal              @db.Decimal(18, 2)
+  cashBalance        Decimal              @default(0) @db.Decimal(18, 2)
   note               String?
   deletedAt          DateTime?
   family             Family               @relation(fields: [familyId], references: [id])
@@ -814,6 +815,7 @@ model AccountSnapshot {
   accountId String
   date      DateTime
   value     Decimal  @db.Decimal(18, 2)
+  cashBalance Decimal? @db.Decimal(18, 2)
   family    Family   @relation(fields: [familyId], references: [id])
   account   Account  @relation(fields: [accountId], references: [id])
   createdAt DateTime @default(now())

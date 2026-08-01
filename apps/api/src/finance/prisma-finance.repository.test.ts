@@ -346,6 +346,7 @@ describe("PrismaFinanceRepository account edits", () => {
         purpose: "emergency",
         ownerName: "家庭共同",
         currentValue: "1500.00",
+        cashBalance: "0.00",
         note: "更新余额"
       }
     });
@@ -391,7 +392,10 @@ describe("PrismaFinanceRepository account edits", () => {
     }, "2026-07");
 
     expect(accountUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.not.objectContaining({ currentValue: expect.anything() })
+      data: expect.not.objectContaining({
+        currentValue: expect.anything(),
+        cashBalance: expect.anything()
+      })
     }));
     expect(accountSnapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
       where: {
@@ -400,7 +404,7 @@ describe("PrismaFinanceRepository account edits", () => {
           date: new Date("2026-07-31T00:00:00.000Z")
         }
       },
-      update: { value: "1500.00" }
+      update: { value: "1500.00", cashBalance: "0.00" }
     }));
     expect(reviewUpsert).toHaveBeenCalledOnce();
   });
@@ -517,7 +521,7 @@ describe("PrismaFinanceRepository investment account balances", () => {
         create: vi.fn(async () => holdingRecord()),
         aggregate: vi.fn(async () => ({ _sum: { marketValue: "350.00" } }))
       },
-      account: { update: accountUpdate }
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: accountUpdate }
     };
     const repository = new PrismaFinanceRepository({
       ...client,
@@ -541,6 +545,37 @@ describe("PrismaFinanceRepository investment account balances", () => {
     });
   });
 
+  it("keeps cash alongside linked holdings when synchronizing an investment account", async () => {
+    const accountUpdate = vi.fn(async () => ({}));
+    const client = {
+      investmentHolding: {
+        create: vi.fn(async () => holdingRecord()),
+        aggregate: vi.fn(async () => ({ _sum: { marketValue: "350.00" } }))
+      },
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "120.00" })), update: accountUpdate }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.createHolding({
+      accountId: "account-fund",
+      name: "支付宝基金",
+      code: "000001",
+      type: "fund",
+      marketValue: "350.00",
+      investedAmount: "300.00",
+      profit: "50.00"
+    });
+
+    expect(accountUpdate).toHaveBeenCalledWith({
+      where: { id: "account-fund" },
+      data: { currentValue: "470.00" }
+    });
+  });
+
   it("syncs both accounts when a holding moves to another account", async () => {
     const accountUpdate = vi.fn(async () => ({}));
     const client = {
@@ -551,7 +586,7 @@ describe("PrismaFinanceRepository investment account balances", () => {
           _sum: { marketValue: where.accountId === "account-old" ? null : "350.00" }
         }))
       },
-      account: { update: accountUpdate }
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: accountUpdate }
     };
     const repository = new PrismaFinanceRepository({
       ...client,
@@ -595,9 +630,9 @@ describe("PrismaFinanceRepository investment account balances", () => {
         upsert: snapshotUpsert,
         findMany: vi.fn(async () => [{ holdingId: "holding-1", marketValue: "420.00" }])
       },
-      accountSnapshot: { upsert: accountSnapshotUpsert },
+      accountSnapshot: { findUnique: vi.fn(async () => undefined), upsert: accountSnapshotUpsert },
       monthlyReview: { upsert: reviewUpsert },
-      account: { update: vi.fn(async () => ({})) }
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: vi.fn(async () => ({})) }
     };
     const repository = new PrismaFinanceRepository({
       ...client,
@@ -623,7 +658,7 @@ describe("PrismaFinanceRepository investment account balances", () => {
       update: expect.objectContaining({ marketValue: "420.00", investedAmount: "300.00" })
     }));
     expect(accountSnapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: { value: "420.00" }
+      update: expect.objectContaining({ value: "420.00", cashBalance: "0.00" })
     }));
     expect(reviewUpsert).toHaveBeenCalledOnce();
   });
@@ -636,7 +671,7 @@ describe("PrismaFinanceRepository investment account balances", () => {
         update: vi.fn(async () => holdingRecord({ deletedAt: new Date() })),
         aggregate: vi.fn(async () => ({ _sum: { marketValue: "120.00" } }))
       },
-      account: { update: accountUpdate }
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: accountUpdate }
     };
     const repository = new PrismaFinanceRepository({
       ...client,
@@ -757,6 +792,67 @@ describe("PrismaFinanceRepository snapshot queries", () => {
         expect.objectContaining({ name: "支付宝基金", currentValue: "18834.86" })
       ]);
       expect(snapshotFindMany).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks historical accounts and holdings as unreviewed when the selected month has no snapshot", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T03:00:00.000Z"));
+    const repository = new PrismaFinanceRepository({
+      account: {
+        findMany: vi.fn(async () => [{
+          id: "account-fund",
+          familyId: "default-family",
+          name: "支付宝基金",
+          type: "基金",
+          ownerName: "雄哥",
+          currentValue: "1000.00",
+          cashBalance: "80.00",
+          note: null,
+          deletedAt: null,
+          createdAt: new Date("2026-06-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-08-01T00:00:00.000Z")
+        }]
+        )
+      },
+      accountSnapshot: {
+        findMany: vi.fn(async () => [{
+          accountId: "account-fund",
+          date: new Date("2026-06-30T00:00:00.000Z"),
+          value: "900.00",
+          cashBalance: "60.00"
+        }])
+      },
+      investmentHolding: {
+        findMany: vi.fn(async () => [{
+          id: "holding-1",
+          familyId: "default-family",
+          accountId: "account-fund",
+          name: "支付宝基金",
+          code: "000001",
+          type: "fund",
+          marketValue: "350.00",
+          investedAmount: "300.00",
+          profit: "50.00",
+          note: null,
+          deletedAt: null,
+          createdAt: new Date("2026-06-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-08-01T00:00:00.000Z")
+        }])
+      },
+      investmentSnapshot: { findMany: vi.fn(async () => []) }
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    try {
+      await expect(repository.listAccountsForMonth("2026-07")).resolves.toEqual([
+        expect.objectContaining({ currentValue: "900.00", cashBalance: "60.00", snapshotStatus: "missing" })
+      ]);
+      await expect(repository.listHoldingsForMonth("2026-07")).resolves.toEqual([
+        expect.objectContaining({ snapshotStatus: "missing" })
+      ]);
     } finally {
       vi.useRealTimers();
     }

@@ -2447,8 +2447,15 @@ function AccountsPage(props: PageProps) {
   );
   const assetAllocation = useMemo(() => buildAssetAllocation(filteredAccounts), [filteredAccounts]);
   const assetInsights = useMemo(() => buildAssetInsights(filteredAccounts), [filteredAccounts]);
+  const managedAccountIds = useMemo(
+    () => new Set(props.data.investments.map((holding) => holding.accountId)),
+    [props.data.investments]
+  );
+  const missingSnapshotCount = props.data.accounts.filter(
+    (account) => account.snapshotStatus === "missing"
+  ).length;
   const editingManagedByHoldings = Boolean(
-    editing && props.data.investments.some((holding) => holding.accountId === editing.id)
+    editing && managedAccountIds.has(editing.id)
   );
   useEffect(() => {
     if (!open) return;
@@ -2460,6 +2467,7 @@ function AccountsPage(props: PageProps) {
             purpose: editing.purpose ?? "daily",
             ownerName: editing.ownerName,
             currentValue: Number(editing.currentValue),
+            cashBalance: Number(editing.cashBalance ?? 0),
             note: editing.note
           }
         : {
@@ -2468,6 +2476,7 @@ function AccountsPage(props: PageProps) {
             purpose: "daily",
             ownerName: props.currentMemberName,
             currentValue: undefined,
+            cashBalance: 0,
             note: undefined
           }
     );
@@ -2478,6 +2487,11 @@ function AccountsPage(props: PageProps) {
         <Space size={8}>
           <span>资产账户</span>
           <Tag color="blue">{formatMoney(String(filteredTotalValue))}</Tag>
+          {missingSnapshotCount ? (
+            <Tag color="orange">该月未盘点 {missingSnapshotCount} 个</Tag>
+          ) : !props.data.monthlyReview.assets ? (
+            <Tag color="orange">该月未盘点</Tag>
+          ) : null}
         </Space>
       }
       extra={
@@ -2562,6 +2576,8 @@ function AccountsPage(props: PageProps) {
                 {renderAccountType(account.type)}
                 {renderAssetPurpose(account.purpose)}
                 {renderOwnerTag(account.ownerName, props.data.members)}
+                {account.snapshotStatus === "missing" ? <Tag color="orange">该月未盘点</Tag> : null}
+                {managedAccountIds.has(account.id) ? <Tag color="blue">现金 {formatMoney(account.cashBalance ?? "0")}</Tag> : null}
               </Flex>
               {account.note ? <Text className="mobile-record-note">{account.note}</Text> : null}
               <div className="mobile-record-actions">
@@ -2579,11 +2595,34 @@ function AccountsPage(props: PageProps) {
         dataSource={filteredAccounts}
         scroll={{ x: 1150 }}
         columns={[
-          { title: "账户", dataIndex: "name", width: 180 },
+          {
+            title: "账户",
+            dataIndex: "name",
+            width: 180,
+            render: (value: string, record) => (
+              <Space size={4} wrap>
+                <span>{value}</span>
+                {record.snapshotStatus === "missing" ? <Tag color="orange">该月未盘点</Tag> : null}
+              </Space>
+            )
+          },
           { title: "类型", dataIndex: "type", width: 120, render: renderAccountType },
           { title: "资金用途", dataIndex: "purpose", width: 120, render: renderAssetPurpose },
           { title: "归属", dataIndex: "ownerName", width: 100, render: (value: string) => renderOwnerTag(value, props.data.members) },
-          { title: "当前金额", dataIndex: "currentValue", width: 140, align: "right", sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue), defaultSortOrder: "descend", render: (value: string) => <Tag color="green">{formatMoney(value)}</Tag> },
+          {
+            title: "当前金额",
+            dataIndex: "currentValue",
+            width: 170,
+            align: "right",
+            sorter: (a, b) => Number(a.currentValue) - Number(b.currentValue),
+            defaultSortOrder: "descend",
+            render: (value: string, record) => (
+              <Space size={4} wrap>
+                <Tag color="green">{formatMoney(value)}</Tag>
+                {managedAccountIds.has(record.id) ? <Tag color="blue">现金 {formatMoney(record.cashBalance ?? "0")}</Tag> : null}
+              </Space>
+            )
+          },
           { title: "创建时间", dataIndex: "createdAt", width: 150, render: formatDateTime },
           { title: "更新时间", dataIndex: "updatedAt", width: 150, render: formatDateTime },
           { title: "备注", dataIndex: "note", width: 160 },
@@ -2632,12 +2671,21 @@ function AccountsPage(props: PageProps) {
               : { type: "银行卡", purpose: "daily", ownerName: props.currentMemberName }
           }
           onFinish={(values) => {
+            const cashBalance = String(values.cashBalance ?? 0);
+            const holdingValue = editingManagedByHoldings
+              ? props.data.investments
+                .filter((holding) => holding.accountId === editing?.id)
+                .reduce((sum, holding) => sum + Number(holding.marketValue), 0)
+              : 0;
             const payload = {
               name: values.name,
               type: values.type,
               purpose: values.purpose,
               ownerName: values.ownerName,
-              currentValue: String(values.currentValue ?? 0),
+              currentValue: editingManagedByHoldings
+                ? (holdingValue + Number(cashBalance)).toFixed(2)
+                : String(values.currentValue ?? 0),
+              cashBalance,
               note: values.note
             };
             if (editing) {
@@ -3094,6 +3142,9 @@ function InvestmentsPage(props: PageProps) {
   );
   const totalProfit = totalMarket - totalCost;
   const totalRate = totalCost !== 0 ? totalProfit / totalCost : 0;
+  const missingSnapshotCount = props.data.investments.filter(
+    (holding) => holding.snapshotStatus === "missing"
+  ).length;
   const investmentInsights = buildInvestmentInsights(props.data.investments);
   const latestInvestmentUpdate = props.data.investments
     .map((item) => item.updatedAt)
@@ -3148,7 +3199,16 @@ function InvestmentsPage(props: PageProps) {
         </Col>
       </Row>
       <Card
-        title="投资持仓"
+        title={
+          <Space size={8}>
+            <span>投资持仓</span>
+            {missingSnapshotCount ? (
+              <Tag color="orange">该月未盘点 {missingSnapshotCount} 个</Tag>
+            ) : !props.data.monthlyReview.investments ? (
+              <Tag color="orange">该月未盘点</Tag>
+            ) : null}
+          </Space>
+        }
         extra={
           <Space>
             <Button
@@ -3189,6 +3249,7 @@ function InvestmentsPage(props: PageProps) {
                     {renderHoldingType(holding.type)}
                     {account ? renderOwnerTag(account.ownerName, props.data.members) : null}
                     <Tag color={rate >= 0 ? "red" : "green"}>{`${(rate * 100).toFixed(2)}%`}</Tag>
+                    {holding.snapshotStatus === "missing" ? <Tag color="orange">该月未盘点</Tag> : null}
                   </Flex>
                   <div className="mobile-record-grid">
                     <MobileField label="投入成本" value={formatMoney(invested.toFixed(2))} />
@@ -3213,7 +3274,17 @@ function InvestmentsPage(props: PageProps) {
           dataSource={props.data.investments}
           scroll={{ x: 1220 }}
           columns={[
-            { title: "名称", dataIndex: "name", width: 160 },
+            {
+              title: "名称",
+              dataIndex: "name",
+              width: 180,
+              render: (value: string, record) => (
+                <Space size={4} wrap>
+                  <span>{value}</span>
+                  {record.snapshotStatus === "missing" ? <Tag color="orange">该月未盘点</Tag> : null}
+                </Space>
+              )
+            },
             { title: "代码", dataIndex: "code", width: 100 },
             { title: "类型", dataIndex: "type", width: 100, render: renderHoldingType },
             {
@@ -3598,11 +3669,11 @@ function SnapshotStatus({
 }
 
 function SnapshotSectionTitle({ label, complete }: { label: string; complete: boolean }) {
-  return <Space size={8}><span>{label}</span><Tag color={complete ? "green" : "default"}>{complete ? "已保存" : "未保存"}</Tag></Space>;
+  return <Space size={8}><span>{label}</span><Tag color={complete ? "green" : "orange"}>{complete ? "已保存" : "该月未盘点"}</Tag></Space>;
 }
 
 function SnapshotEmpty({ complete, noun }: { complete: boolean; noun: string }) {
-  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={complete ? `该月没有${noun}记录` : `该月未保存${noun}快照`} />;
+  return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={complete ? `该月没有${noun}记录` : `该月未盘点${noun}`} />;
 }
 
 function SettingsPage(props: PageProps) {
@@ -4314,6 +4385,11 @@ function AccountFormFields({
       >
         <InputNumber min={0} precision={2} className="full-width" disabled={currentValueManaged} />
       </Form.Item>
+      {currentValueManaged ? (
+        <Form.Item name="cashBalance" label="账户现金余额" extra="总金额 = 账户现金余额 + 关联持仓市值">
+          <InputNumber min={0} precision={2} className="full-width" />
+        </Form.Item>
+      ) : null}
       <Form.Item name="note" label="备注">
         <Input.TextArea rows={3} />
       </Form.Item>

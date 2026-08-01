@@ -305,10 +305,24 @@ export class PrismaFinanceRepository implements FinanceRepository {
         orderBy: { date: "asc" }
       })
     ]);
+    const snapshotDate = monthSnapshotDate(month);
     const latestByAccount = new Map(snapshots.map((snapshot) => [snapshot.accountId, snapshot]));
+    const snapshotForMonthByAccount = new Map(
+      snapshots
+        .filter((snapshot) => snapshot.date.getTime() === snapshotDate.getTime())
+        .map((snapshot) => [snapshot.accountId, snapshot])
+    );
     return accounts.map((account) => {
       const snapshot = latestByAccount.get(account.id);
-      return { ...mapAccount(account), currentValue: snapshot ? decimalToMoney(snapshot.value) : decimalToMoney(account.currentValue) };
+      const monthlySnapshot = snapshotForMonthByAccount.get(account.id);
+      return {
+        ...mapAccount(account),
+        currentValue: snapshot ? decimalToMoney(snapshot.value) : decimalToMoney(account.currentValue),
+        cashBalance: snapshot?.cashBalance === null || snapshot?.cashBalance === undefined
+          ? optionalDecimalToMoney(account.cashBalance)
+          : decimalToMoney(snapshot.cashBalance),
+        snapshotStatus: monthlySnapshot ? "available" : "missing"
+      };
     });
   }
 
@@ -322,10 +336,15 @@ export class PrismaFinanceRepository implements FinanceRepository {
         purpose: input.purpose ?? inferAssetPurpose(input.type),
         ownerName: input.ownerName,
         currentValue: normalizeMoney(input.currentValue),
+        cashBalance: normalizeMoney(input.cashBalance ?? "0"),
         note: input.note
       }
     });
-    await this.snapshotAccount(account.id, decimalToMoney(account.currentValue));
+    await this.snapshotAccount(
+      account.id,
+      decimalToMoney(account.currentValue),
+      optionalDecimalToMoney(account.cashBalance)
+    );
     return mapAccount(account);
   }
 
@@ -373,11 +392,22 @@ export class PrismaFinanceRepository implements FinanceRepository {
     return points;
   }
 
-  private async snapshotAccount(accountId: string, value: MoneyAmount, date = startOfTodayUtc()): Promise<void> {
+  private async snapshotAccount(
+    accountId: string,
+    value: MoneyAmount,
+    cashBalance: MoneyAmount,
+    date = startOfTodayUtc()
+  ): Promise<void> {
     await this.prisma.accountSnapshot.upsert({
       where: { accountId_date: { accountId, date } },
-      create: { familyId: DEFAULT_FAMILY_ID, accountId, date, value: normalizeMoney(value) },
-      update: { value: normalizeMoney(value) }
+      create: {
+        familyId: DEFAULT_FAMILY_ID,
+        accountId,
+        date,
+        value: normalizeMoney(value),
+        cashBalance: normalizeMoney(cashBalance)
+      },
+      update: { value: normalizeMoney(value), cashBalance: normalizeMoney(cashBalance) }
     });
   }
 
@@ -551,14 +581,15 @@ export class PrismaFinanceRepository implements FinanceRepository {
     const snapshotByHolding = new Map(snapshots.map((snapshot) => [snapshot.holdingId, snapshot]));
     return holdings.map((holding) => {
       const snapshot = snapshotByHolding.get(holding.id);
-      if (!snapshot) return mapHolding(holding);
+      if (!snapshot) return { ...mapHolding(holding), snapshotStatus: "missing" };
       const marketValue = decimalToMoney(snapshot.marketValue);
       const investedAmount = decimalToMoney(snapshot.investedAmount);
       return {
         ...mapHolding(holding),
         marketValue,
         investedAmount,
-        profit: centsToMoney(moneyToCents(marketValue) - moneyToCents(investedAmount))
+        profit: centsToMoney(moneyToCents(marketValue) - moneyToCents(investedAmount)),
+        snapshotStatus: "available"
       };
     });
   }
@@ -651,6 +682,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
     await this.ensureBaseData();
     const correctHistoricalSnapshot = Boolean(month && !isCurrentMonth(month));
     const currentValue = normalizeMoney(input.currentValue);
+    const cashBalance = normalizeMoney(input.cashBalance ?? "0");
     const account = await this.prisma.account.update({
       where: { id },
       data: {
@@ -658,7 +690,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
         type: normalizeLegacyAccountType(input.type),
         purpose: input.purpose ?? inferAssetPurpose(input.type),
         ownerName: input.ownerName,
-        ...(correctHistoricalSnapshot ? {} : { currentValue }),
+        ...(correctHistoricalSnapshot ? {} : { currentValue, cashBalance }),
         note: input.note ?? null
       }
     });
@@ -670,9 +702,10 @@ export class PrismaFinanceRepository implements FinanceRepository {
             familyId: DEFAULT_FAMILY_ID,
             accountId: id,
             date: monthSnapshotDate(month),
-            value: currentValue
+            value: currentValue,
+            cashBalance
           },
-          update: { value: currentValue }
+          update: { value: currentValue, cashBalance }
         });
         await tx.monthlyReview.upsert({
           where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } },
@@ -695,7 +728,12 @@ export class PrismaFinanceRepository implements FinanceRepository {
     });
     const date = month ? monthSnapshotDate(month) : startOfTodayUtc();
     await Promise.all(
-      accounts.map((account) => this.snapshotAccount(account.id, decimalToMoney(account.currentValue), date))
+      accounts.map((account) => this.snapshotAccount(
+        account.id,
+        decimalToMoney(account.currentValue),
+        optionalDecimalToMoney(account.cashBalance),
+        date
+      ))
     );
     if (month) {
       await this.prisma.monthlyReview.upsert({
@@ -1477,6 +1515,7 @@ function mapAccount(account: DbAccount): Account {
     purpose: account.purpose ?? inferAssetPurpose(account.type),
     ownerName: account.ownerName,
     currentValue: decimalToMoney(account.currentValue),
+    cashBalance: optionalDecimalToMoney(account.cashBalance),
     note: account.note ?? undefined,
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString()
@@ -1632,20 +1671,29 @@ function normalizeLegacyAccountType(type: string): string {
 }
 
 async function syncInvestmentAccountValue(tx: Prisma.TransactionClient, accountId: string): Promise<void> {
-  const aggregate = await tx.investmentHolding.aggregate({
-    where: { familyId: DEFAULT_FAMILY_ID, accountId, deletedAt: null },
-    _sum: { marketValue: true }
-  });
+  const [aggregate, account] = await Promise.all([
+    tx.investmentHolding.aggregate({
+      where: { familyId: DEFAULT_FAMILY_ID, accountId, deletedAt: null },
+      _sum: { marketValue: true }
+    }),
+    tx.account.findUniqueOrThrow({ where: { id: accountId }, select: { cashBalance: true } })
+  ]);
   await tx.account.update({
     where: { id: accountId },
-    data: { currentValue: normalizeMoney(aggregate._sum.marketValue?.toString() ?? "0") }
+    data: {
+      currentValue: centsToMoney(
+        moneyToCents(normalizeMoney(aggregate._sum.marketValue?.toString() ?? "0"))
+        + moneyToCents(decimalToMoney(account.cashBalance))
+      )
+    }
   });
 }
 
 async function syncHistoricalInvestmentAccountValue(
   tx: Prisma.TransactionClient,
   accountId: string,
-  month: string
+  month: string,
+  cashBalance?: MoneyAmount
 ): Promise<void> {
   const holdings = await tx.investmentHolding.findMany({
     where: {
@@ -1670,15 +1718,37 @@ async function syncHistoricalInvestmentAccountValue(
     0
   );
   const date = monthSnapshotDate(month);
+  const existingSnapshot = cashBalance === undefined
+    ? await tx.accountSnapshot.findUnique({
+      where: { accountId_date: { accountId, date } },
+      select: { cashBalance: true }
+    })
+    : undefined;
+  const resolvedCashBalance = normalizeMoney(
+    cashBalance ?? existingSnapshot?.cashBalance?.toString() ?? "0"
+  );
   await tx.accountSnapshot.upsert({
     where: { accountId_date: { accountId, date } },
-    create: { familyId: DEFAULT_FAMILY_ID, accountId, date, value: centsToMoney(totalCents) },
-    update: { value: centsToMoney(totalCents) }
+    create: {
+      familyId: DEFAULT_FAMILY_ID,
+      accountId,
+      date,
+      value: centsToMoney(totalCents + moneyToCents(resolvedCashBalance)),
+      cashBalance: resolvedCashBalance
+    },
+    update: {
+      value: centsToMoney(totalCents + moneyToCents(resolvedCashBalance)),
+      cashBalance: resolvedCashBalance
+    }
   });
 }
 
 function decimalToMoney(value: Prisma.Decimal): MoneyAmount {
   return normalizeMoney(value.toString());
+}
+
+function optionalDecimalToMoney(value: { toString(): string } | null | undefined): MoneyAmount {
+  return normalizeMoney(value?.toString() ?? "0");
 }
 
 function moneyToCents(value: MoneyAmount): number {
