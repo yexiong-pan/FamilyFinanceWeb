@@ -142,8 +142,12 @@ export class FinanceController {
   }
 
   @Patch("accounts/:id")
-  updateAccount(@Param("id") id: string, @Body() input: UpdateAccountInput): Promise<Account> {
-    return this.financeService.updateAccount(id, input);
+  updateAccount(
+    @Param("id") id: string,
+    @Body() input: UpdateAccountInput,
+    @Query("month") month?: string
+  ): Promise<Account> {
+    return this.financeService.updateAccount(id, input, month);
   }
 
   @Post("accounts/snapshots")

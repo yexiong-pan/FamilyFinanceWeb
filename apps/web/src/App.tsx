@@ -2642,7 +2642,7 @@ function AccountsPage(props: PageProps) {
             };
             if (editing) {
               return props.submit(
-                () => updateAccount(editing.id, payload),
+                () => updateAccount(editing.id, payload, props.monthKey),
                 { success: "账户已更新", onSuccess: () => setOpen(false) }
               );
             }

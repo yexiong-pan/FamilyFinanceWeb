@@ -146,8 +146,8 @@ export class FinanceService {
     return this.repository.createAccount(input);
   }
 
-  async updateAccount(id: string, input: UpdateAccountInput): Promise<Account> {
-    return this.repository.updateAccount(id, input);
+  async updateAccount(id: string, input: UpdateAccountInput, month?: string): Promise<Account> {
+    return this.repository.updateAccount(id, input, month);
   }
 
   async snapshotAllAccounts(month?: string): Promise<{ date: string; count: number }> {

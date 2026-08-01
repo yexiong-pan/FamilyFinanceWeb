@@ -58,7 +58,7 @@ export interface FinanceRepository {
   listAccountsForMonth(month: string): Promise<Account[]>;
   listAssetTrend(): Promise<AssetTrendPoint[]>;
   createAccount(input: CreateAccountInput): Promise<Account>;
-  updateAccount(id: string, input: UpdateAccountInput): Promise<Account>;
+  updateAccount(id: string, input: UpdateAccountInput, month?: string): Promise<Account>;
   snapshotAllAccounts(month?: string): Promise<{ date: string; count: number }>;
   listAccountSnapshots(accountId: string): Promise<{ date: string; value: MoneyAmount }[]>;
   listAllSnapshots(filter?: { accountId?: string; from?: string; to?: string }): Promise<AccountSnapshotRecord[]>;

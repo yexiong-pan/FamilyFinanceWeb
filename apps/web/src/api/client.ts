@@ -283,8 +283,9 @@ export async function createAccount(input: Omit<Account, "id">): Promise<Account
   return postJson("/accounts", input);
 }
 
-export async function updateAccount(id: string, input: UpdateAccountInput): Promise<Account> {
-  return patchJson(`/accounts/${id}`, input);
+export async function updateAccount(id: string, input: UpdateAccountInput, month?: string): Promise<Account> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return patchJson(`/accounts/${id}${query}`, input);
 }
 
 export async function snapshotAllAccounts(month: string): Promise<{ date: string; count: number }> {

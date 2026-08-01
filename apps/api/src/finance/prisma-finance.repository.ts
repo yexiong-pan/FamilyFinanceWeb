@@ -647,8 +647,10 @@ export class PrismaFinanceRepository implements FinanceRepository {
     return mapLiability(liability);
   }
 
-  async updateAccount(id: string, input: UpdateAccountInput): Promise<Account> {
+  async updateAccount(id: string, input: UpdateAccountInput, month?: string): Promise<Account> {
     await this.ensureBaseData();
+    const correctHistoricalSnapshot = Boolean(month && !isCurrentMonth(month));
+    const currentValue = normalizeMoney(input.currentValue);
     const account = await this.prisma.account.update({
       where: { id },
       data: {
@@ -656,10 +658,29 @@ export class PrismaFinanceRepository implements FinanceRepository {
         type: normalizeLegacyAccountType(input.type),
         purpose: input.purpose ?? inferAssetPurpose(input.type),
         ownerName: input.ownerName,
-        currentValue: normalizeMoney(input.currentValue),
+        ...(correctHistoricalSnapshot ? {} : { currentValue }),
         note: input.note ?? null
       }
     });
+    if (correctHistoricalSnapshot && month) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.accountSnapshot.upsert({
+          where: { accountId_date: { accountId: id, date: monthSnapshotDate(month) } },
+          create: {
+            familyId: DEFAULT_FAMILY_ID,
+            accountId: id,
+            date: monthSnapshotDate(month),
+            value: currentValue
+          },
+          update: { value: currentValue }
+        });
+        await tx.monthlyReview.upsert({
+          where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } },
+          create: { familyId: DEFAULT_FAMILY_ID, month, assetsConfirmedAt: new Date() },
+          update: { assetsConfirmedAt: new Date() }
+        });
+      });
+    }
     return mapAccount(account);
   }
 
@@ -932,7 +953,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
       const updated = await tx.investmentHolding.update({
         where: { id },
         data: {
-          accountId: input.accountId,
+          accountId: correctHistoricalSnapshot ? previous.accountId : input.accountId,
           name: input.name,
           code: input.code?.trim() ?? "",
           type: input.type,
@@ -946,15 +967,23 @@ export class PrismaFinanceRepository implements FinanceRepository {
           create: { familyId: DEFAULT_FAMILY_ID, holdingId: id, month, marketValue, investedAmount },
           update: { marketValue, investedAmount, confirmedAt: new Date() }
         });
+        await syncHistoricalInvestmentAccountValue(tx, previous.accountId, month);
         await tx.monthlyReview.upsert({
           where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } },
-          create: { familyId: DEFAULT_FAMILY_ID, month, investmentsConfirmedAt: new Date() },
-          update: { investmentsConfirmedAt: new Date() }
+          create: {
+            familyId: DEFAULT_FAMILY_ID,
+            month,
+            investmentsConfirmedAt: new Date(),
+            assetsConfirmedAt: new Date()
+          },
+          update: { investmentsConfirmedAt: new Date(), assetsConfirmedAt: new Date() }
         });
       }
-      await syncInvestmentAccountValue(tx, previous.accountId);
-      if (input.accountId !== previous.accountId) {
-        await syncInvestmentAccountValue(tx, input.accountId);
+      if (!correctHistoricalSnapshot) {
+        await syncInvestmentAccountValue(tx, previous.accountId);
+        if (input.accountId !== previous.accountId) {
+          await syncInvestmentAccountValue(tx, input.accountId);
+        }
       }
       return updated;
     });
@@ -1610,6 +1639,41 @@ async function syncInvestmentAccountValue(tx: Prisma.TransactionClient, accountI
   await tx.account.update({
     where: { id: accountId },
     data: { currentValue: normalizeMoney(aggregate._sum.marketValue?.toString() ?? "0") }
+  });
+}
+
+async function syncHistoricalInvestmentAccountValue(
+  tx: Prisma.TransactionClient,
+  accountId: string,
+  month: string
+): Promise<void> {
+  const holdings = await tx.investmentHolding.findMany({
+    where: {
+      familyId: DEFAULT_FAMILY_ID,
+      accountId,
+      deletedAt: null,
+      createdAt: { lt: nextMonthStart(month) }
+    },
+    select: { id: true, marketValue: true }
+  });
+  const snapshots = await tx.investmentSnapshot.findMany({
+    where: {
+      familyId: DEFAULT_FAMILY_ID,
+      month,
+      holdingId: { in: holdings.map((holding) => holding.id) }
+    },
+    select: { holdingId: true, marketValue: true }
+  });
+  const marketValueByHolding = new Map(snapshots.map((snapshot) => [snapshot.holdingId, snapshot.marketValue]));
+  const totalCents = holdings.reduce(
+    (sum, holding) => sum + moneyToCents(decimalToMoney(marketValueByHolding.get(holding.id) ?? holding.marketValue)),
+    0
+  );
+  const date = monthSnapshotDate(month);
+  await tx.accountSnapshot.upsert({
+    where: { accountId_date: { accountId, date } },
+    create: { familyId: DEFAULT_FAMILY_ID, accountId, date, value: centsToMoney(totalCents) },
+    update: { value: centsToMoney(totalCents) }
   });
 }
 

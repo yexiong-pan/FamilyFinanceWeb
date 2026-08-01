@@ -353,6 +353,57 @@ describe("PrismaFinanceRepository account edits", () => {
     expect(account.purpose).toBe("emergency");
     expect(accountSnapshotUpsert).not.toHaveBeenCalled();
   });
+
+  it("corrects the selected historical account snapshot without changing the current value", async () => {
+    const accountUpdate = vi.fn(async ({ data }) => ({
+      id: "account-1",
+      familyId: "default-family",
+      name: data.name,
+      type: data.type,
+      purpose: data.purpose,
+      ownerName: data.ownerName,
+      currentValue: "1000.00",
+      note: data.note,
+      deletedAt: null,
+      createdAt: new Date("2026-06-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z")
+    }));
+    const accountSnapshotUpsert = vi.fn();
+    const reviewUpsert = vi.fn();
+    const client = {
+      account: { update: accountUpdate },
+      accountSnapshot: { upsert: accountSnapshotUpsert },
+      monthlyReview: { upsert: reviewUpsert }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.updateAccount("account-1", {
+      name: "招商银行卡",
+      type: "bankCard",
+      purpose: "emergency",
+      ownerName: "雄哥",
+      currentValue: "1500",
+      note: "修正历史余额"
+    }, "2026-07");
+
+    expect(accountUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ currentValue: expect.anything() })
+    }));
+    expect(accountSnapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        accountId_date: {
+          accountId: "account-1",
+          date: new Date("2026-07-31T00:00:00.000Z")
+        }
+      },
+      update: { value: "1500.00" }
+    }));
+    expect(reviewUpsert).toHaveBeenCalledOnce();
+  });
 });
 
 describe("PrismaFinanceRepository category edits", () => {
@@ -531,14 +582,20 @@ describe("PrismaFinanceRepository investment account balances", () => {
   it("corrects the selected historical investment snapshot without changing the current value", async () => {
     const holdingUpdate = vi.fn(async () => holdingRecord());
     const snapshotUpsert = vi.fn();
+    const accountSnapshotUpsert = vi.fn();
     const reviewUpsert = vi.fn();
     const client = {
       investmentHolding: {
         findUniqueOrThrow: vi.fn(async () => ({ accountId: "account-fund" })),
         update: holdingUpdate,
+        findMany: vi.fn(async () => [{ id: "holding-1", marketValue: "350.00" }]),
         aggregate: vi.fn(async () => ({ _sum: { marketValue: "350.00" } }))
       },
-      investmentSnapshot: { upsert: snapshotUpsert },
+      investmentSnapshot: {
+        upsert: snapshotUpsert,
+        findMany: vi.fn(async () => [{ holdingId: "holding-1", marketValue: "420.00" }])
+      },
+      accountSnapshot: { upsert: accountSnapshotUpsert },
       monthlyReview: { upsert: reviewUpsert },
       account: { update: vi.fn(async () => ({})) }
     };
@@ -564,6 +621,9 @@ describe("PrismaFinanceRepository investment account balances", () => {
     expect(snapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { holdingId_month: { holdingId: "holding-1", month: "2026-07" } },
       update: expect.objectContaining({ marketValue: "420.00", investedAmount: "300.00" })
+    }));
+    expect(accountSnapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { value: "420.00" }
     }));
     expect(reviewUpsert).toHaveBeenCalledOnce();
   });
