@@ -88,6 +88,13 @@ scp -O docker-compose.yml \
   panyexiong@192.168.71.84:~/docker-compose.yml.new
 ```
 
+如果本次发布需要将 NAS 现有资产与投资归属到 `2026-07`，一并传输数据修正脚本：
+
+```bash
+scp -O scripts/nas/assign-assets-investments-to-2026-07.sql \
+  panyexiong@192.168.71.84:~/
+```
+
 ## 4. 普通代码发布
 
 登录 NAS，并设置与 Mac 一致的提交号：
@@ -120,6 +127,15 @@ sudo mv ~/docker-compose.yml.new \
 cd /volume1/docker/family-finance/app
 sudo docker compose -p family-finance-nas -f docker-compose.yml \
   up -d --no-build --pull never --force-recreate api web
+```
+
+等待 API 日志中的 `prisma db push` 成功后，执行本次数据修正脚本。脚本可重复运行，且不会覆盖已有的 7 月快照：
+
+```bash
+sudo docker compose -p family-finance-nas -f docker-compose.yml \
+  exec -T postgres psql -v ON_ERROR_STOP=1 \
+  -U family_finance -d family_finance \
+  < ~/assign-assets-investments-to-2026-07.sql
 ```
 
 检查状态和日志：
