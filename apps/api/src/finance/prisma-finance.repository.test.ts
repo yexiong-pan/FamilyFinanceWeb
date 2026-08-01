@@ -525,6 +525,46 @@ describe("PrismaFinanceRepository investment account balances", () => {
     });
   });
 
+  it("corrects the selected historical investment snapshot without changing the current value", async () => {
+    const holdingUpdate = vi.fn(async () => holdingRecord());
+    const snapshotUpsert = vi.fn();
+    const reviewUpsert = vi.fn();
+    const client = {
+      investmentHolding: {
+        findUniqueOrThrow: vi.fn(async () => ({ accountId: "account-fund" })),
+        update: holdingUpdate,
+        aggregate: vi.fn(async () => ({ _sum: { marketValue: "350.00" } }))
+      },
+      investmentSnapshot: { upsert: snapshotUpsert },
+      monthlyReview: { upsert: reviewUpsert },
+      account: { update: vi.fn(async () => ({})) }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.updateHolding("holding-1", {
+      accountId: "account-fund",
+      name: "支付宝基金",
+      code: "000001",
+      type: "fund",
+      marketValue: "420.00",
+      investedAmount: "300.00",
+      profit: "120.00"
+    }, "2026-07");
+
+    expect(holdingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ marketValue: expect.anything(), investedAmount: expect.anything(), profit: expect.anything() })
+    }));
+    expect(snapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { holdingId_month: { holdingId: "holding-1", month: "2026-07" } },
+      update: expect.objectContaining({ marketValue: "420.00", investedAmount: "300.00" })
+    }));
+    expect(reviewUpsert).toHaveBeenCalledOnce();
+  });
+
   it("syncs the linked account after deleting a holding", async () => {
     const accountUpdate = vi.fn(async () => ({}));
     const client = {

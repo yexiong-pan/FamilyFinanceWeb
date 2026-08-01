@@ -914,8 +914,12 @@ export class PrismaFinanceRepository implements FinanceRepository {
     await this.prisma.budget.delete({ where: { id } });
   }
 
-  async updateHolding(id: string, input: CreateInvestmentHoldingInput): Promise<InvestmentHolding> {
+  async updateHolding(id: string, input: CreateInvestmentHoldingInput, month?: string): Promise<InvestmentHolding> {
     await this.ensureBaseData();
+    const correctHistoricalSnapshot = Boolean(month && !isCurrentMonth(month));
+    const marketValue = normalizeMoney(input.marketValue);
+    const investedAmount = normalizeMoney(input.investedAmount ?? investmentCost(input));
+    const profit = normalizeMoney(input.profit);
     const holding = await this.prisma.$transaction(async (tx) => {
       const previous = await tx.investmentHolding.findUniqueOrThrow({
         where: { id },
@@ -928,12 +932,22 @@ export class PrismaFinanceRepository implements FinanceRepository {
           name: input.name,
           code: input.code?.trim() ?? "",
           type: input.type,
-          marketValue: normalizeMoney(input.marketValue),
-          investedAmount: normalizeMoney(input.investedAmount ?? investmentCost(input)),
-          profit: normalizeMoney(input.profit),
+          ...(correctHistoricalSnapshot ? {} : { marketValue, investedAmount, profit }),
           note: input.note ?? null
         }
       });
+      if (correctHistoricalSnapshot && month) {
+        await tx.investmentSnapshot.upsert({
+          where: { holdingId_month: { holdingId: id, month } },
+          create: { familyId: DEFAULT_FAMILY_ID, holdingId: id, month, marketValue, investedAmount },
+          update: { marketValue, investedAmount, confirmedAt: new Date() }
+        });
+        await tx.monthlyReview.upsert({
+          where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } },
+          create: { familyId: DEFAULT_FAMILY_ID, month, investmentsConfirmedAt: new Date() },
+          update: { investmentsConfirmedAt: new Date() }
+        });
+      }
       await syncInvestmentAccountValue(tx, previous.accountId);
       if (input.accountId !== previous.accountId) {
         await syncInvestmentAccountValue(tx, input.accountId);

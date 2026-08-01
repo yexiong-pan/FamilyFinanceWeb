@@ -3306,7 +3306,7 @@ function InvestmentsPage(props: PageProps) {
               note: values.note
             };
             return props.submit(
-              () => (editing ? updateInvestment(editing.id, payload) : createInvestment(payload)),
+              () => (editing ? updateInvestment(editing.id, payload, props.monthKey) : createInvestment(payload)),
               { success: editing ? "持仓已更新" : "持仓已新增", onSuccess: () => setOpen(false) }
             );
           }}

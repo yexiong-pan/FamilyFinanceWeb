@@ -226,8 +226,8 @@ export class FinanceService {
     return this.repository.createHolding(input);
   }
 
-  async updateHolding(id: string, input: CreateInvestmentHoldingInput): Promise<InvestmentHolding> {
-    return this.repository.updateHolding(id, input);
+  async updateHolding(id: string, input: CreateInvestmentHoldingInput, month?: string): Promise<InvestmentHolding> {
+    return this.repository.updateHolding(id, input, month);
   }
 
   async deleteHolding(id: string): Promise<void> {

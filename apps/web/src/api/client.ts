@@ -401,9 +401,11 @@ export async function createInvestment(input: Omit<InvestmentHolding, "id">): Pr
 
 export async function updateInvestment(
   id: string,
-  input: Omit<InvestmentHolding, "id">
+  input: Omit<InvestmentHolding, "id">,
+  month?: string
 ): Promise<InvestmentHolding> {
-  return patchJson(`/investments/${id}`, input);
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return patchJson(`/investments/${id}${query}`, input);
 }
 
 export async function deleteInvestment(id: string): Promise<void> {

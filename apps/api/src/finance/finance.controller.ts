@@ -268,9 +268,10 @@ export class FinanceController {
   @Patch("investments/:id")
   updateHolding(
     @Param("id") id: string,
-    @Body() input: CreateInvestmentHoldingInput
+    @Body() input: CreateInvestmentHoldingInput,
+    @Query("month") month?: string
   ): Promise<InvestmentHolding> {
-    return this.financeService.updateHolding(id, input);
+    return this.financeService.updateHolding(id, input, month);
   }
 
   @Delete("investments/:id")
