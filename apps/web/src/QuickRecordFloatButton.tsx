@@ -70,7 +70,6 @@ export function QuickRecordFloatButton({
             key={item.key}
             aria-label={item.label}
             icon={item.icon}
-            tooltip={screens.md ? item.label : undefined}
             onClick={() => {
               setOpen(false);
               if (item.key === "more") {
