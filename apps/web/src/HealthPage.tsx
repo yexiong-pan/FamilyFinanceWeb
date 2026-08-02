@@ -255,6 +255,8 @@ export function HealthPage({ monthKey, members, tab, onTabChange }: HealthPagePr
   }
 
   const profile = data?.profile;
+  const healthDate = healthReferenceDate(monthKey);
+  const healthDateLabel = monthKey === dayjs().format("YYYY-MM") ? "今天" : "参考日";
   const tabItems = [
     { key: "overview", label: "健康概览" },
     ...(profile && hasGlucoseFeature(profile) ? [{
@@ -276,7 +278,7 @@ export function HealthPage({ monthKey, members, tab, onTabChange }: HealthPagePr
             options={members.map((member) => ({ label: member.name, value: member.id }))}
             className="health-member-select"
           />
-          <Text type="secondary">当前显示该成员的健康记录</Text>
+          <Text type="secondary">{healthDateLabel} · {dayjs(healthDate).format("M月D日")} 周{"日一二三四五六"[dayjs(healthDate).day()]}</Text>
         </Space>
         <Space wrap size={8}>
           {profile?.weightTrackingEnabled ? (
@@ -531,7 +533,10 @@ function HealthOverview({
         {data.profile.medicationTrackingEnabled ? (
           <Col xs={12} lg={6}>
             <Card className="health-metric-card metric-card">
-              <Statistic title="今日用药" value={`${takenMedicationCount}/${medicationTasks.length}`} />
+              <Statistic
+                title={`${referenceDate === dayjs().format("YYYY-MM-DD") ? "今日" : "当日"}用药 · ${dayjs(referenceDate).format("M月D日")}`}
+                value={`${takenMedicationCount}/${medicationTasks.length}`}
+              />
               <Text type={lowStockCount ? "danger" : "secondary"}>
                 {lowStockCount ? `${lowStockCount} 种药量需要补充` : "药量暂无预警"}
               </Text>
@@ -941,7 +946,7 @@ function MedicationPanel({
       <Row gutter={[12, 12]}>
         <Col xs={12} md={6}>
           <Card className="health-metric-card metric-card">
-            <Statistic title="当日已完成" value={`${taken}/${tasks.length}`} />
+            <Statistic title={`当日已完成 · ${dayjs(selectedDate).format("M月D日")}`} value={`${taken}/${tasks.length}`} />
             <Text type="secondary">已确认 {confirmed} 次</Text>
           </Card>
         </Col>
@@ -969,7 +974,7 @@ function MedicationPanel({
       </Row>
 
       <Card
-        title="当日用药任务"
+        title={`当日用药任务 · ${dayjs(selectedDate).format("M月D日")} 周${"日一二三四五六"[dayjs(selectedDate).day()]}`}
         extra={
           <DatePicker
             inputReadOnly

@@ -1423,7 +1423,7 @@ export function QuickHealthDrawer({
     <Drawer
       open={open}
       size={mobile ? "100%" : 480}
-      title={`${title} · ${dayjs(selectedDate).format("M月D日")}`}
+      title={`${title} · ${dayjs(selectedDate).format("M月D日")} 周${"日一二三四五六"[dayjs(selectedDate).day()]}`}
       onClose={onClose}
     >
       <Spin spinning={loading}>
