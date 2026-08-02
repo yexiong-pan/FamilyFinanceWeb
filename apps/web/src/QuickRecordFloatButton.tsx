@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  CalendarOutlined,
   CloseOutlined,
   ExperimentOutlined,
   FireOutlined,
@@ -16,7 +17,7 @@ import { useState, type ReactNode } from "react";
 import type { QuickHealthKind } from "./CalendarPage";
 import type { HealthTabKey } from "./navigation";
 
-type QuickRecordAction = QuickHealthKind | "more";
+type QuickRecordAction = QuickHealthKind | "schedule" | "more";
 
 interface QuickRecordItem {
   key: QuickRecordAction;
@@ -25,6 +26,7 @@ interface QuickRecordItem {
 }
 
 export const quickRecordItems: QuickRecordItem[] = [
+  { key: "schedule", label: "日程", icon: <CalendarOutlined /> },
   { key: "glucose", label: "血糖", icon: <ExperimentOutlined /> },
   { key: "body", label: "体重", icon: <UserOutlined /> },
   { key: "exercise", label: "运动", icon: <FireOutlined /> },
@@ -35,11 +37,13 @@ export const quickRecordItems: QuickRecordItem[] = [
 
 interface QuickRecordFloatButtonProps {
   onSelect: (kind: QuickHealthKind) => void;
+  onOpenSchedule: () => void;
   onOpenHealth: (tab: HealthTabKey) => void;
 }
 
 export function QuickRecordFloatButton({
   onSelect,
+  onOpenSchedule,
   onOpenHealth
 }: QuickRecordFloatButtonProps) {
   const screens = Grid.useBreakpoint();
@@ -74,6 +78,8 @@ export function QuickRecordFloatButton({
               setOpen(false);
               if (item.key === "more") {
                 setMoreOpen(true);
+              } else if (item.key === "schedule") {
+                onOpenSchedule();
               } else {
                 onSelect(item.key);
               }

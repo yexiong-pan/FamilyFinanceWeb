@@ -199,6 +199,7 @@ const { Title, Text } = Typography;
 const HealthPage = lazy(async () => ({ default: (await import("./HealthPage")).HealthPage }));
 const CalendarPage = lazy(async () => ({ default: (await import("./CalendarPage")).CalendarPage }));
 const QuickHealthDrawer = lazy(async () => ({ default: (await import("./CalendarPage")).QuickHealthDrawer }));
+const CalendarEventDrawer = lazy(async () => ({ default: (await import("./CalendarEventsPanel")).CalendarEventDrawer }));
 const MOBILE_TRANSACTION_PAGE_SIZE = 20;
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "family-finance.sidebar-collapsed";
 
@@ -338,6 +339,7 @@ function AppShell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickHealthKind, setQuickHealthKind] = useState<QuickHealthKind>();
+  const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
   const [healthDataVersion, setHealthDataVersion] = useState(0);
   const [siderCollapsed, setSiderCollapsed] = useState(
     () => window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
@@ -776,6 +778,7 @@ function AppShell() {
           />
           <QuickRecordFloatButton
             onSelect={setQuickHealthKind}
+            onOpenSchedule={() => setQuickScheduleOpen(true)}
             onOpenHealth={navigateToHealth}
           />
           {quickHealthKind ? (
@@ -792,6 +795,22 @@ function AppShell() {
                   message.success("健康记录已保存");
                   setHealthDataVersion((value) => value + 1);
                   void reload();
+                }}
+              />
+            </Suspense>
+          ) : null}
+          {quickScheduleOpen ? (
+            <Suspense fallback={null}>
+              <CalendarEventDrawer
+                open
+                defaultDate={dayjs().format("YYYY-MM-DD")}
+                members={data.familyMembers}
+                mobile={!screens.md}
+                onClose={() => setQuickScheduleOpen(false)}
+                onSaved={() => {
+                  setQuickScheduleOpen(false);
+                  message.success("日程已保存");
+                  setHealthDataVersion((value) => value + 1);
                 }}
               />
             </Suspense>
