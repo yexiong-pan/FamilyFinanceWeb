@@ -3,14 +3,15 @@
 set -eu
 
 : "${VERSION:?请设置 VERSION，例如 VERSION=0a020d9}"
-: "${DATA_SQL_FILE:?请设置 DATA_SQL_FILE，例如 DATA_SQL_FILE=~/assign-assets-investments-to-2026-07.sql}"
 
 DOCKER=/var/packages/ContainerManager/target/usr/bin/docker
 APP_DIR=/volume1/docker/family-finance/app
 ARCHIVE="$HOME/family-finance-${VERSION}-amd64.tar.gz"
 
 test -f "$ARCHIVE"
-test -f "$DATA_SQL_FILE"
+if [ -n "${DATA_SQL_FILE:-}" ]; then
+  test -f "$DATA_SQL_FILE"
+fi
 
 sudo mv "$ARCHIVE" /volume1/docker/family-finance/
 sudo gzip -dc "/volume1/docker/family-finance/family-finance-${VERSION}-amd64.tar.gz" | sudo "$DOCKER" load
@@ -29,10 +30,12 @@ while ! sudo "$DOCKER" compose -p family-finance-nas -f docker-compose.yml logs 
   sleep 2
 done
 
-sudo "$DOCKER" compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres psql -v ON_ERROR_STOP=1 \
-  -U family_finance -d family_finance \
-  < "$DATA_SQL_FILE"
+if [ -n "${DATA_SQL_FILE:-}" ]; then
+  sudo "$DOCKER" compose -p family-finance-nas -f docker-compose.yml \
+    exec -T postgres psql -v ON_ERROR_STOP=1 \
+    -U family_finance -d family_finance \
+    < "$DATA_SQL_FILE"
+fi
 
 sudo "$DOCKER" compose -p family-finance-nas -f docker-compose.yml ps
 sudo "$DOCKER" compose -p family-finance-nas -f docker-compose.yml \
