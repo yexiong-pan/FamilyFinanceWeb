@@ -228,6 +228,10 @@ export function medicationDaysRemaining(plan: MedicationPlan): number | undefine
   return Math.max(0, Math.floor(Number(plan.currentStock) / dailyUse));
 }
 
+export function hasMedicationStock(plan: MedicationPlan): boolean {
+  return Number(plan.currentStock) >= Number(plan.inventoryPerDose);
+}
+
 export function isMedicationLowStock(plan: MedicationPlan): boolean {
   const days = medicationDaysRemaining(plan);
   return days !== undefined && days <= plan.lowStockDays;

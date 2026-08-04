@@ -86,6 +86,7 @@ import {
 import {
   bodyMeasurementContextLabels,
   buildMedicationTasks,
+  hasMedicationStock,
   followupStatusLabels,
   glucoseContextLabels,
   medicationDoseStatusLabels,
@@ -1588,6 +1589,8 @@ export function QuickHealthDrawer({
                             key={status}
                             size="small"
                             type={task.record?.status === status ? "primary" : "default"}
+                            disabled={status === "taken" && !hasMedicationStock(task.plan)}
+                            title={status === "taken" && !hasMedicationStock(task.plan) ? "库存不足，请先补药或盘点" : undefined}
                             loading={savingDoseKey === `${task.key}-${status}`}
                             onClick={() => void saveDose(
                               task.plan.id,

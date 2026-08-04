@@ -12,6 +12,7 @@ import {
   buildGlucoseSummary,
   buildMedicationTasks,
   glucoseStatus,
+  hasMedicationStock,
   medicationDaysRemaining,
   nextScheduledFollowup,
   toMinuteIso
@@ -147,6 +148,8 @@ describe("health summaries", () => {
     expect(buildMedicationTasks([weeklyPlan], [], "2026-07-10")).toHaveLength(1);
     expect(buildMedicationTasks([weeklyPlan], [], "2026-07-11")).toHaveLength(0);
     expect(medicationDaysRemaining(weeklyPlan)).toBe(28);
+    expect(hasMedicationStock({ ...plan, currentStock: "1.00" })).toBe(true);
+    expect(hasMedicationStock({ ...plan, currentStock: "0.00" })).toBe(false);
   });
 
   it("prioritizes a scheduled follow-up in the selected month", () => {

@@ -378,10 +378,11 @@ export class HealthService {
       });
 
       if (!wasTaken && isTaken) {
-        await tx.medicationPlan.update({
-          where: { id },
+        const inventoryUpdated = await tx.medicationPlan.updateMany({
+          where: { id, currentStock: { gte: inventoryUsed } },
           data: { currentStock: { decrement: inventoryUsed } }
         });
+        if (inventoryUpdated.count === 0) throw new BadRequestException("药物库存不足，请先补药或盘点库存");
         await tx.medicationInventoryEvent.create({
           data: {
             familyId: DEFAULT_FAMILY_ID,

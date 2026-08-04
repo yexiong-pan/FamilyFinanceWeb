@@ -97,6 +97,7 @@ import {
   followupStatusLabels,
   glucoseContextLabels,
   glucoseStatus,
+  hasMedicationStock,
   isMedicationLowStock,
   medicationDaysRemaining,
   medicationDoseStatusLabels,
@@ -996,6 +997,8 @@ function MedicationPanel({
                     <Button
                       key="taken"
                       type={task.record?.status === "taken" ? "primary" : "default"}
+                      disabled={!hasMedicationStock(task.plan)}
+                      title={hasMedicationStock(task.plan) ? undefined : "库存不足，请先补药或盘点"}
                       onClick={() => setInjectionTask(task)}
                     >
                       记录注射
@@ -1004,6 +1007,8 @@ function MedicationPanel({
                     <Button
                       key="taken"
                       type={task.record?.status === "taken" ? "primary" : "default"}
+                      disabled={!hasMedicationStock(task.plan)}
+                      title={hasMedicationStock(task.plan) ? undefined : "库存不足，请先补药或盘点"}
                       onClick={() => void onMutate(
                         () => saveMedicationDose(task.plan.id, {
                           scheduledDate: selectedDate,

@@ -157,6 +157,32 @@ describe("HealthService", () => {
     expect(lines[1]).toContain("\"运动\",\"2026-07-01T00:00:00.000Z\"");
     expect(lines[1]?.split(",")).toHaveLength(8);
   });
+
+  it("rejects a taken dose when the transaction cannot reserve inventory", async () => {
+    const updateMany = vi.fn(async () => ({ count: 0 }));
+    const service = new HealthService(mockMedicationPrisma(updateMany));
+
+    await expect(service.saveMedicationDose("medication-1", {
+      scheduledDate: "2026-08-04",
+      slotId: "morning",
+      status: "taken"
+    })).rejects.toThrow("药物库存不足");
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ currentStock: { gte: "1.00" } })
+    }));
+  });
+
+  it("does not change inventory for a missed dose", async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const service = new HealthService(mockMedicationPrisma(updateMany));
+
+    await expect(service.saveMedicationDose("medication-1", {
+      scheduledDate: "2026-08-04",
+      slotId: "morning",
+      status: "missed"
+    })).resolves.toMatchObject({ status: "missed" });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
 });
 
 function mockPrisma(value: object): PrismaService {
@@ -165,4 +191,32 @@ function mockPrisma(value: object): PrismaService {
 
 function decimal(value: string) {
   return { toString: () => value };
+}
+
+function mockMedicationPrisma(updateMany: ReturnType<typeof vi.fn>): PrismaService {
+  const plan = {
+    id: "medication-1",
+    familyId: "default-family",
+    memberId: "member-1",
+    frequency: "daily",
+    weekdays: [],
+    intervalDays: null,
+    doseQuantity: decimal("1.00"),
+    inventoryPerDose: decimal("1.00"),
+    scheduleSlots: [{ id: "morning", label: "早餐后" }],
+    startDate: new Date("2026-08-01T00:00:00.000Z"),
+    endDate: null
+  };
+  const upsert = vi.fn(async ({ create }: { create: Record<string, unknown> }) => ({
+    id: "dose-1",
+    ...create
+  }));
+  return mockPrisma({
+    medicationPlan: { findFirst: vi.fn(async () => plan) },
+    $transaction: async (callback: (tx: unknown) => unknown) => callback({
+      medicationDoseRecord: { findUnique: vi.fn(async () => null), upsert },
+      medicationPlan: { updateMany },
+      medicationInventoryEvent: { create: vi.fn(), deleteMany: vi.fn() }
+    })
+  });
 }
