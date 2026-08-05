@@ -1,12 +1,30 @@
-# NAS 离线发布流程
+# NAS 发布运行手册
 
-本文适用于当前部署方式：在 Mac 上开发和构建 `linux/amd64` 镜像，通过局域网传到群晖 NAS，NAS 不访问 Docker Hub，也不在 NAS 上构建镜像。
+此文档是家庭生活管理系统发布到群晖 NAS 的唯一操作手册，供人工和后续 Agent 使用。
 
-生产数据位于 `/volume1/docker/family-finance/postgres`。更新容器不会删除数据；不要执行 `docker compose down -v`，也不要删除该目录。
+## 运行边界
 
-## 1. 发布前检查
+| 项目 | 固定值 |
+| --- | --- |
+| 本地工作区 | `/Users/panyexiong/理财/FamilyFinanceWeb` |
+| 发布分支 | `main` |
+| NAS SSH 别名 | `family-finance-nas` |
+| NAS 应用目录 | `/volume1/docker/family-finance/app` |
+| Compose 项目名 | `family-finance-nas` |
+| NAS Docker 命令 | `/var/packages/ContainerManager/target/usr/bin/docker` |
+| PostgreSQL 数据目录 | `/volume1/docker/family-finance/postgres` |
+| NAS 局域网 Web 地址 | `http://192.168.71.84:5173` |
+| 公网地址 | `https://app.oreohome.com`，经 Cloudflare Tunnel 访问 |
 
-在 Mac 上进入项目目录：
+生产数据库只存在 NAS。**绝不执行** `docker compose down -v`，也不要删除 PostgreSQL 数据目录。
+
+NAS 为 `linux/amd64`，且不能稳定访问 Docker Hub。因此必须在 Mac 构建镜像、离线传输；NAS 不构建、不拉取镜像。
+
+## 常规代码发布
+
+适用：前端、后端、样式、业务逻辑，以及新增表、可空字段、带默认值字段等兼容性表结构修改。
+
+### 1. 本地检查并提交
 
 ```bash
 cd /Users/panyexiong/理财/FamilyFinanceWeb
@@ -16,52 +34,36 @@ npm ci
 npm test
 npm run typecheck
 npm run build
-```
-
-确认代码已经提交并推送：
-
-```bash
 git push origin main
-git rev-parse --short HEAD
-```
-
-记住最后一条命令输出的提交号，以下用 `VERSION` 表示：
-
-```bash
 VERSION=$(git rev-parse --short HEAD)
+echo "$VERSION"
 ```
 
-## 2. 构建 NAS 镜像
+仅在工作区没有未确认改动、测试通过且 `main` 已推送后发布。`VERSION` 必须是本次已提交代码的短提交号。
 
-API 镜像：
+### 2. 构建 amd64 镜像
 
 ```bash
 docker buildx build --platform linux/amd64 --load --progress=plain \
   -f apps/api/Dockerfile \
   -t family-finance-nas-api:${VERSION} \
   -t family-finance-nas-api:latest .
-```
 
-Web 镜像：
-
-```bash
 docker buildx build --platform linux/amd64 --load --progress=plain \
   -f apps/web/Dockerfile \
   --build-arg VITE_API_BASE_URL=/api \
   -t family-finance-nas-web:${VERSION} \
   -t family-finance-nas-web:latest .
-```
 
-核对架构，两条命令都必须输出 `linux/amd64`：
-
-```bash
 docker image inspect --platform linux/amd64 family-finance-nas-api:latest \
   --format '{{.Os}}/{{.Architecture}}'
 docker image inspect --platform linux/amd64 family-finance-nas-web:latest \
   --format '{{.Os}}/{{.Architecture}}'
 ```
 
-导出应用镜像。日常更新不需要重复传输 PostgreSQL 镜像：
+两条检查命令都必须输出 `linux/amd64`。
+
+### 3. 导出并校验离线包
 
 ```bash
 docker image save --platform linux/amd64 \
@@ -72,87 +74,72 @@ docker image save --platform linux/amd64 \
 shasum -a 256 /tmp/family-finance-${VERSION}-amd64.tar.gz
 ```
 
-## 3. 传输到 NAS
+无需重复打包 PostgreSQL 基础镜像。
 
-群晖不支持当前 SCP/SFTP 子系统时，需要保留 `-O`：
+### 4. 传输发布包和 NAS 脚本
+
+群晖 SSH 不支持当前 SCP/SFTP 子系统时，必须使用 `-O`：
 
 ```bash
 scp -O /tmp/family-finance-${VERSION}-amd64.tar.gz \
-  panyexiong@192.168.71.84:~/
+  family-finance-nas:~/
+
+scp -O scripts/nas/deploy-offline-release-on-nas.sh \
+  scripts/nas/cleanup-offline-release-on-nas.sh \
+  family-finance-nas:~/
 ```
 
-如果本次修改了 `docker-compose.yml`，同时传输新配置，但不要覆盖 NAS 上的 `.env`：
+每次发布均覆盖传输这两个脚本，确保 NAS 使用仓库中的最新发布逻辑。
+
+### 5. 在 NAS 发布
 
 ```bash
-scp -O docker-compose.yml \
-  panyexiong@192.168.71.84:~/docker-compose.yml.new
+ssh -t family-finance-nas \
+  "sudo -v && VERSION=${VERSION} sh \$HOME/deploy-offline-release-on-nas.sh"
 ```
 
-如果本次发布需要将 NAS 现有资产与投资归属到 `2026-07`，一并传输数据修正脚本：
+发布脚本会依次完成：
+
+1. 将离线包移到 `/volume1/docker/family-finance/` 并加载镜像。
+2. 以 `--no-build --pull never --force-recreate` 重建 `api` 和 `web`。
+3. 等待 API 输出 `Family Finance API listening`。
+4. 输出容器状态和最近日志。
+
+API 启动命令会自动执行 `prisma db push`。如果日志没有出现 API 启动成功信息，发布脚本会失败，必须先检查日志，不能继续执行数据修正。
+
+### 6. 发布验证
 
 ```bash
-scp -O scripts/nas/assign-assets-investments-to-2026-07.sql \
-  panyexiong@192.168.71.84:~/
+ssh family-finance-nas \
+  'sudo /var/packages/ContainerManager/target/usr/bin/docker compose \
+  -p family-finance-nas -f /volume1/docker/family-finance/app/docker-compose.yml ps'
+
+curl -fsSI --max-time 20 https://app.oreohome.com
 ```
 
-## 4. 普通代码发布
+人工验证登录、月报、收支、财务盘点、日历和健康记录。确认无误前不得清理旧镜像。
 
-登录 NAS，并设置与 Mac 一致的提交号：
+### 7. 清理发布包和旧应用镜像
 
 ```bash
-ssh panyexiong@192.168.71.84
-VERSION=这里填写提交号
+ssh -t family-finance-nas \
+  "sudo -v && VERSION=${VERSION} sh \$HOME/cleanup-offline-release-on-nas.sh"
 ```
 
-加载镜像：
+脚本只会在 `latest` 确认指向本次 `VERSION` 时执行；它删除 NAS 上已传输的压缩包和更早的 `family-finance-nas-api/web` 标签，保留当前版本、`latest` 以及基础镜像。
+
+本地镜像按需清理即可，保留基础镜像 `node:24-alpine`、`nginx:alpine`、`postgres:16-alpine`：
 
 ```bash
-sudo mv ~/family-finance-${VERSION}-amd64.tar.gz \
-  /volume1/docker/family-finance/
-
-sudo gzip -dc /volume1/docker/family-finance/family-finance-${VERSION}-amd64.tar.gz \
-  | sudo docker load
+docker image ls 'family-finance-nas-*'
+docker image rm family-finance-nas-api:旧版本 family-finance-nas-web:旧版本
 ```
 
-如果传输了新的 Compose 文件，先替换它：
+## 数据库变更与数据修正
 
-```bash
-sudo mv ~/docker-compose.yml.new \
-  /volume1/docker/family-finance/app/docker-compose.yml
-```
+### 自动处理的兼容变更
 
-使用已加载镜像重新创建 API 和 Web，不构建、不拉取：
-
-```bash
-cd /volume1/docker/family-finance/app
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  up -d --no-build --pull never --force-recreate api web
-```
-
-等待 API 日志中的 `prisma db push` 成功后，执行本次数据修正脚本。脚本可重复运行，且不会覆盖已有的 7 月快照：
-
-```bash
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres psql -v ON_ERROR_STOP=1 \
-  -U family_finance -d family_finance \
-  < ~/assign-assets-investments-to-2026-07.sql
-```
-
-检查状态和日志：
-
-```bash
-sudo docker compose -p family-finance-nas -f docker-compose.yml ps
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  logs --tail=100 api web postgres
-```
-
-最后访问 `http://192.168.71.84:5173`，检查首页、收支明细、财务盘点和设置页。
-
-## 5. 数据库表结构变更
-
-API 容器启动时会先运行 `prisma db push`，然后启动 NestJS。新增表、新增可空字段、新增带默认值的字段等非破坏性变更，可以沿用普通发布流程。
-
-发布前必须先在本地数据库验证结构和功能：
+下列变更可随常规发布自动应用：新增表、新增可空字段、新增有默认值字段。发布前必须在本地执行：
 
 ```bash
 npm run prisma:push -w @family-finance/api
@@ -161,63 +148,90 @@ npm run typecheck
 npm run build
 ```
 
-涉及以下变更时，不要直接发布：
+### 必须显式处理的变更
 
-- 删除表或字段。
-- 重命名表或字段。
-- 修改字段类型。
-- 将已有字段改为必填且没有默认值。
-- 修改唯一约束，可能与已有数据冲突。
+以下操作不能直接依赖 `prisma db push`：删除或重命名表/字段、字段类型转换、已有字段改为必填、可能与历史数据冲突的唯一约束变更。
 
-这类变更需要拆成兼容版本，先新增结构并迁移旧数据，确认完成后再在后续版本删除旧结构。
-
-虽然系统不配置自动备份，但每次修改生产表结构前，应创建一次临时发布快照：
+应先实现兼容版本和可重复运行的数据迁移，再在后续版本删除旧结构。生产表结构变更前必须创建临时快照：
 
 ```bash
-cd /volume1/docker/family-finance/app
-VERSION=这里填写提交号
-
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres pg_dump \
-  -U family_finance -d family_finance \
-  --format=custom --no-owner --no-acl \
-  > ~/family-finance-before-${VERSION}.dump
-
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres pg_restore --list \
-  < ~/family-finance-before-${VERSION}.dump
+ssh -t family-finance-nas \
+  "sudo -v && /var/packages/ContainerManager/target/usr/bin/docker compose \
+  -p family-finance-nas -f /volume1/docker/family-finance/app/docker-compose.yml \
+  exec -T postgres pg_dump -U family_finance -d family_finance \
+  --format=custom --no-owner --no-acl > \$HOME/family-finance-before-${VERSION}.dump"
 ```
 
-快照校验成功后，再加载新镜像并执行第 4 节的启动命令。重点检查 API 日志中 `prisma db push` 是否成功。
+### 发布时执行一次性 SQL
 
-## 6. 回滚
-
-仅代码变更时，将上一个版本标签重新指向 `latest`：
+SQL 必须在 `scripts/nas/` 中、可审查、可重复执行。不要把 SQL 内嵌在 SSH 命令中。
 
 ```bash
-OLD_VERSION=这里填写上一个提交号
-sudo docker tag family-finance-nas-api:${OLD_VERSION} family-finance-nas-api:latest
-sudo docker tag family-finance-nas-web:${OLD_VERSION} family-finance-nas-web:latest
+SQL_FILE=scripts/nas/your-migration.sql
+scp -O "$SQL_FILE" family-finance-nas:~/your-migration.sql
 
-cd /volume1/docker/family-finance/app
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  up -d --no-build --pull never --force-recreate api web
+ssh -t family-finance-nas \
+  "sudo -v && VERSION=${VERSION} DATA_SQL_FILE=\$HOME/your-migration.sql \
+  sh \$HOME/deploy-offline-release-on-nas.sh"
 ```
 
-如果新版本已经破坏性修改数据库，需要停止 API 并恢复发布前快照：
+发布脚本只会在 API 成功启动后执行该 SQL；没有 `DATA_SQL_FILE` 时不会执行任何数据修正。
+
+## Compose 或生产配置变更
+
+常规镜像发布不会同步 NAS 的 `docker-compose.yml` 和 `.env`。
+
+修改 `docker-compose.yml` 时，先检查配置，再单独传输替换：
 
 ```bash
-cd /volume1/docker/family-finance/app
-sudo docker compose -p family-finance-nas -f docker-compose.yml stop api
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres dropdb --if-exists --force \
-  -U family_finance family_finance
-sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres createdb -U family_finance family_finance
-sudo cat ~/family-finance-before-${VERSION}.dump | \
-  sudo docker compose -p family-finance-nas -f docker-compose.yml \
-  exec -T postgres pg_restore --exit-on-error --no-owner --no-acl \
-  -U family_finance -d family_finance
+npm run nas:config
+scp -O docker-compose.yml family-finance-nas:~/docker-compose.yml.new
+
+ssh -t family-finance-nas \
+  "sudo -v && sudo mv \$HOME/docker-compose.yml.new \
+  /volume1/docker/family-finance/app/docker-compose.yml"
 ```
 
-恢复旧版 API/Web 镜像后，再检查容器状态和页面数据。发布确认无误后，可以手动删除临时快照和已传输的压缩包。
+**禁止传输或覆盖 NAS 的 `.env`**。其中包含生产数据库密码和持久化目录。
+
+配置替换后再执行常规代码发布第 5 步。
+
+## 回滚
+
+仅代码问题且数据库仍兼容时，重新使用 NAS 上保留的上一版本标签：
+
+```bash
+OLD_VERSION=上一版本提交号
+ssh -t family-finance-nas \
+  "sudo -v && DOCKER=/var/packages/ContainerManager/target/usr/bin/docker \
+  && \$DOCKER tag family-finance-nas-api:${OLD_VERSION} family-finance-nas-api:latest \
+  && \$DOCKER tag family-finance-nas-web:${OLD_VERSION} family-finance-nas-web:latest \
+  && cd /volume1/docker/family-finance/app \
+  && \$DOCKER compose -p family-finance-nas -f docker-compose.yml \
+  up -d --no-build --pull never --force-recreate api web"
+```
+
+若涉及破坏性数据库变更，停止发布，先恢复发布前快照，再回滚 API/Web。未验证可恢复的数据库变更不允许直接上线。
+
+## 一次性外网入口配置
+
+Cloudflare Tunnel 已配置为：
+
+```text
+https://app.oreohome.com
+  -> Cloudflare Tunnel oreohome
+  -> http://127.0.0.1:5173（NAS）
+```
+
+常规发布不需要改动 Cloudflare、光猫、路由器或端口转发。外网失败时先检查：Cloudflare Tunnel 是否 `Healthy`、NAS 的 `api/web` 容器是否运行、以及 `curl -fsSI https://app.oreohome.com` 是否返回 `200`。
+
+Tunnel Token 只保存在 NAS 的 Cloudflare Tunnel 套件中，严禁写入仓库、`.env`、截图或聊天消息。
+
+## 禁止事项
+
+- 不在 NAS 执行 `docker compose up --build`、`docker pull` 或 `npm install`。
+- 不删除 `/volume1/docker/family-finance/postgres`。
+- 不执行 `docker compose down -v`。
+- 不覆盖 NAS `.env`。
+- 不将数据库端口 `5432`、API 端口 `4000`、Web 端口 `5173`、DSM 或 SSH 端口暴露到公网。
+- 不在未验证前清理上一版本镜像或临时数据库快照。
