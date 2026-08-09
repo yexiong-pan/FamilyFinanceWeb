@@ -92,6 +92,7 @@ cp .env.nas.example .env
 
 ```env
 POSTGRES_PASSWORD=请替换为足够长的随机字母数字密码
+AUTH_SECURITY_HASH_SECRET=请替换为独立的高强度随机密钥
 POSTGRES_DATA_PATH=/volume1/docker/family-finance/postgres
 WEB_PORT=5173
 ```

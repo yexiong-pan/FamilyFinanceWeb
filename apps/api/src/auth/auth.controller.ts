@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { AuthService } from "./auth.service";
 import { Public } from "./public.decorator";
 import { readCookie } from "./auth.guard";
-import type { AcceptInvitationInput, AuthenticatedUser, LoginInput } from "./auth.types";
+import type { AcceptInvitationInput, AuthenticatedUser, AuthRequestContext, LoginInput } from "./auth.types";
 
 const COOKIE = "family_finance_session";
 
@@ -22,7 +22,7 @@ export class AuthController {
     @Req() request: IncomingMessage,
     @Res({ passthrough: true }) response: ServerResponse
   ) {
-    const result = await this.authService.login(input);
+    const result = await this.authService.login(input, requestContext(request));
     setSessionCookie(response, request, result.token);
     return { user: result.user };
   }
@@ -58,7 +58,7 @@ export class AuthController {
     @Req() request: IncomingMessage,
     @Res({ passthrough: true }) response: ServerResponse
   ) {
-    const result = await this.authService.acceptInvitation(input);
+    const result = await this.authService.acceptInvitation(input, requestContext(request));
     setSessionCookie(response, request, result.token);
     return { user: result.user };
   }
@@ -78,4 +78,16 @@ function secureCookieAttribute(request: IncomingMessage): string {
   const forwardedProtocol = request.headers["x-forwarded-proto"];
   const protocol = Array.isArray(forwardedProtocol) ? forwardedProtocol[0] : forwardedProtocol?.split(",")[0];
   return protocol?.trim() === "https" ? "; Secure" : "";
+}
+
+function requestContext(request: IncomingMessage): AuthRequestContext {
+  return { sourceIp: readClientIp(request) };
+}
+
+function readClientIp(request: IncomingMessage): string {
+  const forwarded = request.headers["cf-connecting-ip"] ?? request.headers["x-forwarded-for"];
+  const candidate = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim()
+    ?? request.socket.remoteAddress
+    ?? "unknown";
+  return candidate.startsWith("::ffff:") ? candidate.slice(7) : candidate;
 }

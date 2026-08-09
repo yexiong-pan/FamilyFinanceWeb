@@ -15,3 +15,7 @@ export interface LoginInput {
 export interface AcceptInvitationInput extends LoginInput {
   invitationCode: string;
 }
+
+export interface AuthRequestContext {
+  sourceIp: string;
+}

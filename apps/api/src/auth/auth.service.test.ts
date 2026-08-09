@@ -14,6 +14,7 @@ describe("AuthService", () => {
     const passwordHash = await hashPassword("a-long-test-password");
     const authSessionCreate = vi.fn();
     const auditLogCreate = vi.fn();
+    const authSecurityEventCreate = vi.fn();
     const service = new AuthService({
       user: {
         findUnique: vi.fn(async () => ({
@@ -26,7 +27,9 @@ describe("AuthService", () => {
         }))
       },
       authSession: { create: authSessionCreate },
-      auditLog: { create: auditLogCreate }
+      auditLog: { create: auditLogCreate },
+      authRateLimit: createRateLimitStore(),
+      authSecurityEvent: { create: authSecurityEventCreate, findFirst: vi.fn(async () => null) }
     } as never);
 
     const result = await service.login({ email: "xiong@example.com", password: "a-long-test-password" });
@@ -35,6 +38,29 @@ describe("AuthService", () => {
     expect(result.token).toHaveLength(43);
     expect(authSessionCreate).toHaveBeenCalledOnce();
     expect(auditLogCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "login" }) }));
+    expect(authSecurityEventCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "login_succeeded" }) }));
+  });
+
+  it("persists failed login limits by both account and source IP", async () => {
+    const rateLimits = createRateLimitStore();
+    const authSecurityEventCreate = vi.fn();
+    const service = new AuthService({
+      user: { findUnique: vi.fn(async () => null) },
+      authRateLimit: rateLimits,
+      authSecurityEvent: { create: authSecurityEventCreate, findFirst: vi.fn(async () => null) }
+    } as never);
+    const input = { email: "xiong@example.com", password: "wrong-password" };
+    const context = { sourceIp: "203.0.113.7" };
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(service.login(input, context)).rejects.toMatchObject({ status: 401 });
+    }
+    await expect(service.login(input, context)).rejects.toMatchObject({ status: 429 });
+
+    expect(rateLimits.upsert).toHaveBeenCalled();
+    expect(authSecurityEventCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "login_failed", subjectHash: expect.not.stringContaining("xiong@example.com") })
+    }));
   });
 
   it("updates a user's compressed avatar data", async () => {
@@ -53,3 +79,27 @@ describe("AuthService", () => {
     expect(auditLogCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "updateProfile" }) }));
   });
 });
+
+function createRateLimitStore() {
+  const records = new Map<string, { failureCount: number; windowStartedAt: Date; blockedUntil: Date | null; expiresAt: Date }>();
+  const keyFor = (where: { scope_keyHash: { scope: string; keyHash: string } }) => {
+    const { scope, keyHash } = where.scope_keyHash;
+    return `${scope}:${keyHash}`;
+  };
+  return {
+    findUnique: vi.fn(async ({ where }) => records.get(keyFor(where)) ?? null),
+    upsert: vi.fn(async ({ where, create, update }) => {
+      const key = keyFor(where);
+      const value = records.has(key) ? { ...records.get(key)!, ...update } : create;
+      records.set(key, value);
+      return value;
+    }),
+    update: vi.fn(async ({ where, data }) => {
+      const key = keyFor(where);
+      const value = { ...records.get(key)!, ...data };
+      records.set(key, value);
+      return value;
+    }),
+    deleteMany: vi.fn(async () => ({ count: 0 }))
+  };
+}

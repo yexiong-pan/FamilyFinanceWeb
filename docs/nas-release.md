@@ -227,6 +227,20 @@ https://app.oreohome.com
 
 Tunnel Token 只保存在 NAS 的 Cloudflare Tunnel 套件中，严禁写入仓库、`.env`、截图或聊天消息。
 
+## 登录防护
+
+API 会将登录失败和邀请码注册失败的限流状态保存到 PostgreSQL：同一账号 15 分钟内最多 5 次失败，同一来源 IP 15 分钟内最多 20 次登录失败；邀请码注册同时按邀请码和来源 IP 限流。状态会在 24 小时后自动清理，因此重启 API 不会解除临时锁定。来源 IP 与账号仅以 `AUTH_SECURITY_HASH_SECRET` 为密钥的 HMAC-SHA-256 写入认证安全事件，成功登录的新来源 IP 也会被记录。
+
+首次部署或更新本配置前，在 NAS 的 `.env` 增加独立随机密钥（不要复用数据库密码）：
+
+```bash
+openssl rand -base64 48
+```
+
+将输出作为 `AUTH_SECURITY_HASH_SECRET` 的值。生产环境未设置此变量时 API 会拒绝启动，避免意外以弱哈希方式记录认证数据。
+
+Cloudflare Tunnel 的 `CF-Connecting-IP` 会被用于识别公网来源。请保持 Tunnel 为唯一公网入口；若需要抵挡大规模扫描，再在 Cloudflare 控制台为 `/api/auth/login` 和 `/api/auth/invitations/accept` 配置 Rate Limiting 规则。
+
 ## 禁止事项
 
 - 不在 NAS 执行 `docker compose up --build`、`docker pull` 或 `npm install`。

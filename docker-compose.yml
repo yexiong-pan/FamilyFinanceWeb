@@ -23,6 +23,7 @@ services:
     environment:
       NODE_ENV: production
       API_PORT: 4000
+      AUTH_SECURITY_HASH_SECRET: ${AUTH_SECURITY_HASH_SECRET:?请在 .env 中设置 AUTH_SECURITY_HASH_SECRET}
       DATABASE_URL: "postgresql://family_finance:${POSTGRES_PASSWORD}@postgres:5432/family_finance?schema=public"
     depends_on:
       postgres:

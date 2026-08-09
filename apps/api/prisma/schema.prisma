@@ -214,6 +214,37 @@ model AuthInvitation {
   @@index([familyId, memberId])
 }
 
+// Short-lived, hashed keys used to enforce authentication rate limits across API restarts.
+// Neither passwords, email addresses nor IP addresses are stored in this table.
+model AuthRateLimit {
+  id              String   @id @default(uuid())
+  scope           String
+  keyHash         String
+  failureCount    Int      @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scope, keyHash])
+  @@index([expiresAt])
+}
+
+// Security events are deliberately separate from the family activity log so failed
+// attempts for unknown accounts can be retained without creating a family relation.
+model AuthSecurityEvent {
+  id           String   @id @default(uuid())
+  action       String
+  subjectHash  String?
+  sourceIpHash String?
+  detail       Json?
+  createdAt    DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([subjectHash, createdAt])
+}
+
 model Family {
   id                  String                     @id @default(uuid())
   name                String
