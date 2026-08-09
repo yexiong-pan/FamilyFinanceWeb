@@ -13,7 +13,7 @@
 | Compose 项目名 | `family-finance-nas` |
 | NAS Docker 命令 | `/var/packages/ContainerManager/target/usr/bin/docker` |
 | PostgreSQL 数据目录 | `/volume1/docker/family-finance/postgres` |
-| NAS 局域网 Web 地址 | `http://192.168.71.84:5173` |
+| NAS 局域网 Web 地址 | `http://192.168.5.31:5173` |
 | 公网地址 | `https://app.oreohome.com`，经 Cloudflare Tunnel 访问 |
 
 生产数据库只存在 NAS。**绝不执行** `docker compose down -v`，也不要删除 PostgreSQL 数据目录。
