@@ -22,6 +22,20 @@
 | 健康管理 | 按成员记录身体数据、运动、血糖和 HbA1c；维护医生既定的用药计划、服药完成情况、药品库存及复诊安排。 |
 | 日历与提醒 | 以月历或年历汇总收支、还款、健康记录和复诊；支持家庭日程、纪念日，以及按成员筛选和当天快速记录。 |
 
+## 页面预览
+
+### 月度财务报表
+
+![月度财务报表](docs/images/monthly-report.jpg)
+
+### 家庭日历
+
+![家庭日历](docs/images/family-calendar.jpg)
+
+### 健康概览
+
+![健康概览](docs/images/health-overview.jpg)
+
 ## 环境划分
 
 | 环境 | Web | API | PostgreSQL |
