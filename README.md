@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `apps/api` | 后端 API | NestJS + Prisma + PostgreSQL |
 | `apps/web` | 前端 | React + Vite + Ant Design |
+| `apps/mcp` | Codex 本地 MCP 适配器 | MCP stdio + 既有 REST API |
 | `packages/shared` | 前后端共享类型与领域逻辑 | TypeScript |
 
 ## 功能概览
@@ -21,6 +22,7 @@
 | 家庭与权限 | 通过登录保护家庭数据；管理家庭成员、账户类型和收支分类；已登录成员可创建邀请码邀请其他成员加入。 |
 | 健康管理 | 按成员记录身体数据、运动、血糖和 HbA1c；维护医生既定的用药计划、服药完成情况、药品库存及复诊安排。 |
 | 日历与提醒 | 以月历或年历汇总收支、还款、健康记录和复诊；支持家庭日程、纪念日，以及按成员筛选和当天快速记录。 |
+| Codex 集成 | 通过本地 MCP 查询财务、健康和日程；可在显式开启后由 Codex 写入数据。 |
 
 ## 页面预览
 
@@ -89,6 +91,10 @@ npm run test
 npm run typecheck
 npm run build
 ```
+
+## 1.4 Codex MCP
+
+项目提供了一个通过现有登录 API 访问家庭数据的本地 MCP 服务器。接入步骤、安全边界和 Codex 配置示例见 [MCP 使用说明](docs/mcp.md)。
 
 ## 2. NAS 生产部署
 
