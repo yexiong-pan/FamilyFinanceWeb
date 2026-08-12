@@ -181,6 +181,7 @@ import { accountTypeOptionsFromSettings, getAccountTypeMeta } from "./accountTyp
 import { assetPurposeOptions, renderAssetPurpose } from "./assetPurpose";
 import { RatioProgress } from "./RatioProgress";
 import { FinancialSafetyPage } from "./FinancialSafetyPage";
+import { MortgagePage } from "./MortgagePage";
 import { MonthlyReviewPanel } from "./MonthlyReviewPanel";
 import { MobileFloatingNavigation } from "./MobileFloatingNavigation";
 import { QuickRecordFloatButton } from "./QuickRecordFloatButton";
@@ -221,6 +222,7 @@ const pageIcons: Record<PageKey, ReactNode> = {
   spending: <ShoppingCartOutlined />,
   income: <RiseOutlined />,
   checkup: <AccountBookOutlined />,
+  mortgage: <HomeOutlined />,
   calendar: <CalendarOutlined />,
   health: <HeartOutlined />,
   settings: <SettingOutlined />
@@ -700,6 +702,15 @@ function AppShell() {
                   {...commonProps}
                   tab={activeRoute.tab}
                   onTabChange={(tab) => navigateToRoute({ page: "checkup", tab })}
+                />
+              ) : null}
+              {activeRoute.page === "mortgage" ? (
+                <MortgagePage
+                  monthKey={monthKey}
+                  members={data.familyMembers}
+                  accounts={data.accounts}
+                  tab={activeRoute.tab}
+                  onTabChange={(tab) => navigateToRoute({ page: "mortgage", tab })}
                 />
               ) : null}
               {activeRoute.page === "health" ? (
@@ -4798,6 +4809,7 @@ function pageTitle(activePage: PageKey): string {
     spending: "支出",
     income: "收入",
     checkup: "财务盘点",
+    mortgage: "房贷公积金",
     calendar: "日历",
     health: "健康",
     settings: "设置"

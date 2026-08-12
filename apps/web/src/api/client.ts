@@ -37,6 +37,12 @@ import type {
   InvestmentHolding,
   Liability,
   LiabilityRepaymentRecord,
+  MortgageRecord,
+  MortgagePlanningData,
+  ProvidentFundAccount,
+  MortgageMonthlyRepayment,
+  ConfirmMortgageMonthlyRepaymentInput,
+  MortgageProvidentFundParticipant,
   MonthlyReviewStatus,
   MonthlyReviewAction,
   MonthlyReviewContent,
@@ -217,6 +223,138 @@ function emptyFinancialSafety(month: string): FinancialSafetyData {
 
 export async function getTransactionPage(query: string): Promise<TransactionPage> {
   return getJson<TransactionPage>(`/transactions/page?${query}`);
+}
+
+export interface MortgageOverview {
+  mortgages: MortgageRecord[];
+  month: string;
+  outstanding: string;
+  remainingInterest: string;
+  remainingTotal: string;
+  commercialOutstanding: string;
+  providentFundOutstanding: string;
+  due: Array<{
+    mortgagePartId: string;
+    mortgagePartName: string;
+    sequence: number;
+    dueDate: string;
+    principal: string;
+    interest: string;
+    amount: string;
+    annualRate: string;
+  }>;
+  dueAmount: string;
+}
+
+export async function getMortgageOverview(month: string): Promise<MortgageOverview> {
+  return getJson<MortgageOverview>(`/mortgages/overview?month=${month}`);
+}
+
+export async function getMortgagePlanning(month: string): Promise<MortgagePlanningData> {
+  return getJson<MortgagePlanningData>(`/mortgages/planning?month=${month}`);
+}
+
+export async function getMortgageMonthlyRepayments(month: string): Promise<MortgageMonthlyRepayment[]> {
+  return getJson<MortgageMonthlyRepayment[]>(`/mortgages/monthly-repayments?month=${month}`);
+}
+
+export async function confirmMortgageMonthlyRepayment(mortgageId: string, input: ConfirmMortgageMonthlyRepaymentInput): Promise<MortgageMonthlyRepayment> {
+  return postJson(`/mortgages/${mortgageId}/monthly-repayments/confirm`, input);
+}
+
+export async function saveMortgageProvidentFundParticipants(
+  mortgageId: string,
+  participants: Array<Pick<MortgageProvidentFundParticipant, "accountId" | "role" | "priority" | "isActive">>
+): Promise<MortgageRecord> {
+  return postJson(`/mortgages/${mortgageId}/provident-fund-participants`, { participants });
+}
+
+export async function createMortgage(input: {
+  name: string;
+  lender?: string;
+  ownerName: string;
+  repaymentDay: number;
+  note?: string;
+  parts: Array<{
+    kind: "commercial" | "providentFund";
+    name: string;
+    initialPrincipal: string;
+    outstandingPrincipal?: string;
+    annualRate: string;
+    rateType: "fixed" | "lprFloating" | "providentFundPolicy";
+    occupancyType?: "first" | "second";
+    lprSpread?: string;
+    repricingCycleMonths?: number;
+    repricingDate?: string;
+    repaymentMethod: "equalPrincipalAndInterest" | "equalPrincipal";
+    firstRepaymentDate: string;
+    totalPeriods: number;
+    remainingPeriods?: number;
+  }>;
+}): Promise<MortgageRecord> {
+  return postJson("/mortgages", input);
+}
+
+export async function getProvidentFundAccounts(): Promise<ProvidentFundAccount[]> {
+  return getJson<ProvidentFundAccount[]>("/mortgages/provident-fund-accounts");
+}
+
+export async function saveProvidentFundAccount(input: {
+  memberId: string;
+  basicBalance: string;
+  supplementaryBalance: string;
+  basicMonthlyContribution?: string;
+  supplementaryMonthlyContribution?: string;
+  monthlyContributionDay?: number;
+  balanceUpdatedOn: string;
+  isActive?: boolean;
+  note?: string;
+}): Promise<ProvidentFundAccount> {
+  return postJson("/mortgages/provident-fund-accounts", input);
+}
+
+export async function saveProvidentFundContributionRate(
+  accountId: string,
+  input: {
+    effectiveMonth: string;
+    basicMonthlyContribution: string;
+    supplementaryMonthlyContribution: string;
+    source?: "annualAdjustment" | "employmentChange" | "manualCorrection";
+    note?: string;
+  }
+): Promise<ProvidentFundAccount> {
+  return postJson(`/mortgages/provident-fund-accounts/${accountId}/contribution-rates`, input);
+}
+
+export interface MortgageRateAdjustmentPreview {
+  loanPartId: string;
+  oldAnnualRate: string;
+  newAnnualRate: string;
+  effectiveDate: string;
+  currentMonthlyPayment: string;
+  adjustedMonthlyPayment: string;
+  currentRemainingInterest: string;
+  adjustedRemainingInterest: string;
+  differencePerMonth: string;
+}
+
+export type MortgageRateAdjustmentInput = {
+  loanPartId: string;
+  annualRate: string;
+  effectiveDate: string;
+  source: "contract" | "lprRepricing" | "shanghaiProvidentFundPolicy" | "bankNotice" | "manualCorrection";
+  lprValue?: string;
+  lprPublishedMonth?: string;
+  policyVersion?: string;
+  evidenceNote?: string;
+};
+
+export async function previewMortgageRateAdjustment(id: string, input: MortgageRateAdjustmentInput): Promise<MortgageRateAdjustmentPreview> {
+  return postJson(`/mortgages/${id}/rate-adjustments/preview`, input);
+}
+
+export async function applyMortgageRateAdjustment(id: string, input: MortgageRateAdjustmentInput): Promise<MortgageRecord> {
+  return postJson(`/mortgages/${id}/rate-adjustments/apply`, input);
 }
 
 export async function createMember(input: { name: string; icon?: string }): Promise<FamilyMemberInfo> {

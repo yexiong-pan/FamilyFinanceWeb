@@ -12,12 +12,13 @@ import {
 } from "./navigation";
 
 describe("page navigation paths", () => {
-  it("exposes the simplified product pages including income", () => {
+  it("exposes the simplified product pages including mortgage", () => {
     expect(pageForPathPairs()).toEqual([
       ["report", "/report/monthly"],
       ["spending", "/spending/summary"],
       ["income", "/income/summary"],
       ["checkup", "/checkup/assets"],
+      ["mortgage", "/mortgage/overview"],
       ["calendar", "/calendar/month"],
       ["health", "/health/overview"],
       ["settings", "/settings"]
@@ -36,6 +37,7 @@ describe("page navigation paths", () => {
     expect(pageFromPath("/asset-history")).toBe("checkup");
     expect(pageFromPath("/liabilities")).toBe("checkup");
     expect(pageFromPath("/investments")).toBe("checkup");
+    expect(pageFromPath("/mortgage")).toBe("mortgage");
     expect(pageFromPath("/calendar")).toBe("calendar");
     expect(pageFromPath("/health")).toBe("health");
     expect(pageFromPath("/budgets")).toBe("report");
@@ -54,6 +56,10 @@ describe("page navigation paths", () => {
     expect(pathForRoute({ page: "checkup", tab: "liabilities" })).toBe("/checkup/liabilities");
     expect(pathForRoute({ page: "checkup", tab: "investments" })).toBe("/checkup/investments");
     expect(pathForRoute({ page: "checkup", tab: "history" })).toBe("/checkup/history");
+    expect(pathForRoute({ page: "mortgage", tab: "overview" })).toBe("/mortgage/overview");
+    expect(pathForRoute({ page: "mortgage", tab: "plan" })).toBe("/mortgage/plan");
+    expect(pathForRoute({ page: "mortgage", tab: "rates" })).toBe("/mortgage/rates");
+    expect(pathForRoute({ page: "mortgage", tab: "provident" })).toBe("/mortgage/provident");
     expect(pathForRoute({ page: "calendar", tab: "month" })).toBe("/calendar/month");
     expect(pathForRoute({ page: "calendar", tab: "year" })).toBe("/calendar/year");
     expect(pathForRoute({ page: "calendar", tab: "events" })).toBe("/calendar/events");
@@ -67,6 +73,7 @@ describe("page navigation paths", () => {
     expect(routeFromPath("/income/details")).toEqual({ page: "income", tab: "details" });
     expect(routeFromPath("/checkup/safety")).toEqual({ page: "checkup", tab: "safety" });
     expect(routeFromPath("/checkup/history")).toEqual({ page: "checkup", tab: "history" });
+    expect(routeFromPath("/mortgage/rates")).toEqual({ page: "mortgage", tab: "rates" });
     expect(routeFromPath("/calendar/year")).toEqual({ page: "calendar", tab: "year" });
     expect(routeFromPath("/calendar/events")).toEqual({ page: "calendar", tab: "events" });
     expect(routeFromPath("/accounts")).toEqual({ page: "checkup", tab: "assets" });

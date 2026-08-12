@@ -3,6 +3,7 @@ import type { ExpenseNature } from "./financial-planning.js";
 export type MoneyAmount = string;
 
 export * from "./financial-planning.js";
+export * from "./mortgage.js";
 export * from "./health.js";
 export * from "./calendar.js";
 export * from "./calendar-events.js";

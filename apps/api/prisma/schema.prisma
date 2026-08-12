@@ -50,6 +50,56 @@ enum LiabilityRepaymentSchedule {
   flexible
 }
 
+enum MortgageLoanPartKind {
+  commercial
+  providentFund
+}
+
+enum MortgageRateType {
+  fixed
+  lprFloating
+  providentFundPolicy
+}
+
+enum MortgageRepaymentMethod {
+  equalPrincipalAndInterest
+  equalPrincipal
+}
+
+enum MortgageRateSource {
+  contract
+  lprRepricing
+  shanghaiProvidentFundPolicy
+  bankNotice
+  manualCorrection
+}
+
+enum MortgageRepaymentSource {
+  bankStatement
+  manual
+}
+
+enum ProvidentFundContributionSource {
+  annualAdjustment
+  employmentChange
+  manualCorrection
+}
+
+enum MortgageProvidentFundRole {
+  borrower
+  spouse
+  parentChild
+}
+
+enum MortgageMonthlyRepaymentStatus {
+  confirmed
+}
+
+enum ProvidentFundAccountTransactionType {
+  monthlyContribution
+  monthlyOffset
+}
+
 enum ExpenseNature {
   fixed
   necessary
@@ -203,13 +253,13 @@ model AuthSession {
 }
 
 model AuthInvitation {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   familyId  String
   memberId  String
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([familyId, memberId])
 }
@@ -217,15 +267,15 @@ model AuthInvitation {
 // Short-lived, hashed keys used to enforce authentication rate limits across API restarts.
 // Neither passwords, email addresses nor IP addresses are stored in this table.
 model AuthRateLimit {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   scope           String
   keyHash         String
-  failureCount    Int      @default(0)
+  failureCount    Int       @default(0)
   windowStartedAt DateTime
   blockedUntil    DateTime?
   expiresAt       DateTime
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([scope, keyHash])
   @@index([expiresAt])
@@ -246,63 +296,66 @@ model AuthSecurityEvent {
 }
 
 model Family {
-  id                  String                     @id @default(uuid())
-  name                String
-  members             FamilyMember[]
-  accounts            Account[]
-  accountTypes        AccountTypeOption[]
-  categories          Category[]
-  transactions        FinanceTransaction[]
-  budgets             Budget[]
-  holdings            InvestmentHolding[]
-  liabilities         Liability[]
-  liabilityRepayments LiabilityRepayment[]
-  snapshots           AccountSnapshot[]
-  liabilitySnapshots  LiabilitySnapshot[]
-  investmentSnapshots InvestmentSnapshot[]
-  monthlyReviews      MonthlyReview[]
-  auditLogs           AuditLog[]
-  importJobs          ImportJob[]
-  categoryMappings    CategoryMapping[]
-  recurringCashflows  RecurringCashflow[]
-  safetySettings      FinancialSafetySettings?
-  monthlyActions      MonthlyReviewAction[]
-  healthProfiles      MemberHealthProfile[]
-  bodyMeasurements    BodyMeasurement[]
-  exerciseLogs        ExerciseLog[]
-  glucoseRecords      BloodGlucoseRecord[]
-  hba1cRecords        Hba1cRecord[]
-  healthReviews       WeeklyHealthReview[]
-  medicationPlans     MedicationPlan[]
-  medicationDoses     MedicationDoseRecord[]
-  medicationInventory MedicationInventoryEvent[]
-  healthFollowups     HealthFollowup[]
-  calendarEvents      CalendarEvent[]
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
+  id                    String                     @id @default(uuid())
+  name                  String
+  members               FamilyMember[]
+  accounts              Account[]
+  accountTypes          AccountTypeOption[]
+  categories            Category[]
+  transactions          FinanceTransaction[]
+  budgets               Budget[]
+  holdings              InvestmentHolding[]
+  liabilities           Liability[]
+  liabilityRepayments   LiabilityRepayment[]
+  snapshots             AccountSnapshot[]
+  liabilitySnapshots    LiabilitySnapshot[]
+  investmentSnapshots   InvestmentSnapshot[]
+  monthlyReviews        MonthlyReview[]
+  auditLogs             AuditLog[]
+  importJobs            ImportJob[]
+  categoryMappings      CategoryMapping[]
+  recurringCashflows    RecurringCashflow[]
+  safetySettings        FinancialSafetySettings?
+  monthlyActions        MonthlyReviewAction[]
+  healthProfiles        MemberHealthProfile[]
+  bodyMeasurements      BodyMeasurement[]
+  exerciseLogs          ExerciseLog[]
+  glucoseRecords        BloodGlucoseRecord[]
+  hba1cRecords          Hba1cRecord[]
+  healthReviews         WeeklyHealthReview[]
+  medicationPlans       MedicationPlan[]
+  medicationDoses       MedicationDoseRecord[]
+  medicationInventory   MedicationInventoryEvent[]
+  healthFollowups       HealthFollowup[]
+  calendarEvents        CalendarEvent[]
+  mortgages             Mortgage[]
+  providentFundAccounts ProvidentFundAccount[]
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 }
 
 model FamilyMember {
-  id               String                     @id @default(uuid())
-  familyId         String
-  userId           String?
-  name             String
-  icon             String?
-  role             UserRole                   @default(OWNER)
-  family           Family                     @relation(fields: [familyId], references: [id])
-  user             User?                      @relation(fields: [userId], references: [id])
-  healthProfile    MemberHealthProfile?
-  bodyMeasurements BodyMeasurement[]
-  exerciseLogs     ExerciseLog[]
-  glucoseRecords   BloodGlucoseRecord[]
-  hba1cRecords     Hba1cRecord[]
-  healthReviews    WeeklyHealthReview[]
-  medicationPlans  MedicationPlan[]
-  medicationDoses  MedicationDoseRecord[]
-  healthFollowups  HealthFollowup[]
-  calendarEvents   CalendarEventParticipant[]
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
+  id                    String                     @id @default(uuid())
+  familyId              String
+  userId                String?
+  name                  String
+  icon                  String?
+  role                  UserRole                   @default(OWNER)
+  family                Family                     @relation(fields: [familyId], references: [id])
+  user                  User?                      @relation(fields: [userId], references: [id])
+  healthProfile         MemberHealthProfile?
+  bodyMeasurements      BodyMeasurement[]
+  exerciseLogs          ExerciseLog[]
+  glucoseRecords        BloodGlucoseRecord[]
+  hba1cRecords          Hba1cRecord[]
+  healthReviews         WeeklyHealthReview[]
+  medicationPlans       MedicationPlan[]
+  medicationDoses       MedicationDoseRecord[]
+  healthFollowups       HealthFollowup[]
+  calendarEvents        CalendarEventParticipant[]
+  providentFundAccounts ProvidentFundAccount[]
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 
   @@unique([familyId, name])
 }
@@ -435,26 +488,205 @@ model InvestmentHolding {
 }
 
 model Liability {
-  id               String              @id @default(uuid())
-  familyId         String
-  name             String
-  type             LiabilityType
-  ownerName        String
-  initialBalance   Decimal?            @db.Decimal(18, 2)
-  currentBalance   Decimal             @db.Decimal(18, 2)
-  monthlyPayment   Decimal?            @db.Decimal(18, 2)
-  paymentDay       Int?
+  id                String                     @id @default(uuid())
+  familyId          String
+  name              String
+  type              LiabilityType
+  ownerName         String
+  initialBalance    Decimal?                   @db.Decimal(18, 2)
+  currentBalance    Decimal                    @db.Decimal(18, 2)
+  monthlyPayment    Decimal?                   @db.Decimal(18, 2)
+  paymentDay        Int?
   repaymentSchedule LiabilityRepaymentSchedule @default(monthly)
-  remainingPeriods Int?
-  lender           String?
-  status           LiabilityStatus     @default(active)
-  note             String?
-  deletedAt        DateTime?
-  family           Family              @relation(fields: [familyId], references: [id])
-  snapshots        LiabilitySnapshot[]
-  repayments       LiabilityRepayment[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  remainingPeriods  Int?
+  lender            String?
+  status            LiabilityStatus            @default(active)
+  note              String?
+  deletedAt         DateTime?
+  family            Family                     @relation(fields: [familyId], references: [id])
+  snapshots         LiabilitySnapshot[]
+  repayments        LiabilityRepayment[]
+  mortgage          Mortgage?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+}
+
+model Mortgage {
+  id                        String                             @id @default(uuid())
+  familyId                  String
+  liabilityId               String                             @unique
+  name                      String
+  lender                    String?
+  repaymentDay              Int
+  note                      String?
+  deletedAt                 DateTime?
+  family                    Family                             @relation(fields: [familyId], references: [id])
+  liability                 Liability                          @relation(fields: [liabilityId], references: [id])
+  loanParts                 MortgageLoanPart[]
+  providentFundParticipants MortgageProvidentFundParticipant[]
+  monthlyRepayments         MortgageMonthlyRepayment[]
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
+
+  @@index([familyId, deletedAt])
+}
+
+model MortgageLoanPart {
+  id                   String                      @id @default(uuid())
+  mortgageId           String
+  kind                 MortgageLoanPartKind
+  name                 String
+  initialPrincipal     Decimal                     @db.Decimal(18, 2)
+  outstandingPrincipal Decimal                     @db.Decimal(18, 2)
+  rateType             MortgageRateType
+  occupancyType        String?
+  lprSpread            Decimal?                    @db.Decimal(8, 4)
+  repricingCycleMonths Int?
+  repricingDate        DateTime?
+  repaymentMethod      MortgageRepaymentMethod
+  firstRepaymentDate   DateTime
+  totalPeriods         Int
+  remainingPeriods     Int
+  mortgage             Mortgage                    @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  rateVersions         MortgageLoanRateVersion[]
+  actualRepayments     MortgageLoanPartRepayment[]
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  @@index([mortgageId])
+}
+
+model MortgageLoanRateVersion {
+  id                String             @id @default(uuid())
+  loanPartId        String
+  annualRate        Decimal            @db.Decimal(8, 4)
+  effectiveDate     DateTime
+  source            MortgageRateSource
+  lprValue          Decimal?           @db.Decimal(8, 4)
+  lprPublishedMonth String?
+  policyVersion     String?
+  evidenceNote      String?
+  loanPart          MortgageLoanPart   @relation(fields: [loanPartId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now())
+
+  @@unique([loanPartId, effectiveDate])
+  @@index([loanPartId, effectiveDate])
+}
+
+model MortgageLoanPartRepayment {
+  id                 String                    @id @default(uuid())
+  loanPartId         String
+  monthlyRepaymentId String?
+  sequence           Int
+  dueDate            DateTime
+  principal          Decimal                   @db.Decimal(18, 2)
+  interest           Decimal                   @db.Decimal(18, 2)
+  source             MortgageRepaymentSource   @default(bankStatement)
+  note               String?
+  loanPart           MortgageLoanPart          @relation(fields: [loanPartId], references: [id], onDelete: Cascade)
+  monthlyRepayment   MortgageMonthlyRepayment? @relation(fields: [monthlyRepaymentId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@unique([loanPartId, sequence])
+  @@index([loanPartId, dueDate])
+  @@index([monthlyRepaymentId])
+}
+
+model MortgageMonthlyRepayment {
+  id                        String                            @id @default(uuid())
+  mortgageId                String
+  month                     String
+  dueDate                   DateTime
+  status                    MortgageMonthlyRepaymentStatus    @default(confirmed)
+  totalAmount               Decimal                           @db.Decimal(18, 2)
+  providentFundOffset       Decimal                           @default(0) @db.Decimal(18, 2)
+  selfFundAmount            Decimal                           @default(0) @db.Decimal(18, 2)
+  note                      String?
+  confirmedAt               DateTime                          @default(now())
+  mortgage                  Mortgage                          @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  loanPartRepayments        MortgageLoanPartRepayment[]
+  providentFundTransactions ProvidentFundAccountTransaction[]
+  createdAt                 DateTime                          @default(now())
+  updatedAt                 DateTime                          @updatedAt
+
+  @@unique([mortgageId, month])
+  @@index([mortgageId, dueDate])
+}
+
+model ProvidentFundAccount {
+  id                               String                             @id @default(uuid())
+  familyId                         String
+  memberId                         String
+  basicBalance                     Decimal                            @default(0) @db.Decimal(18, 2)
+  supplementaryBalance             Decimal                            @default(0) @db.Decimal(18, 2)
+  basicMonthlyContribution         Decimal?                           @db.Decimal(18, 2)
+  supplementaryMonthlyContribution Decimal?                           @db.Decimal(18, 2)
+  monthlyContributionDay           Int                                @default(11)
+  balanceUpdatedOn                 DateTime
+  isActive                         Boolean                            @default(true)
+  note                             String?
+  family                           Family                             @relation(fields: [familyId], references: [id])
+  member                           FamilyMember                       @relation(fields: [memberId], references: [id])
+  contributionRates                ProvidentFundContributionRate[]
+  transactions                     ProvidentFundAccountTransaction[]
+  mortgageParticipants             MortgageProvidentFundParticipant[]
+  createdAt                        DateTime                           @default(now())
+  updatedAt                        DateTime                           @updatedAt
+
+  @@unique([familyId, memberId])
+  @@index([familyId, isActive])
+}
+
+model MortgageProvidentFundParticipant {
+  id         String                    @id @default(uuid())
+  mortgageId String
+  accountId  String
+  role       MortgageProvidentFundRole
+  priority   Int
+  isActive   Boolean                   @default(true)
+  mortgage   Mortgage                  @relation(fields: [mortgageId], references: [id], onDelete: Cascade)
+  account    ProvidentFundAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @updatedAt
+
+  @@unique([mortgageId, accountId])
+  @@unique([mortgageId, priority])
+  @@index([accountId])
+}
+
+model ProvidentFundContributionRate {
+  id                               String                          @id @default(uuid())
+  accountId                        String
+  effectiveMonth                   String
+  basicMonthlyContribution         Decimal                         @default(0) @db.Decimal(18, 2)
+  supplementaryMonthlyContribution Decimal                         @default(0) @db.Decimal(18, 2)
+  source                           ProvidentFundContributionSource
+  note                             String?
+  account                          ProvidentFundAccount            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt                        DateTime                        @default(now())
+  updatedAt                        DateTime                        @updatedAt
+
+  @@unique([accountId, effectiveMonth])
+  @@index([accountId, effectiveMonth])
+}
+
+model ProvidentFundAccountTransaction {
+  id                         String                              @id @default(uuid())
+  accountId                  String
+  mortgageMonthlyRepaymentId String?
+  month                      String
+  date                       DateTime
+  type                       ProvidentFundAccountTransactionType
+  basicAmount                Decimal                             @default(0) @db.Decimal(18, 2)
+  supplementaryAmount        Decimal                             @default(0) @db.Decimal(18, 2)
+  note                       String?
+  account                    ProvidentFundAccount                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  mortgageMonthlyRepayment   MortgageMonthlyRepayment?           @relation(fields: [mortgageMonthlyRepaymentId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime                            @default(now())
+
+  @@unique([accountId, mortgageMonthlyRepaymentId, type])
+  @@index([accountId, month, type])
 }
 
 model LiabilityRepayment {
@@ -474,19 +706,19 @@ model LiabilityRepayment {
 }
 
 model LiabilitySnapshot {
-  id               String    @id @default(uuid())
-  familyId         String
-  liabilityId      String
-  month            String
-  currentBalance   Decimal   @db.Decimal(18, 2)
-  monthlyPayment   Decimal?  @db.Decimal(18, 2)
-  paymentDay       Int?
+  id                String                     @id @default(uuid())
+  familyId          String
+  liabilityId       String
+  month             String
+  currentBalance    Decimal                    @db.Decimal(18, 2)
+  monthlyPayment    Decimal?                   @db.Decimal(18, 2)
+  paymentDay        Int?
   repaymentSchedule LiabilityRepaymentSchedule @default(monthly)
-  status           LiabilityStatus @default(active)
-  remainingPeriods Int?
-  confirmedAt      DateTime  @default(now())
-  family           Family    @relation(fields: [familyId], references: [id])
-  liability        Liability @relation(fields: [liabilityId], references: [id])
+  status            LiabilityStatus            @default(active)
+  remainingPeriods  Int?
+  confirmedAt       DateTime                   @default(now())
+  family            Family                     @relation(fields: [familyId], references: [id])
+  liability         Liability                  @relation(fields: [liabilityId], references: [id])
 
   @@unique([liabilityId, month])
   @@index([familyId, month])
@@ -859,15 +1091,15 @@ model CalendarEventParticipant {
 }
 
 model AccountSnapshot {
-  id        String   @id @default(uuid())
-  familyId  String
-  accountId String
-  date      DateTime
-  value     Decimal  @db.Decimal(18, 2)
+  id          String   @id @default(uuid())
+  familyId    String
+  accountId   String
+  date        DateTime
+  value       Decimal  @db.Decimal(18, 2)
   cashBalance Decimal? @db.Decimal(18, 2)
-  family    Family   @relation(fields: [familyId], references: [id])
-  account   Account  @relation(fields: [accountId], references: [id])
-  createdAt DateTime @default(now())
+  family      Family   @relation(fields: [familyId], references: [id])
+  account     Account  @relation(fields: [accountId], references: [id])
+  createdAt   DateTime @default(now())
 
   @@unique([accountId, date])
 }

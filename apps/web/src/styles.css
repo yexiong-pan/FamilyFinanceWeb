@@ -608,6 +608,263 @@ button.expense-nature-summary:focus-visible {
   width: 100%;
 }
 
+.mortgage-page .ant-tabs-nav {
+  margin-bottom: 20px;
+}
+
+.mortgage-page .ant-tabs-tab {
+  padding-inline: 4px;
+  font-weight: 600;
+}
+
+.mortgage-runway-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  min-height: 232px;
+  padding: 30px 34px;
+  overflow: hidden;
+  color: #2c2c2c;
+  background: #fffdf8;
+  border: 1px solid #ece4d8;
+  border-left: 5px solid #caa04a;
+  border-radius: 20px;
+  box-shadow: 0 10px 26px rgba(44, 44, 44, 0.07);
+}
+
+.mortgage-runway-content {
+  position: relative;
+  z-index: 1;
+}
+
+.mortgage-runway-eyebrow {
+  color: #8b7039;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.mortgage-runway-number {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: end;
+  column-gap: clamp(16px, 1.6vw, 24px);
+  width: fit-content;
+  margin-top: 6px;
+  color: #2c2c2c;
+}
+
+.mortgage-runway-count {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: clamp(14px, 1.4vw, 20px);
+  white-space: nowrap;
+}
+
+.mortgage-runway-value {
+  font-family: "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(52px, 5vw, 72px);
+  font-weight: 650;
+  font-variant-numeric: proportional-nums;
+  line-height: 0.98;
+  letter-spacing: 0.055em;
+}
+
+.mortgage-runway-unit {
+  padding-bottom: 5px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.mortgage-runway-summary {
+  margin-top: 10px;
+  color: #a8781d;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.mortgage-runway-details {
+  display: flex;
+  gap: 22px;
+  margin-top: 22px;
+  color: #7a746b;
+  font-size: 13px;
+}
+
+.mortgage-runway-details strong {
+  display: block;
+  margin-top: 2px;
+  color: #2c2c2c;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mortgage-runway-action {
+  position: relative;
+  z-index: 1;
+  color: #805d1c;
+  border-color: #d8b469;
+  background: #fff9ec;
+}
+
+.mortgage-runway-aside {
+  display: flex;
+  align-self: stretch;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.mortgage-runway-duration {
+  padding-bottom: 5px;
+  color: #7a746b;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mortgage-runway-hero.is-safe {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  border-left-color: #52c41a;
+}
+
+.mortgage-runway-hero.is-safe .mortgage-runway-eyebrow,
+.mortgage-runway-hero.is-safe .mortgage-runway-summary,
+.mortgage-runway-hero.is-safe .mortgage-runway-action {
+  color: #237804;
+}
+
+.mortgage-runway-hero.is-safe .mortgage-runway-action {
+  border-color: #95de64;
+  background: #fff;
+}
+
+.mortgage-runway-hero.is-warning {
+  background: #fff7e6;
+  border-color: #ffd591;
+  border-left-color: #fa8c16;
+}
+
+.mortgage-runway-hero.is-warning .mortgage-runway-eyebrow,
+.mortgage-runway-hero.is-warning .mortgage-runway-summary,
+.mortgage-runway-hero.is-warning .mortgage-runway-action {
+  color: #ad4e00;
+}
+
+.mortgage-runway-hero.is-warning .mortgage-runway-action {
+  border-color: #ffbb96;
+  background: #fff;
+}
+
+.mortgage-runway-hero.is-danger {
+  background: #fff1f0;
+  border-color: #ffccc7;
+  border-left-color: #ff4d4f;
+}
+
+.mortgage-runway-hero.is-danger .mortgage-runway-eyebrow,
+.mortgage-runway-hero.is-danger .mortgage-runway-summary,
+.mortgage-runway-hero.is-danger .mortgage-runway-action {
+  color: #cf1322;
+}
+
+.mortgage-runway-hero.is-danger .mortgage-runway-action {
+  border-color: #ffa39e;
+  background: #fff;
+}
+
+.mortgage-metric-card,
+.mortgage-surface-card {
+  border-color: #e7edf4;
+  box-shadow: 0 8px 22px rgba(31, 63, 94, 0.06);
+}
+
+.mortgage-metric-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 106px;
+  padding: 20px;
+}
+
+.mortgage-metric-card .ant-statistic-title {
+  margin-bottom: 5px;
+  color: #738197;
+  font-size: 13px;
+}
+
+.mortgage-metric-card .ant-statistic-content {
+  color: #162a43;
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mortgage-metric-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  color: #1769c2;
+  font-size: 18px;
+  background: #edf6ff;
+  border-radius: 12px;
+  place-items: center;
+}
+
+.mortgage-metric-card.is-emphasis {
+  border-color: #bfece8;
+  background: #f0fffc;
+}
+
+.mortgage-metric-card.is-emphasis .mortgage-metric-icon {
+  color: #087d7a;
+  background: #d7f8f3;
+}
+
+.mortgage-surface-card .ant-card-head {
+  min-height: 56px;
+  border-bottom-color: #edf1f5;
+}
+
+.mortgage-surface-card .ant-card-head-title {
+  color: #142b46;
+  font-weight: 700;
+}
+
+.mortgage-overview > .ant-card,
+.mortgage-overview > .ant-alert {
+  border-radius: 16px;
+}
+
+.mortgage-repricing-alert {
+  border-color: #d8e8fb;
+  background: #f4f9ff;
+}
+
+@media (max-width: 767px) {
+  .mortgage-runway-hero {
+    min-height: 250px;
+    padding: 24px;
+  }
+
+  .mortgage-runway-details {
+    gap: 14px;
+  }
+
+  .mortgage-runway-action {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+  }
+
+}
+
 .chart-loading {
   display: grid;
   min-height: 220px;

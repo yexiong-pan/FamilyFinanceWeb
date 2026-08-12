@@ -177,6 +177,17 @@ ssh -t family-finance-nas \
 
 发布脚本只会在 API 成功启动后执行该 SQL；没有 `DATA_SQL_FILE` 时不会执行任何数据修正。
 
+### 同步房贷公积金模块数据
+
+房贷公积金模块首次发布或本地新增/校正了该模块数据时，先在本机导出定向数据包：
+
+```bash
+sh scripts/nas/export-mortgage-module-data.sh /tmp/family-finance-mortgage-module-data.sql
+scp -O /tmp/family-finance-mortgage-module-data.sql family-finance-nas:~/
+```
+
+随后将 `DATA_SQL_FILE` 传给常规发布脚本。数据包只同步该模块的房贷、公积金账户、缴存版本、利率版本、实还记录和参还人，并更新它们关联的房贷负债锚点；不会覆盖其他资产、负债、交易或家庭成员。部署脚本会先创建生产数据库快照；导入在单个事务中执行，失败会完整回滚。
+
 ## Compose 或生产配置变更
 
 常规镜像发布不会同步 NAS 的 `docker-compose.yml` 和 `.env`。

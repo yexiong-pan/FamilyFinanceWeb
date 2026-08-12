@@ -6,9 +6,11 @@ import { FinanceService } from "./finance.service";
 import { PrismaFinanceRepository } from "./prisma-finance.repository";
 import { FinancialPlanningController } from "./financial-planning.controller";
 import { FinancialPlanningService } from "./financial-planning.service";
+import { MortgageController } from "./mortgage.controller";
+import { MortgageService } from "./mortgage.service";
 
 @Module({
-  controllers: [FinanceController, FinancialPlanningController],
+  controllers: [FinanceController, FinancialPlanningController, MortgageController],
   providers: [
     PrismaService,
     PrismaFinanceRepository,
@@ -17,7 +19,8 @@ import { FinancialPlanningService } from "./financial-planning.service";
       useExisting: PrismaFinanceRepository
     },
     FinanceService,
-    FinancialPlanningService
+    FinancialPlanningService,
+    MortgageService
   ],
   exports: [FinanceService]
 })

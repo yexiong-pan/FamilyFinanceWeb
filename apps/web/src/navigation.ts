@@ -1,11 +1,12 @@
 import { type CashflowFilters, writeCashflowFilters } from "./data/cashflow-route";
 
-export type PageKey = "report" | "spending" | "income" | "checkup" | "calendar" | "health" | "settings";
+export type PageKey = "report" | "spending" | "income" | "checkup" | "mortgage" | "calendar" | "health" | "settings";
 export type CashflowTabKey = "summary" | "details";
 export type CheckupTabKey = "assets" | "safety" | "liabilities" | "investments" | "history";
 export type ReportTabKey = "monthly" | "yearly";
 export type CalendarTabKey = "month" | "year" | "events";
 export type HealthTabKey = "overview" | "glucose" | "medication" | "body";
+export type MortgageTabKey = "overview" | "plan" | "rates" | "provident";
 export type MonthlyReviewItemKey = "income" | "spending" | "assets" | "liabilities" | "investments";
 
 export type AppRoute =
@@ -13,6 +14,7 @@ export type AppRoute =
   | { page: "spending"; tab: CashflowTabKey }
   | { page: "income"; tab: CashflowTabKey }
   | { page: "checkup"; tab: CheckupTabKey }
+  | { page: "mortgage"; tab: MortgageTabKey }
   | { page: "calendar"; tab: CalendarTabKey }
   | { page: "health"; tab: HealthTabKey }
   | { page: "settings" };
@@ -22,6 +24,7 @@ export const pageMenuItems: Array<{ key: PageKey; label: string }> = [
   { key: "spending", label: "支出" },
   { key: "income", label: "收入" },
   { key: "checkup", label: "财务盘点" },
+  { key: "mortgage", label: "房贷公积金" },
   { key: "calendar", label: "日历" },
   { key: "health", label: "健康" },
   { key: "settings", label: "设置" }
@@ -50,6 +53,11 @@ const routePaths = new Map<string, AppRoute>([
   ["/asset-history", { page: "checkup", tab: "history" }],
   ["/liabilities", { page: "checkup", tab: "liabilities" }],
   ["/investments", { page: "checkup", tab: "investments" }],
+  ["/mortgage", { page: "mortgage", tab: "overview" }],
+  ["/mortgage/overview", { page: "mortgage", tab: "overview" }],
+  ["/mortgage/plan", { page: "mortgage", tab: "plan" }],
+  ["/mortgage/rates", { page: "mortgage", tab: "rates" }],
+  ["/mortgage/provident", { page: "mortgage", tab: "provident" }],
   ["/calendar", { page: "calendar", tab: "month" }],
   ["/calendar/month", { page: "calendar", tab: "month" }],
   ["/calendar/year", { page: "calendar", tab: "year" }],
@@ -67,6 +75,7 @@ export function defaultRouteForPage(page: PageKey): AppRoute {
   if (page === "report") return { page, tab: "monthly" };
   if (page === "spending" || page === "income") return { page, tab: "summary" };
   if (page === "checkup") return { page, tab: "assets" };
+  if (page === "mortgage") return { page, tab: "overview" };
   if (page === "calendar") return { page, tab: "month" };
   if (page === "health") return { page, tab: "overview" };
   return { page };
