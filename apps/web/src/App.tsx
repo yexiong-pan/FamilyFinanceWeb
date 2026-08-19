@@ -127,7 +127,8 @@ import {
   updateCategory,
   updateCategoryMapping,
   updateAuthProfile,
-  updateInvestment,
+  updateInvestmentProfile,
+  updateInvestmentValuation,
   updateLiability,
   updateMember,
   updateTransaction,
@@ -3290,6 +3291,7 @@ function InvestmentsPage(props: PageProps) {
   const isMobile = screens.md === false;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<InvestmentHolding | null>(null);
+  const [updating, setUpdating] = useState<InvestmentHolding | null>(null);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   const [investmentSnapshot, setInvestmentSnapshot] = useState<MonthlySnapshotData | null>(null);
   const [form] = Form.useForm();
@@ -3315,8 +3317,6 @@ function InvestmentsPage(props: PageProps) {
             code: editing.code,
             type: editing.type,
             accountId: editing.accountId,
-            marketValue: Number(editing.marketValue),
-            profit: Number(editing.profit),
             note: editing.note
           }
         : {
@@ -3500,10 +3500,13 @@ function InvestmentsPage(props: PageProps) {
                   </div>
                   {holding.note ? <Text className="mobile-record-note">{holding.note}</Text> : null}
                   <div className="mobile-record-actions">
-                    <RowActions
-                      onEdit={() => { setEditing(holding); setOpen(true); }}
-                      onDelete={() => props.submit(() => deleteInvestment(holding.id), { success: "持仓已删除" })}
-                    />
+                    <Space size={4} wrap>
+                      <Button type="link" size="small" onClick={() => setUpdating(holding)}>更新</Button>
+                      <RowActions
+                        onEdit={() => { setEditing(holding); setOpen(true); }}
+                        onDelete={() => props.submit(() => deleteInvestment(holding.id), { success: "持仓已删除" })}
+                      />
+                    </Space>
                   </div>
                 </div>
               );
@@ -3520,11 +3523,12 @@ function InvestmentsPage(props: PageProps) {
               title: "名称",
               dataIndex: "name",
               width: 180,
+              fixed: "left",
               render: (value: string, record) => (
-                <Space size={4} wrap>
-                  <span>{value}</span>
+                <div className="investment-holding-name">
+                  <Text ellipsis={{ tooltip: value }}>{value}</Text>
                   {record.snapshotStatus === "missing" ? <Tag color="orange">该月未盘点</Tag> : null}
-                </Space>
+                </div>
               )
             },
             { title: "代码", dataIndex: "code", width: 100 },
@@ -3586,15 +3590,19 @@ function InvestmentsPage(props: PageProps) {
             {
               title: "操作",
               key: "actions",
-              width: 120,
+              width: 170,
+              fixed: "right",
               render: (_, record) => (
-                <RowActions
-                  onEdit={() => {
-                    setEditing(record);
-                    setOpen(true);
-                  }}
-                  onDelete={() => props.submit(() => deleteInvestment(record.id), { success: "持仓已删除" })}
-                />
+                <Space size={4}>
+                  <Button type="link" size="small" onClick={() => setUpdating(record)}>更新</Button>
+                  <RowActions
+                    onEdit={() => {
+                      setEditing(record);
+                      setOpen(true);
+                    }}
+                    onDelete={() => props.submit(() => deleteInvestment(record.id), { success: "持仓已删除" })}
+                  />
+                </Space>
               )
             }
           ]}
@@ -3625,24 +3633,68 @@ function InvestmentsPage(props: PageProps) {
               : { type: "fund", accountId: props.data.accounts.find(isFundAccount)?.id }
           }
           onFinish={(values) => {
-            const amounts = buildInvestmentAmountsFromProfit(values.marketValue, values.profit);
-            const payload = {
+            const profile = {
               name: values.name,
               code: values.code?.trim() ?? "",
               type: values.type,
               accountId: values.accountId,
-              marketValue: amounts.marketValue,
-              investedAmount: amounts.investedAmount,
-              profit: amounts.profit,
               note: values.note
             };
+            if (editing) {
+              return props.submit(
+                () => updateInvestmentProfile(editing.id, profile),
+                { success: "持仓资料已更新", onSuccess: () => setOpen(false) }
+              );
+            }
+            const amounts = buildInvestmentAmountsFromProfit(values.marketValue, values.profit);
             return props.submit(
-              () => (editing ? updateInvestment(editing.id, payload, props.monthKey) : createInvestment(payload)),
-              { success: editing ? "持仓已更新" : "持仓已新增", onSuccess: () => setOpen(false) }
+              () => createInvestment({ ...profile, ...amounts }),
+              { success: "持仓已新增", onSuccess: () => setOpen(false) }
             );
           }}
         >
-          <InvestmentFormFields accounts={props.data.accounts} onSubmit={() => form.submit()} />
+          <InvestmentProfileFormFields accounts={props.data.accounts} />
+          {editing ? null : <InvestmentValuationFormFields />}
+          <Button type="primary" htmlType="button" onClick={() => form.submit()} block>
+            保存
+          </Button>
+        </Form>
+      </Drawer>
+      <Drawer
+        title={updating ? `更新 ${props.monthKey} 持仓数据` : "更新持仓数据"}
+        open={Boolean(updating)}
+        onClose={() => setUpdating(null)}
+        size={420}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          title={updating?.name ?? "投资持仓"}
+          description="只更新当前金额和持有收益；名称、账户等资料请使用“编辑”。"
+          className="section-alert"
+        />
+        <Form
+          key={`${updating?.id ?? "none"}-${props.monthKey}`}
+          layout="vertical"
+          initialValues={{
+            marketValue: Number(updating?.marketValue ?? 0),
+            profit: Number(updating?.profit ?? 0)
+          }}
+          onFinish={(values) => {
+            if (!updating) return;
+            const amounts = buildInvestmentAmountsFromProfit(values.marketValue, values.profit);
+            return props.submit(
+              () => updateInvestmentValuation(updating.id, {
+                marketValue: amounts.marketValue,
+                profit: amounts.profit
+              }, props.monthKey),
+              { success: "持仓数据已更新", onSuccess: () => setUpdating(null) }
+            );
+          }}
+        >
+          <InvestmentValuationFormFields />
+          <Button type="primary" htmlType="submit" block>保存本月数据</Button>
         </Form>
       </Drawer>
       <InvestmentSnapshotDrawer
@@ -4904,7 +4956,7 @@ function LiabilityFormFields({
   );
 }
 
-function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onSubmit: () => void }) {
+function InvestmentProfileFormFields({ accounts }: { accounts: Account[] }) {
   return (
     <>
       <Form.Item name="name" label="名称" rules={[{ required: true }]}>
@@ -4925,6 +4977,16 @@ function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onS
       <Form.Item name="accountId" label="所属账户" rules={[{ required: true }]}>
         <Select options={accounts.map((account) => ({ label: account.name, value: account.id }))} />
       </Form.Item>
+      <Form.Item name="note" label="备注">
+        <Input.TextArea rows={3} />
+      </Form.Item>
+    </>
+  );
+}
+
+function InvestmentValuationFormFields() {
+  return (
+    <>
       <Form.Item name="marketValue" label="当前金额" rules={[{ required: true }]}>
         <InputNumber min={0} precision={2} className="full-width" />
       </Form.Item>
@@ -4945,12 +5007,6 @@ function InvestmentFormFields({ accounts, onSubmit }: { accounts: Account[]; onS
       >
         <InputNumber precision={2} className="full-width" placeholder="亏损请输入负数" />
       </Form.Item>
-      <Form.Item name="note" label="备注">
-        <Input.TextArea rows={3} />
-      </Form.Item>
-      <Button type="primary" htmlType="button" onClick={onSubmit} block>
-        保存
-      </Button>
     </>
   );
 }

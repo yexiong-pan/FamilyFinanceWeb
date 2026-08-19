@@ -10,7 +10,9 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentHoldingProfileInput,
   InvestmentRedemptionInput,
+  InvestmentValuationInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -256,6 +258,19 @@ export class FinanceService {
     return this.repository.updateHolding(id, input, month);
   }
 
+  async updateHoldingProfile(id: string, input: InvestmentHoldingProfileInput): Promise<InvestmentHolding> {
+    return this.repository.updateHoldingProfile(id, input);
+  }
+
+  async updateHoldingValuation(
+    id: string,
+    input: InvestmentValuationInput,
+    month?: string
+  ): Promise<InvestmentHolding> {
+    validateInvestmentValuation(input);
+    return this.repository.updateHoldingValuation(id, input, month);
+  }
+
   async deleteHolding(id: string): Promise<void> {
     return this.repository.deleteHolding(id);
   }
@@ -370,5 +385,16 @@ function validateInvestmentRedemptions(redemptions: InvestmentRedemptionInput[])
     if (!Number.isFinite(contribution) || contribution < 0) {
       throw new BadRequestException("发生赎回时，本月申购总额必须大于或等于 0");
     }
+  }
+}
+
+function validateInvestmentValuation(input: InvestmentValuationInput): void {
+  const marketValue = Number(input.marketValue);
+  const profit = Number(input.profit);
+  if (!Number.isFinite(marketValue) || marketValue < 0) {
+    throw new BadRequestException("当前金额必须大于或等于 0");
+  }
+  if (!Number.isFinite(profit) || profit > marketValue) {
+    throw new BadRequestException("持有收益必须是有效数字且不能大于当前金额");
   }
 }

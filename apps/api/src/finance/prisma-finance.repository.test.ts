@@ -614,6 +614,59 @@ describe("PrismaFinanceRepository investment account balances", () => {
     });
   });
 
+  it("updates holding profile without changing valuation fields", async () => {
+    const holdingUpdate = vi.fn(async () => holdingRecord({ name: "新名称" }));
+    const client = {
+      investmentHolding: {
+        findUniqueOrThrow: vi.fn(async () => ({ accountId: "account-fund" })),
+        update: holdingUpdate,
+        aggregate: vi.fn(async () => ({ _sum: { marketValue: "350.00" } }))
+      },
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: vi.fn(async () => ({})) }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.updateHoldingProfile("holding-1", {
+      accountId: "account-fund",
+      name: "新名称",
+      code: "000001",
+      type: "fund",
+      note: "长期持有"
+    });
+
+    expect(holdingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.not.objectContaining({ marketValue: expect.anything(), investedAmount: expect.anything(), profit: expect.anything() })
+    }));
+  });
+
+  it("updates current valuation without changing holding profile fields", async () => {
+    const holdingUpdate = vi.fn(async () => holdingRecord({ marketValue: "420.00", investedAmount: "300.00", profit: "120.00" }));
+    const client = {
+      investmentHolding: {
+        findUniqueOrThrow: vi.fn(async () => holdingRecord()),
+        update: holdingUpdate,
+        aggregate: vi.fn(async () => ({ _sum: { marketValue: "420.00" } }))
+      },
+      account: { findUniqueOrThrow: vi.fn(async () => ({ cashBalance: "0.00" })), update: vi.fn(async () => ({})) }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.updateHoldingValuation("holding-1", { marketValue: "420.00", profit: "120.00" });
+
+    expect(holdingUpdate).toHaveBeenCalledWith({
+      where: { id: "holding-1" },
+      data: { marketValue: "420.00", investedAmount: "300.00", profit: "120.00" }
+    });
+  });
+
   it("corrects the selected historical investment snapshot without changing the current value", async () => {
     const holdingUpdate = vi.fn(async () => holdingRecord());
     const snapshotUpsert = vi.fn();

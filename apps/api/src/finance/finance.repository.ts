@@ -9,6 +9,8 @@ import type {
   ImportTransactionsResult,
   InvestmentRedemptionInput,
   InvestmentHolding,
+  InvestmentHoldingProfileInput,
+  InvestmentValuationInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -86,6 +88,8 @@ export interface FinanceRepository {
   ): Promise<{ month: string; count: number }>;
   createHolding(input: CreateInvestmentHoldingInput): Promise<InvestmentHolding>;
   updateHolding(id: string, input: CreateInvestmentHoldingInput, month?: string): Promise<InvestmentHolding>;
+  updateHoldingProfile(id: string, input: InvestmentHoldingProfileInput): Promise<InvestmentHolding>;
+  updateHoldingValuation(id: string, input: InvestmentValuationInput, month?: string): Promise<InvestmentHolding>;
   deleteHolding(id: string): Promise<void>;
   listLiabilities(): Promise<Liability[]>;
   listLiabilitiesForMonth(month: string): Promise<Liability[]>;

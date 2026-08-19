@@ -35,7 +35,9 @@ import type {
   TransactionPage,
   ImportTransactionItem,
   InvestmentHolding,
+  InvestmentHoldingProfileInput,
   InvestmentRedemptionInput,
+  InvestmentValuationInput,
   Liability,
   LiabilityRepaymentRecord,
   MortgageRecord,
@@ -551,6 +553,22 @@ export async function updateInvestment(
 ): Promise<InvestmentHolding> {
   const query = month ? `?month=${encodeURIComponent(month)}` : "";
   return patchJson(`/investments/${id}${query}`, input);
+}
+
+export async function updateInvestmentProfile(
+  id: string,
+  input: InvestmentHoldingProfileInput
+): Promise<InvestmentHolding> {
+  return patchJson(`/investments/${id}/profile`, input);
+}
+
+export async function updateInvestmentValuation(
+  id: string,
+  input: InvestmentValuationInput,
+  month?: string
+): Promise<InvestmentHolding> {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  return patchJson(`/investments/${id}/valuation${query}`, input);
 }
 
 export async function deleteInvestment(id: string): Promise<void> {

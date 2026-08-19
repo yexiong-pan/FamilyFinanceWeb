@@ -9,7 +9,9 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentHoldingProfileInput,
   InvestmentRedemptionInput,
+  InvestmentValuationInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -282,6 +284,23 @@ export class FinanceController {
     @Query("month") month?: string
   ): Promise<InvestmentHolding> {
     return this.financeService.updateHolding(id, input, month);
+  }
+
+  @Patch("investments/:id/profile")
+  updateHoldingProfile(
+    @Param("id") id: string,
+    @Body() input: InvestmentHoldingProfileInput
+  ): Promise<InvestmentHolding> {
+    return this.financeService.updateHoldingProfile(id, input);
+  }
+
+  @Patch("investments/:id/valuation")
+  updateHoldingValuation(
+    @Param("id") id: string,
+    @Body() input: InvestmentValuationInput,
+    @Query("month") month?: string
+  ): Promise<InvestmentHolding> {
+    return this.financeService.updateHoldingValuation(id, input, month);
   }
 
   @Delete("investments/:id")

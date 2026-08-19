@@ -237,6 +237,36 @@ describe("FinanceService", () => {
     }])).rejects.toThrow("本月申购总额必须大于或等于 0");
   });
 
+  it("validates valuation updates independently from holding profile updates", async () => {
+    const repository = createRepository();
+    const holding = {
+      id: "holding-1",
+      name: "纳斯达克100",
+      code: "019172",
+      type: "fund" as const,
+      accountId: "account-fund",
+      marketValue: "100.00",
+      investedAmount: "80.00",
+      profit: "20.00"
+    };
+    const updateHoldingProfile = vi.spyOn(repository, "updateHoldingProfile").mockResolvedValue(holding);
+    const updateHoldingValuation = vi.spyOn(repository, "updateHoldingValuation").mockResolvedValue(holding);
+    const service = new FinanceService(repository);
+
+    await service.updateHoldingProfile("holding-1", {
+      name: "纳斯达克100",
+      code: "019172",
+      type: "fund",
+      accountId: "account-fund"
+    });
+    expect(updateHoldingProfile).toHaveBeenCalledOnce();
+    await expect(service.updateHoldingValuation("holding-1", {
+      marketValue: "100.00",
+      profit: "120.00"
+    })).rejects.toThrow("持有收益必须是有效数字且不能大于当前金额");
+    expect(updateHoldingValuation).not.toHaveBeenCalled();
+  });
+
   it("requires a valid monthly payment and payment day for fixed monthly liabilities", async () => {
     const service = new FinanceService(createRepository());
     const base = {
@@ -549,6 +579,20 @@ function createRepository(): FinanceRepository {
       };
       const index = holdings.findIndex((item) => item.id === id);
       if (index >= 0) holdings[index] = holding;
+      return holding;
+    },
+    async updateHoldingProfile(id, input) {
+      const holding = holdings.find((item) => item.id === id);
+      if (!holding) throw new Error("not found");
+      Object.assign(holding, input);
+      return holding;
+    },
+    async updateHoldingValuation(id, input) {
+      const holding = holdings.find((item) => item.id === id);
+      if (!holding) throw new Error("not found");
+      holding.marketValue = normalizeMoney(input.marketValue);
+      holding.profit = normalizeMoney(input.profit);
+      holding.investedAmount = subtractMoney(holding.marketValue, holding.profit);
       return holding;
     },
     async deleteHolding(id: string) {

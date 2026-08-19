@@ -193,6 +193,21 @@ function createEmptyRepository(): FinanceRepository {
     async updateHolding(id, input) {
       return { id, ...input };
     },
+    async updateHoldingProfile(id, input) {
+      return { id, ...input, code: input.code ?? "", marketValue: "0.00", investedAmount: "0.00", profit: "0.00" };
+    },
+    async updateHoldingValuation(id, input) {
+      return {
+        id,
+        name: "stub",
+        code: "",
+        type: "fund",
+        accountId: "account-1",
+        marketValue: input.marketValue,
+        investedAmount: "0.00",
+        profit: input.profit
+      };
+    },
     async deleteHolding() {
       return undefined;
     },

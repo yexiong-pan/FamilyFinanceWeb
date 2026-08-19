@@ -95,6 +95,19 @@ export interface InvestmentHolding {
   updatedAt?: string;
 }
 
+export interface InvestmentHoldingProfileInput {
+  name: string;
+  code?: string;
+  type: InvestmentHoldingType;
+  accountId: string;
+  note?: string;
+}
+
+export interface InvestmentValuationInput {
+  marketValue: MoneyAmount;
+  profit: MoneyAmount;
+}
+
 export interface InvestmentRedemptionInput {
   holdingId: string;
   redemptionAmount: MoneyAmount;

@@ -1141,6 +1141,24 @@ button.expense-nature-summary:focus-visible {
   border-bottom-width: 1px !important;
 }
 
+.investment-holding-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.investment-holding-name .ant-typography {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.investment-holding-name .ant-tag {
+  flex: none;
+  margin-inline-end: 0;
+}
+
 .ant-tag {
   font-weight: 500;
 }

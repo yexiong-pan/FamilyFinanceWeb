@@ -11,7 +11,9 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentHoldingProfileInput,
   InvestmentRedemptionInput,
+  InvestmentValuationInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -1028,6 +1030,78 @@ export class PrismaFinanceRepository implements FinanceRepository {
       return updated;
     });
     return mapHolding(holding);
+  }
+
+  async updateHoldingProfile(id: string, input: InvestmentHoldingProfileInput): Promise<InvestmentHolding> {
+    await this.ensureBaseData();
+    const holding = await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.investmentHolding.findUniqueOrThrow({
+        where: { id },
+        select: { accountId: true }
+      });
+      const updated = await tx.investmentHolding.update({
+        where: { id },
+        data: {
+          accountId: input.accountId,
+          name: input.name,
+          code: input.code?.trim() ?? "",
+          type: input.type,
+          note: input.note ?? null
+        }
+      });
+      await syncInvestmentAccountValue(tx, previous.accountId);
+      if (input.accountId !== previous.accountId) {
+        await syncInvestmentAccountValue(tx, input.accountId);
+      }
+      return updated;
+    });
+    return mapHolding(holding);
+  }
+
+  async updateHoldingValuation(
+    id: string,
+    input: InvestmentValuationInput,
+    month?: string
+  ): Promise<InvestmentHolding> {
+    await this.ensureBaseData();
+    const correctHistoricalSnapshot = Boolean(month && !isCurrentMonth(month));
+    const marketValue = normalizeMoney(input.marketValue);
+    const investedAmount = normalizeMoney(investmentCost(input));
+    const profit = normalizeMoney(input.profit);
+    return this.prisma.$transaction(async (tx) => {
+      const previous = await tx.investmentHolding.findUniqueOrThrow({ where: { id } });
+      if (!correctHistoricalSnapshot) {
+        const updated = await tx.investmentHolding.update({
+          where: { id },
+          data: { marketValue, investedAmount, profit }
+        });
+        await syncInvestmentAccountValue(tx, previous.accountId);
+        return mapHolding(updated);
+      }
+      await tx.investmentSnapshot.upsert({
+        where: { holdingId_month: { holdingId: id, month: month! } },
+        create: { familyId: DEFAULT_FAMILY_ID, holdingId: id, month: month!, marketValue, investedAmount },
+        update: { marketValue, investedAmount, confirmedAt: new Date() }
+      });
+      await syncHistoricalInvestmentAccountValue(tx, previous.accountId, month!);
+      await tx.monthlyReview.upsert({
+        where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month: month! } },
+        create: {
+          familyId: DEFAULT_FAMILY_ID,
+          month: month!,
+          investmentsConfirmedAt: new Date(),
+          assetsConfirmedAt: new Date()
+        },
+        update: { investmentsConfirmedAt: new Date(), assetsConfirmedAt: new Date() }
+      });
+      return {
+        ...mapHolding(previous),
+        marketValue,
+        investedAmount,
+        profit,
+        snapshotStatus: "available"
+      };
+    });
   }
 
   async deleteHolding(id: string): Promise<void> {
@@ -2162,7 +2236,7 @@ function previousMonth(month: string): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function investmentCost(input: CreateInvestmentHoldingInput): MoneyAmount {
+function investmentCost(input: Pick<CreateInvestmentHoldingInput, "marketValue" | "profit">): MoneyAmount {
   return centsToMoney(moneyToCents(input.marketValue) - moneyToCents(input.profit));
 }
 
