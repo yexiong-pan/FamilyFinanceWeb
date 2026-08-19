@@ -7,6 +7,7 @@ import type {
   FamilyMemberInfo,
   FinanceTransaction,
   ImportTransactionsResult,
+  InvestmentRedemptionInput,
   InvestmentHolding,
   Liability,
   LiabilityRepaymentRecord,
@@ -79,7 +80,10 @@ export interface FinanceRepository {
   deleteBudget(id: string): Promise<void>;
   listHoldings(): Promise<InvestmentHolding[]>;
   listHoldingsForMonth(month: string): Promise<InvestmentHolding[]>;
-  snapshotAllInvestments(month: string): Promise<{ month: string; count: number }>;
+  snapshotAllInvestments(
+    month: string,
+    redemptions?: InvestmentRedemptionInput[]
+  ): Promise<{ month: string; count: number }>;
   createHolding(input: CreateInvestmentHoldingInput): Promise<InvestmentHolding>;
   updateHolding(id: string, input: CreateInvestmentHoldingInput, month?: string): Promise<InvestmentHolding>;
   deleteHolding(id: string): Promise<void>;

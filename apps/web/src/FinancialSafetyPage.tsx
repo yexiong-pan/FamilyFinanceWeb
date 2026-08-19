@@ -247,7 +247,7 @@ export function FinancialSafetyPage({
         <Col xs={24} sm={12} xl={6}>
           <Card className="safety-metric-card">
             <Statistic title="未来30天刚性流出" value={formatMoney(addMoney(summary.requiredExpenses, summary.debtPayments))} />
-            <Text type="secondary">必要支出与负债还款</Text>
+            <Text type="secondary">必要支出与银行卡还款</Text>
           </Card>
         </Col>
       </Row>
@@ -274,7 +274,7 @@ export function FinancialSafetyPage({
           <SafetyEquationItem label="流动资金" value={summary.liquidAmount} sign="" />
           <SafetyEquationItem label="预计收入" value={summary.expectedIncome} sign="+" />
           <SafetyEquationItem label="必要支出" value={summary.requiredExpenses} sign="-" />
-          <SafetyEquationItem label="负债还款" value={summary.debtPayments} sign="-" />
+          <SafetyEquationItem label="银行卡负债还款" value={summary.debtPayments} sign="-" />
           <SafetyEquationItem label="计划储蓄" value={summary.plannedSavings} sign="-" />
           <SafetyEquationItem label="应急金底线" value={summary.emergencyReserve} sign="=" />
           <SafetyEquationItem
@@ -284,6 +284,9 @@ export function FinancialSafetyPage({
             strong
           />
         </div>
+        {Number(summary.mortgageProvidentFundOffset) > 0 ? (
+          <Text type="secondary">其中住房贷款预计或实际由公积金月冲覆盖 {formatMoney(summary.mortgageProvidentFundOffset)}，未计入银行卡现金支出。</Text>
+        ) : null}
       </Card>
 
       <Row gutter={[16, 16]}>

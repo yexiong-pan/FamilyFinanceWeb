@@ -11,6 +11,7 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentRedemptionInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -1041,18 +1042,62 @@ export class PrismaFinanceRepository implements FinanceRepository {
     });
   }
 
-  async snapshotAllInvestments(month: string): Promise<{ month: string; count: number }> {
+  async snapshotAllInvestments(
+    month: string,
+    redemptions: InvestmentRedemptionInput[] = []
+  ): Promise<{ month: string; count: number }> {
     await this.ensureBaseData();
-    const holdings = await this.prisma.investmentHolding.findMany({
-      where: {
-        familyId: DEFAULT_FAMILY_ID,
-        deletedAt: null,
-        createdAt: { lt: nextMonthStart(month) }
-      }
-    });
+    const previous = previousMonth(month);
+    const [holdings, previousSnapshots] = await Promise.all([
+      this.prisma.investmentHolding.findMany({
+        where: {
+          familyId: DEFAULT_FAMILY_ID,
+          deletedAt: null,
+          createdAt: { lt: nextMonthStart(month) }
+        }
+      }),
+      this.prisma.investmentSnapshot.findMany({
+        where: { familyId: DEFAULT_FAMILY_ID, month: previous }
+      })
+    ]);
+    const holdingIds = new Set(holdings.map((holding) => holding.id));
+    const unknownRedemption = redemptions.find((redemption) => !holdingIds.has(redemption.holdingId));
+    if (unknownRedemption) {
+      throw new BadRequestException("赎回记录对应的投资持仓不存在");
+    }
+    const redemptionByHolding = new Map(redemptions.map((redemption) => [redemption.holdingId, redemption]));
+    const previousCostByHolding = new Map(
+      previousSnapshots.map((snapshot) => [snapshot.holdingId, moneyToCents(decimalToMoney(snapshot.investedAmount))])
+    );
+    const hasPreviousPortfolioSnapshot = previousSnapshots.length > 0;
     await this.prisma.$transaction(async (tx) => {
       for (const holding of holdings) {
         const investedAmount = holding.investedAmount ?? holding.marketValue.minus(holding.profit);
+        const investedCents = moneyToCents(decimalToMoney(investedAmount));
+        const redemption = redemptionByHolding.get(holding.id);
+        const redemptionAmountCents = redemption ? moneyToCents(normalizeMoney(redemption.redemptionAmount)) : 0;
+        const previousCostCents = previousCostByHolding.get(holding.id)
+          ?? (hasPreviousPortfolioSnapshot ? 0 : investedCents);
+        if (redemption && !hasPreviousPortfolioSnapshot) {
+          throw new BadRequestException(`${holding.name}缺少上月投资快照，无法精确计算本次赎回收益`);
+        }
+        const contributionCents = redemption
+          ? moneyToCents(normalizeMoney(redemption.contributionAmount))
+          : investedCents - previousCostCents;
+        if (contributionCents < 0) {
+          throw new BadRequestException(
+            `${holding.name}的持仓成本下降了 ${centsToMoney(-contributionCents)}，请填写本月赎回到账金额`
+          );
+        }
+        const redemptionCostCents = redemption
+          ? previousCostCents + contributionCents - investedCents
+          : 0;
+        if (redemptionCostCents < 0) {
+          throw new BadRequestException(
+            `${holding.name}的本月申购总额过小，请核对支付宝本月申购汇总和当前投入成本`
+          );
+        }
+        const realizedProfitCents = redemptionAmountCents - redemptionCostCents;
         await tx.investmentSnapshot.upsert({
           where: { holdingId_month: { holdingId: holding.id, month } },
           create: {
@@ -1060,9 +1105,21 @@ export class PrismaFinanceRepository implements FinanceRepository {
             holdingId: holding.id,
             month,
             investedAmount,
-            marketValue: holding.marketValue
+            marketValue: holding.marketValue,
+            contributionAmount: centsToMoney(contributionCents),
+            redemptionAmount: centsToMoney(redemptionAmountCents),
+            redemptionCost: centsToMoney(redemptionCostCents),
+            realizedProfit: centsToMoney(realizedProfitCents)
           },
-          update: { investedAmount, marketValue: holding.marketValue, confirmedAt: new Date() }
+          update: {
+            investedAmount,
+            marketValue: holding.marketValue,
+            contributionAmount: centsToMoney(contributionCents),
+            redemptionAmount: centsToMoney(redemptionAmountCents),
+            redemptionCost: centsToMoney(redemptionCostCents),
+            realizedProfit: centsToMoney(realizedProfitCents),
+            confirmedAt: new Date()
+          }
         });
       }
       await tx.monthlyReview.upsert({
@@ -1319,6 +1376,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
       previousLiabilities,
       investments,
       previousInvestments,
+      investmentHistory,
       review
     ] = await Promise.all([
       this.prisma.accountSnapshot.findMany({
@@ -1353,6 +1411,10 @@ export class PrismaFinanceRepository implements FinanceRepository {
           }
         }
       }),
+      this.prisma.investmentSnapshot.findMany({
+        where: { familyId: DEFAULT_FAMILY_ID, month: { lte: month } },
+        orderBy: { month: "asc" }
+      }),
       this.prisma.monthlyReview.findUnique({
         where: { familyId_month: { familyId: DEFAULT_FAMILY_ID, month } }
       })
@@ -1362,9 +1424,16 @@ export class PrismaFinanceRepository implements FinanceRepository {
     const previousLiabilityById = new Map(
       previousLiabilities.map((item) => [item.liabilityId, decimalToMoney(item.currentBalance)])
     );
-    const previousInvestmentById = new Map(
-      previousInvestments.map((item) => [item.holdingId, decimalToMoney(item.marketValue)])
-    );
+    const previousInvestmentById = new Map(previousInvestments.map((item) => {
+      const investedAmount = decimalToMoney(item.investedAmount);
+      const marketValue = decimalToMoney(item.marketValue);
+      return [item.holdingId, {
+        investedAmount,
+        marketValue,
+        profit: subtractMoney(marketValue, investedAmount)
+      }];
+    }));
+    const hasPreviousInvestmentPeriod = previousInvestments.length > 0;
 
     const assetItems = assets.map((item) => {
       const value = decimalToMoney(item.value);
@@ -1396,7 +1465,16 @@ export class PrismaFinanceRepository implements FinanceRepository {
       const marketValue = decimalToMoney(item.marketValue);
       const profit = subtractMoney(marketValue, investedAmount);
       const investedCents = moneyToCents(investedAmount);
-      const previousValue = previousInvestmentById.get(item.holdingId);
+      const previousItem = previousInvestmentById.get(item.holdingId);
+      const contributionAmount = decimalToMoney(item.contributionAmount ?? 0);
+      const redemptionAmount = decimalToMoney(item.redemptionAmount ?? 0);
+      const redemptionCost = decimalToMoney(item.redemptionCost ?? 0);
+      const realizedProfit = decimalToMoney(item.realizedProfit ?? 0);
+      const previousProfit = previousItem?.profit ?? "0.00";
+      const periodProfit = addMoney(subtractMoney(profit, previousProfit), realizedProfit);
+      const periodDenominatorCents = moneyToCents(previousItem?.marketValue ?? "0")
+        + Math.round(moneyToCents(contributionAmount) / 2)
+        - Math.round(moneyToCents(redemptionAmount) / 2);
       return {
         holdingId: item.holdingId,
         holdingName: item.holding.name,
@@ -1406,7 +1484,17 @@ export class PrismaFinanceRepository implements FinanceRepository {
         marketValue,
         profit,
         returnRate: investedCents === 0 ? 0 : Math.round((moneyToCents(profit) / investedCents) * 10000) / 100,
-        ...(previousValue === undefined ? {} : { change: subtractMoney(marketValue, previousValue) })
+        contributionAmount,
+        redemptionAmount,
+        redemptionCost,
+        realizedProfit,
+        ...(hasPreviousInvestmentPeriod ? {
+          periodProfit,
+          ...(periodDenominatorCents <= 0 ? {} : {
+            periodReturnRate: Math.round((moneyToCents(periodProfit) / periodDenominatorCents) * 10000) / 100
+          })
+        } : {}),
+        ...(previousItem === undefined ? {} : { change: subtractMoney(marketValue, previousItem.marketValue) })
       };
     });
 
@@ -1414,6 +1502,47 @@ export class PrismaFinanceRepository implements FinanceRepository {
     const totalLiabilities = sumMoney(liabilityItems.map((item) => item.currentBalance));
     const investmentMarketValue = sumMoney(investmentItems.map((item) => item.marketValue));
     const investmentInvested = sumMoney(investmentItems.map((item) => item.investedAmount));
+    const investmentContribution = sumMoney(investmentItems.map((item) => item.contributionAmount));
+    const investmentRedemption = sumMoney(investmentItems.map((item) => item.redemptionAmount));
+    const investmentRealizedProfit = sumMoney(investmentItems.map((item) => item.realizedProfit));
+    const previousInvestmentMarketValue = sumMoney(previousInvestments.map((item) => decimalToMoney(item.marketValue)));
+    const previousInvestmentInvested = sumMoney(previousInvestments.map((item) => decimalToMoney(item.investedAmount)));
+    const currentUnrealizedProfit = subtractMoney(investmentMarketValue, investmentInvested);
+    const previousUnrealizedProfit = subtractMoney(previousInvestmentMarketValue, previousInvestmentInvested);
+    const investmentPeriodProfit = addMoney(
+      subtractMoney(currentUnrealizedProfit, previousUnrealizedProfit),
+      investmentRealizedProfit
+    );
+    const investmentPeriodDenominatorCents = moneyToCents(previousInvestmentMarketValue)
+      + Math.round(moneyToCents(investmentContribution) / 2)
+      - Math.round(moneyToCents(investmentRedemption) / 2);
+    const cumulativeRealizedProfit = sumMoney(
+      investmentHistory.map((item) => decimalToMoney(item.realizedProfit ?? 0))
+    );
+    const cumulativeRedemptionCost = sumMoney(
+      investmentHistory.map((item) => decimalToMoney(item.redemptionCost ?? 0))
+    );
+    const investmentCumulativeProfit = addMoney(currentUnrealizedProfit, cumulativeRealizedProfit);
+    const investmentCumulativeCostCents = moneyToCents(investmentInvested) + moneyToCents(cumulativeRedemptionCost);
+    const investmentMonths = summarizeInvestmentMonths(investmentHistory);
+    const investmentMonthByKey = new Map(investmentMonths.map((item) => [item.month, item]));
+    const yearMonths = investmentMonths.filter((item) => item.month.startsWith(`${month.slice(0, 4)}-`) && item.month <= month);
+    let investmentYearProfitCents = 0;
+    let investmentYearGrowth = 1;
+    let hasInvestmentYearRate = false;
+    for (const item of yearMonths) {
+      const previousItem = investmentMonthByKey.get(previousMonth(item.month));
+      if (!previousItem) continue;
+      const periodProfitCents = item.unrealizedProfitCents - previousItem.unrealizedProfitCents + item.realizedProfitCents;
+      investmentYearProfitCents += periodProfitCents;
+      const denominatorCents = previousItem.marketValueCents
+        + Math.round(item.contributionCents / 2)
+        - Math.round(item.redemptionCents / 2);
+      if (denominatorCents > 0) {
+        investmentYearGrowth *= 1 + periodProfitCents / denominatorCents;
+        hasInvestmentYearRate = true;
+      }
+    }
     const netAssets = subtractMoney(totalAssets, totalLiabilities);
     const previousNetAssets = subtractMoney(
       sumMoney(previousAssets.map((item) => decimalToMoney(item.value))),
@@ -1437,7 +1566,23 @@ export class PrismaFinanceRepository implements FinanceRepository {
         totalLiabilities,
         netAssets,
         investmentMarketValue,
-        investmentProfit: subtractMoney(investmentMarketValue, investmentInvested),
+        investmentProfit: currentUnrealizedProfit,
+        investmentContribution,
+        investmentRedemption,
+        ...(hasPreviousInvestmentPeriod ? {
+          investmentPeriodProfit,
+          ...(investmentPeriodDenominatorCents <= 0 ? {} : {
+            investmentPeriodReturnRate: Math.round((moneyToCents(investmentPeriodProfit) / investmentPeriodDenominatorCents) * 10000) / 100
+          })
+        } : {}),
+        investmentYearProfit: centsToMoney(investmentYearProfitCents),
+        ...(hasInvestmentYearRate ? {
+          investmentYearReturnRate: Math.round((investmentYearGrowth - 1) * 10000) / 100
+        } : {}),
+        investmentCumulativeProfit,
+        investmentCumulativeReturnRate: investmentCumulativeCostCents === 0
+          ? 0
+          : Math.round((moneyToCents(investmentCumulativeProfit) / investmentCumulativeCostCents) * 10000) / 100,
         ...(hasPrevious ? { netAssetsChange: subtractMoney(netAssets, previousNetAssets) } : {})
       },
       assets: assetItems,
@@ -1927,8 +2072,56 @@ function sumMoney(values: MoneyAmount[]): MoneyAmount {
   return centsToMoney(values.reduce((sum, value) => sum + moneyToCents(value), 0));
 }
 
+function addMoney(left: MoneyAmount, right: MoneyAmount): MoneyAmount {
+  return centsToMoney(moneyToCents(left) + moneyToCents(right));
+}
+
 function subtractMoney(left: MoneyAmount, right: MoneyAmount): MoneyAmount {
   return centsToMoney(moneyToCents(left) - moneyToCents(right));
+}
+
+function summarizeInvestmentMonths(items: Array<{
+  month: string;
+  marketValue: Prisma.Decimal;
+  investedAmount: Prisma.Decimal;
+  contributionAmount: Prisma.Decimal;
+  redemptionAmount: Prisma.Decimal;
+  realizedProfit: Prisma.Decimal;
+}>): Array<{
+  month: string;
+  marketValueCents: number;
+  unrealizedProfitCents: number;
+  contributionCents: number;
+  redemptionCents: number;
+  realizedProfitCents: number;
+}> {
+  const byMonth = new Map<string, {
+    month: string;
+    marketValueCents: number;
+    unrealizedProfitCents: number;
+    contributionCents: number;
+    redemptionCents: number;
+    realizedProfitCents: number;
+  }>();
+  for (const item of items) {
+    const summary = byMonth.get(item.month) ?? {
+      month: item.month,
+      marketValueCents: 0,
+      unrealizedProfitCents: 0,
+      contributionCents: 0,
+      redemptionCents: 0,
+      realizedProfitCents: 0
+    };
+    const marketValueCents = moneyToCents(decimalToMoney(item.marketValue));
+    const investedAmountCents = moneyToCents(decimalToMoney(item.investedAmount));
+    summary.marketValueCents += marketValueCents;
+    summary.unrealizedProfitCents += marketValueCents - investedAmountCents;
+    summary.contributionCents += moneyToCents(decimalToMoney(item.contributionAmount));
+    summary.redemptionCents += moneyToCents(decimalToMoney(item.redemptionAmount));
+    summary.realizedProfitCents += moneyToCents(decimalToMoney(item.realizedProfit));
+    byMonth.set(item.month, summary);
+  }
+  return [...byMonth.values()].sort((left, right) => left.month.localeCompare(right.month));
 }
 
 function monthDateWhere(month: string): { date: { gte: Date; lt: Date } } {

@@ -1,3 +1,5 @@
+import type { InvestmentRedemptionInput } from "@family-finance/shared";
+
 export interface InvestmentAmounts {
   investedAmount: string;
   marketValue: string;
@@ -30,6 +32,26 @@ export function investmentCostValue(investment: InvestmentValueLike): number {
 export function investmentReturnRateValue(investment: InvestmentValueLike): number {
   const cost = investmentCostValue(investment);
   return cost === 0 ? 0 : Number(investment.profit) / cost;
+}
+
+export interface InvestmentRedemptionFormValue {
+  holdingId: string;
+  redemptionAmount?: number;
+  contributionAmount?: number;
+}
+
+export function buildInvestmentRedemptionInputs(
+  values: InvestmentRedemptionFormValue[]
+): InvestmentRedemptionInput[] {
+  return values.flatMap((item) => {
+    const amount = Number(item.redemptionAmount ?? 0);
+    if (amount <= 0) return [];
+    return [{
+      holdingId: item.holdingId,
+      redemptionAmount: amount.toFixed(2),
+      contributionAmount: Number(item.contributionAmount).toFixed(2)
+    }];
+  });
 }
 
 function toCents(value: string | number): number {

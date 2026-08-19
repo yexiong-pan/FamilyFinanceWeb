@@ -9,6 +9,7 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentRedemptionInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -289,8 +290,10 @@ export class FinanceController {
   }
 
   @Post("investments/snapshots")
-  snapshotAllInvestments(@Body() input: { month: string }) {
-    return this.financeService.snapshotAllInvestments(input.month);
+  snapshotAllInvestments(
+    @Body() input: { month: string; redemptions?: InvestmentRedemptionInput[] }
+  ) {
+    return this.financeService.snapshotAllInvestments(input.month, input.redemptions);
   }
 
   @Get("liabilities")

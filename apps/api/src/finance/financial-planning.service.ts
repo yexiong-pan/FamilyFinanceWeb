@@ -7,6 +7,7 @@ import type {
   MonthlyReviewChange,
   MonthlyReviewDetail,
   MonthlyReviewStatus,
+  MortgageCashflow,
   RecurringCashflow,
   SafetyConfidence,
   SafetyObligation
@@ -24,22 +25,29 @@ import type {
 } from "./financial-planning.types";
 import { FinanceService } from "./finance.service";
 import { PrismaService } from "../prisma.service";
+import { MortgageService } from "./mortgage.service";
 
 const DEFAULT_FAMILY_ID = "default-family";
 const DEFAULT_FAMILY_NAME = "我的家庭";
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+const EMPTY_MORTGAGE_CASHFLOWS = {
+  mortgageCashflowObligations: async () => []
+} satisfies Pick<MortgageService, "mortgageCashflowObligations">;
 
 @Injectable()
 export class FinancialPlanningService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(FinanceService) private readonly financeService: FinanceService
+    @Inject(FinanceService) private readonly financeService: FinanceService,
+    @Inject(MortgageService) private readonly mortgageService: Pick<MortgageService, "mortgageCashflowObligations"> = EMPTY_MORTGAGE_CASHFLOWS
   ) {}
 
   async getFinancialSafety(month: string): Promise<FinancialSafetyData> {
     assertMonth(month);
     await this.ensurePlanningData();
-    const [settings, recurringRows, accounts, liabilities, essentialTransactions] = await Promise.all([
+    const referenceDate = safetyReferenceDate(month);
+    const horizonEnd = addUtcDays(referenceDate, 30);
+    const [settings, recurringRows, accounts, liabilities, essentialTransactions, mortgageCashflows] = await Promise.all([
       this.prisma.financialSafetySettings.findUniqueOrThrow({ where: { familyId: DEFAULT_FAMILY_ID } }),
       this.prisma.recurringCashflow.findMany({
         where: { familyId: DEFAULT_FAMILY_ID },
@@ -48,15 +56,16 @@ export class FinancialPlanningService {
       }),
       this.financeService.listAccountsForMonth(month),
       this.financeService.listLiabilitiesForMonth(month),
-      this.listEssentialTransactions(month)
+      this.listEssentialTransactions(month),
+      this.mortgageService.mortgageCashflowObligations(formatDate(referenceDate), formatDate(horizonEnd))
     ]);
 
-    const referenceDate = safetyReferenceDate(month);
-    const horizonEnd = addUtcDays(referenceDate, 30);
     const recurringCashflows = recurringRows.map(mapRecurringCashflow);
+    const managedMortgageLiabilityIds = new Set(mortgageCashflows.map((cashflow) => cashflow.liabilityId));
     const upcomingObligations = [
       ...buildRecurringObligations(recurringCashflows, referenceDate, horizonEnd),
-      ...buildLiabilityObligations(liabilities, referenceDate, horizonEnd)
+      ...buildLiabilityObligations(liabilities.filter((liability) => !managedMortgageLiabilityIds.has(liability.id)), referenceDate, horizonEnd),
+      ...buildMortgageCashflowObligations(mortgageCashflows)
     ].sort((left, right) => left.date.localeCompare(right.date) || left.name.localeCompare(right.name));
     const expectedIncome = sumMoney(
       upcomingObligations.filter((item) => item.kind === "income").map((item) => item.amount)
@@ -67,6 +76,7 @@ export class FinancialPlanningService {
     const debtPayments = sumMoney(
       upcomingObligations.filter((item) => item.kind === "debt").map((item) => item.amount)
     );
+    const mortgageProvidentFundOffset = sumMoney(mortgageCashflows.map((item) => item.providentFundOffset));
     const selectedLiquidAccountIds = new Set(settings.liquidAccountIds);
     const liquidAccounts = settings.liquidAccountIds.length > 0
       ? accounts.filter((account) => selectedLiquidAccountIds.has(account.id))
@@ -114,6 +124,7 @@ export class FinancialPlanningService {
         expectedIncome,
         requiredExpenses,
         debtPayments,
+        mortgageProvidentFundOffset,
         plannedSavings,
         emergencyReserve,
         ...safeResult,
@@ -579,6 +590,22 @@ function buildLiabilityObligations(
       amount: item.monthlyPayment!,
       memberName: item.ownerName
     }));
+  });
+}
+
+function buildMortgageCashflowObligations(cashflows: MortgageCashflow[]): SafetyObligation[] {
+  return cashflows.map((cashflow) => {
+    const offset = Number(cashflow.providentFundOffset);
+    const suffix = offset > 0
+      ? `（公积金月冲 ${cashflow.providentFundOffset}）`
+      : "（银行卡全额支付）";
+    return {
+      id: `mortgage:${cashflow.mortgageId}:${cashflow.dueDate}`,
+      name: `${cashflow.mortgageName}${suffix}`,
+      date: cashflow.dueDate,
+      kind: "debt" as const,
+      amount: cashflow.selfFundAmount
+    };
   });
 }
 

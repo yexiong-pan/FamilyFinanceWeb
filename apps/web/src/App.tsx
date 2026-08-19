@@ -38,8 +38,10 @@ import type {
   FamilyMemberInfo,
   FinanceTransaction,
   InvestmentHolding,
+  InvestmentRedemptionInput,
   Liability,
   LiabilityRepaymentRecord,
+  MortgageCashflow,
   MonthlySnapshotData,
   TransactionPage,
   YearlyReportData
@@ -81,6 +83,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import Modal from "antd/es/modal";
 import { Column, Line, Pie } from "./LazyCharts";
+import { TodayTodoButton } from "./TodayTodoButton";
 import dayjs, { type Dayjs } from "dayjs";
 import { lazy, Suspense, type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -151,6 +154,7 @@ import {
 import { buildIncomeView } from "./data/income";
 import {
   buildInvestmentAmountsFromProfit,
+  buildInvestmentRedemptionInputs,
   investmentCostValue,
   investmentReturnRateValue
 } from "./data/investment";
@@ -236,6 +240,9 @@ const emptySummary: DashboardSummary = {
   monthlyIncome: "0.00",
   monthlyBalance: "0.00",
   monthlyDebtPayment: "0.00",
+  monthlyDebtCashPayment: "0.00",
+  monthlyProvidentFundOffset: "0.00",
+  mortgageCashflows: [],
   investmentMarketValue: "0.00",
   investmentCost: "0.00",
   investmentProfit: "0.00",
@@ -296,6 +303,7 @@ const emptyData: AppData = {
       expectedIncome: "0.00",
       requiredExpenses: "0.00",
       debtPayments: "0.00",
+      mortgageProvidentFundOffset: "0.00",
       plannedSavings: "0.00",
       emergencyReserve: "0.00",
       safeToSpend: "0.00",
@@ -343,6 +351,7 @@ function AppShell() {
   const [quickHealthKind, setQuickHealthKind] = useState<QuickHealthKind>();
   const [quickScheduleOpen, setQuickScheduleOpen] = useState(false);
   const [healthDataVersion, setHealthDataVersion] = useState(0);
+  const [headerDataVersion, setHeaderDataVersion] = useState(0);
   const [siderCollapsed, setSiderCollapsed] = useState(
     () => window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
   );
@@ -402,6 +411,7 @@ function AppShell() {
         includeMonthlyReviewDetail,
         includeFinancialSafety
       }));
+      setHeaderDataVersion((value) => value + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "加载失败");
     } finally {
@@ -619,6 +629,12 @@ function AppShell() {
                 onClick={() => void reload()}
               />
             </Space>
+            <div className="header-today-actions">
+              <TodayTodoButton
+                refreshKey={headerDataVersion}
+                onOpenCalendar={() => navigateToMonthCalendar(dayjs().format("YYYY-MM"))}
+              />
+            </div>
             <Space wrap className="header-actions">
               <input
                 ref={avatarInputRef}
@@ -822,6 +838,7 @@ function AppShell() {
                   setQuickScheduleOpen(false);
                   message.success("日程已保存");
                   setHealthDataVersion((value) => value + 1);
+                  void reload();
                 }}
               />
             </Suspense>
@@ -2806,6 +2823,13 @@ function LiabilitiesPage(props: PageProps) {
   const pendingLiabilityProgress = liabilityProgress.filter((item) => item.estimated);
   const liabilityCoverage = buildLiabilityCoverage(props.data.liabilities);
   const liabilityRisk = buildLiabilityRisk(props.data.liabilities, summary.monthlyIncome);
+  const mortgageCashflowByLiability = useMemo(
+    () => new Map(summary.mortgageCashflows.map((cashflow) => [cashflow.liabilityId, cashflow])),
+    [summary.mortgageCashflows]
+  );
+  const cashDebtServiceRate = Number(summary.monthlyIncome) > 0
+    ? Math.round((Number(summary.monthlyDebtCashPayment) / Number(summary.monthlyIncome)) * 1000) / 10
+    : null;
   const totalInitialLiability = trackableLiabilityProgress.reduce(
     (sum, item) => sum + (item.initialBalance ?? 0),
     0
@@ -2884,23 +2908,34 @@ function LiabilitiesPage(props: PageProps) {
         </Col>
         <Col xs={12} lg={6}>
           <Card className="metric-card">
-            <Statistic title="月供合计" value={formatMoney(summary.monthlyDebtPayment)} />
+            <Statistic title="本月合同应还" value={formatMoney(summary.monthlyDebtPayment)} />
+            <Text type="secondary">含公积金月冲</Text>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card className="metric-card">
-            <Statistic title="净资产" value={formatMoney(summary.netAssets)} />
+            <Statistic title="公积金月冲" value={formatMoney(summary.monthlyProvidentFundOffset)} />
+            <Text type="secondary">预计或已确认冲抵</Text>
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card className="metric-card">
             <Statistic
-              title="月供收入比"
-              value={Number(summary.monthlyIncome) > 0 ? `${liabilityRisk.debtServiceRate}%` : "无收入数据"}
+              title="银行卡现金月供"
+              value={formatMoney(summary.monthlyDebtCashPayment)}
             />
+            <Text type="secondary">收入比 {cashDebtServiceRate == null ? "待收入数据" : `${cashDebtServiceRate}%`}</Text>
           </Card>
         </Col>
       </Row>
+      {summary.mortgageCashflows.length ? (
+        <Alert
+          type="info"
+          showIcon
+          title="住房贷款已按公积金冲抵后计入现金流"
+          description="合同应还仍用于展示贷款义务；资金安全和月供收入比只使用银行卡实际或预计补款。"
+        />
+      ) : null}
       <Card
         title="还款进度"
         className="report-section-card"
@@ -2959,7 +2994,9 @@ function LiabilitiesPage(props: PageProps) {
       >
         {isMobile ? (
           <MobileRecordList empty={props.data.liabilities.length === 0}>
-            {props.data.liabilities.map((liability) => (
+            {props.data.liabilities.map((liability) => {
+              const mortgageCashflow = mortgageCashflowByLiability.get(liability.id);
+              return (
               <div className="mobile-record-card" key={liability.id}>
                 <Flex justify="space-between" align="center" gap={8}>
                   <Text strong>{liability.name}</Text>
@@ -2974,7 +3011,8 @@ function LiabilitiesPage(props: PageProps) {
                 <div className="mobile-record-grid">
                   <MobileField label="债权机构" value={liability.lender || "—"} />
                   <MobileField label="初始金额" value={liability.initialBalance ? formatMoney(liability.initialBalance) : "待补充"} />
-                  <MobileField label="月供" value={liability.monthlyPayment ? formatMoney(liability.monthlyPayment) : "—"} />
+                  <MobileField label="合同月供" value={mortgageCashflow ? formatMoney(mortgageCashflow.totalAmount) : liability.monthlyPayment ? formatMoney(liability.monthlyPayment) : "—"} />
+                  {mortgageCashflow ? <MobileField label="本月资金来源" value={mortgageCashflowSummary(mortgageCashflow)} /> : null}
                   <MobileField label="还款日" value={liability.paymentDay ? `每月${liability.paymentDay}号` : "—"} />
                   <MobileField label="剩余期数" value={liability.remainingPeriods == null ? "—" : `${liability.remainingPeriods}期`} />
                 </div>
@@ -2992,7 +3030,8 @@ function LiabilitiesPage(props: PageProps) {
                   </Space>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </MobileRecordList>
         ) : (
         <Table<Liability>
@@ -3013,11 +3052,23 @@ function LiabilitiesPage(props: PageProps) {
               render: (value?: string) => (value ? formatMoney(value) : "待补充")
             },
             {
-              title: "月供",
+              title: "合同月供",
               dataIndex: "monthlyPayment",
               width: 120,
               align: "right",
-              render: (value?: string) => (value ? formatMoney(value) : "—")
+              render: (value: string | undefined, record) => {
+                const mortgageCashflow = mortgageCashflowByLiability.get(record.id);
+                return formatMoney(mortgageCashflow?.totalAmount ?? value ?? "0.00");
+              }
+            },
+            {
+              title: "本月资金来源",
+              key: "mortgage-cashflow",
+              width: 240,
+              render: (_, record) => {
+                const mortgageCashflow = mortgageCashflowByLiability.get(record.id);
+                return mortgageCashflow ? <Text type="secondary">{mortgageCashflowSummary(mortgageCashflow)}</Text> : "—";
+              }
             },
             {
               title: "还款日",
@@ -3239,7 +3290,22 @@ function InvestmentsPage(props: PageProps) {
   const isMobile = screens.md === false;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<InvestmentHolding | null>(null);
+  const [snapshotOpen, setSnapshotOpen] = useState(false);
+  const [investmentSnapshot, setInvestmentSnapshot] = useState<MonthlySnapshotData | null>(null);
   const [form] = Form.useForm();
+  useEffect(() => {
+    let cancelled = false;
+    getMonthlySnapshot(props.monthKey)
+      .then((snapshot) => {
+        if (!cancelled) setInvestmentSnapshot(snapshot);
+      })
+      .catch(() => {
+        if (!cancelled) setInvestmentSnapshot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.monthKey, props.data.monthlyReview.investments]);
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue(
@@ -3272,6 +3338,11 @@ function InvestmentsPage(props: PageProps) {
   );
   const totalProfit = totalMarket - totalCost;
   const totalRate = totalCost !== 0 ? totalProfit / totalCost : 0;
+  const confirmedPerformance = investmentSnapshot?.review.investments
+    ? investmentSnapshot.summary
+    : undefined;
+  const cumulativeProfit = confirmedPerformance?.investmentCumulativeProfit ?? totalProfit.toFixed(2);
+  const cumulativeRate = confirmedPerformance?.investmentCumulativeReturnRate ?? totalRate * 100;
   const missingSnapshotCount = props.data.investments.filter(
     (holding) => holding.snapshotStatus === "missing"
   ).length;
@@ -3291,15 +3362,56 @@ function InvestmentsPage(props: PageProps) {
         </Col>
         <Col xs={24} sm={8}>
           <Card className={`metric-card metric-card--${totalProfit >= 0 ? "asset" : "expense"}`}>
-            <Statistic title="总收益" value={formatMoney(totalProfit.toFixed(2))} />
+            <Statistic title="累计总收益" value={formatMoney(cumulativeProfit)} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
           <Card className="metric-card">
-            <Statistic title="总收益率" value={`${(totalRate * 100).toFixed(2)}%`} />
+            <Statistic title="累计收益率" value={`${cumulativeRate.toFixed(2)}%`} />
           </Card>
         </Col>
       </Row>
+      {confirmedPerformance ? (
+        <Row gutter={[12, 12]}>
+          <Col xs={12} lg={6}>
+            <Card className="metric-card">
+              <Statistic
+                title="本月投资收益"
+                value={confirmedPerformance.investmentPeriodProfit === undefined
+                  ? "—"
+                  : formatMoney(confirmedPerformance.investmentPeriodProfit)}
+              />
+              <Text type="secondary">
+                月收益率 {confirmedPerformance.investmentPeriodReturnRate === undefined
+                  ? "待上月快照"
+                  : `${confirmedPerformance.investmentPeriodReturnRate.toFixed(2)}%`}
+              </Text>
+            </Card>
+          </Col>
+          <Col xs={12} lg={6}>
+            <Card className="metric-card">
+              <Statistic title="本年投资收益" value={formatMoney(confirmedPerformance.investmentYearProfit)} />
+              <Text type="secondary">
+                年收益率 {confirmedPerformance.investmentYearReturnRate === undefined
+                  ? "待完整月度数据"
+                  : `${confirmedPerformance.investmentYearReturnRate.toFixed(2)}%`}
+              </Text>
+            </Card>
+          </Col>
+          <Col xs={12} lg={6}>
+            <Card className="metric-card">
+              <Statistic title="本月自动反推申购" value={formatMoney(confirmedPerformance.investmentContribution)} />
+              <Text type="secondary">无需手工填写</Text>
+            </Card>
+          </Col>
+          <Col xs={12} lg={6}>
+            <Card className="metric-card">
+              <Statistic title="本月赎回到账" value={formatMoney(confirmedPerformance.investmentRedemption)} />
+              <Text type="secondary">按实际到账金额</Text>
+            </Card>
+          </Col>
+        </Row>
+      ) : null}
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={14}>
           <Card title="投资类型配置" className="compact-chart-card">
@@ -3343,7 +3455,7 @@ function InvestmentsPage(props: PageProps) {
           <Space>
             <Button
               icon={<CheckCircleOutlined />}
-              onClick={() => props.submit(() => snapshotAllInvestments(props.monthKey), { success: "本月投资已确认" })}
+              onClick={() => setSnapshotOpen(true)}
             >
               {props.data.monthlyReview.investments ? "已确认" : "确认本月投资"}
             </Button>
@@ -3533,7 +3645,150 @@ function InvestmentsPage(props: PageProps) {
           <InvestmentFormFields accounts={props.data.accounts} onSubmit={() => form.submit()} />
         </Form>
       </Drawer>
+      <InvestmentSnapshotDrawer
+        open={snapshotOpen}
+        month={props.monthKey}
+        holdings={props.data.investments}
+        onClose={() => setSnapshotOpen(false)}
+        submit={props.submit}
+      />
     </Space>
+  );
+}
+
+interface InvestmentSnapshotFormValues {
+  redemptions: Array<{
+    holdingId: string;
+    redemptionAmount?: number;
+    contributionAmount?: number;
+  }>;
+}
+
+function InvestmentSnapshotDrawer({
+  open,
+  month,
+  holdings,
+  onClose,
+  submit
+}: {
+  open: boolean;
+  month: string;
+  holdings: InvestmentHolding[];
+  onClose: () => void;
+  submit: PageProps["submit"];
+}) {
+  const [form] = Form.useForm<InvestmentSnapshotFormValues>();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    getMonthlySnapshot(month)
+      .then((snapshot) => {
+        if (cancelled) return;
+        const snapshotByHolding = new Map(snapshot.investments.map((item) => [item.holdingId, item]));
+        form.setFieldsValue({
+          redemptions: holdings.map((holding) => {
+            const item = snapshotByHolding.get(holding.id);
+            return {
+              holdingId: holding.id,
+              redemptionAmount: Number(item?.redemptionAmount ?? 0),
+              contributionAmount: Number(item?.contributionAmount ?? 0)
+            };
+          })
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          form.setFieldsValue({
+            redemptions: holdings.map((holding) => ({
+              holdingId: holding.id,
+              redemptionAmount: 0,
+              contributionAmount: 0
+            }))
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form, holdings, month, open]);
+
+  return (
+    <Drawer
+      title={`确认 ${month} 投资`}
+      open={open}
+      onClose={onClose}
+      size={560}
+      destroyOnHidden
+      extra={<Button type="primary" onClick={() => form.submit()}>确认并保存快照</Button>}
+    >
+      <Spin spinning={loading}>
+        <Alert
+          type="info"
+          showIcon
+          title="只有发生赎回时才填写本月申购"
+          description="无赎回的持仓仍由系统自动反推申购额。发生赎回时，填写支付宝可查到的实际到账金额，并汇总这只基金本月全部申购金额；系统会反推赎回成本和实现收益。由于不记录每日定投时点，月、年收益率仍按资金月中进出加权。"
+          className="section-alert"
+        />
+        <Form<InvestmentSnapshotFormValues>
+          form={form}
+          layout="vertical"
+          onFinish={(values) => {
+            const redemptions: InvestmentRedemptionInput[] = buildInvestmentRedemptionInputs(values.redemptions);
+            return submit(
+              () => snapshotAllInvestments(month, redemptions),
+              { success: "本月投资已确认", onSuccess: onClose }
+            );
+          }}
+        >
+          <Form.List name="redemptions">
+            {(fields) => (
+              <Space orientation="vertical" size={12} className="page-stack">
+                {fields.map((field, index) => {
+                  const holding = holdings[index];
+                  return (
+                    <Card key={field.key} size="small" title={holding?.name ?? "投资持仓"}>
+                      <Form.Item name={[field.name, "holdingId"]} hidden><Input /></Form.Item>
+                      <Form.Item
+                        name={[field.name, "redemptionAmount"]}
+                        label="本月赎回到账金额"
+                        extra="填写已扣除赎回费后的实际到账金额；无赎回保持 0"
+                        rules={[{ type: "number", min: 0, message: "赎回金额不能为负数" }]}
+                      >
+                        <InputNumber min={0} precision={2} step={100} className="full-width-input" />
+                      </Form.Item>
+                      <Form.Item noStyle shouldUpdate={(previousValues, currentValues) =>
+                        previousValues.redemptions?.[index]?.redemptionAmount
+                          !== currentValues.redemptions?.[index]?.redemptionAmount
+                      }>
+                        {({ getFieldValue }) => Number(getFieldValue(["redemptions", index, "redemptionAmount"]) ?? 0) > 0 ? (
+                          <Form.Item
+                            name={[field.name, "contributionAmount"]}
+                            label="这只基金本月申购总额"
+                            extra="将支付宝交易记录中本月所有买入金额相加；没有申购则填 0"
+                            rules={[
+                              { required: true, message: "请填写本月申购总额，没有申购则填 0" },
+                              { type: "number", min: 0, message: "本月申购总额不能为负数" }
+                            ]}
+                          >
+                            <InputNumber min={0} precision={2} step={100} className="full-width-input" />
+                          </Form.Item>
+                        ) : null}
+                      </Form.Item>
+                    </Card>
+                  );
+                })}
+              </Space>
+            )}
+          </Form.List>
+        </Form>
+      </Spin>
+    </Drawer>
   );
 }
 
@@ -3721,6 +3976,10 @@ function MonthlySnapshotPage(props: PageProps) {
                       <MobileField label="投入成本" value={formatMoney(item.investedAmount)} />
                       <MobileField label="持有收益" value={formatMoney(item.profit)} />
                       <MobileField label="收益率" value={`${item.returnRate.toFixed(2)}%`} />
+                      <MobileField label="本月申购" value={formatMoney(item.contributionAmount)} />
+                      <MobileField label="本月赎回" value={formatMoney(item.redemptionAmount)} />
+                      <MobileField label="本月收益" value={item.periodProfit === undefined ? "—" : formatMoney(item.periodProfit)} />
+                      <MobileField label="月收益率" value={item.periodReturnRate === undefined ? "—" : `${item.periodReturnRate.toFixed(2)}%`} />
                       <MobileField label="较上月变化" value={renderChange(item.change == null ? null : Number(item.change))} />
                     </div>
                   </div>
@@ -3731,7 +3990,7 @@ function MonthlySnapshotPage(props: PageProps) {
                 rowKey="holdingId"
                 pagination={false}
                 dataSource={snapshot.investments}
-                scroll={{ x: 900 }}
+                scroll={{ x: 1400 }}
                 columns={[
                   { title: "持仓", dataIndex: "holdingName" },
                   { title: "代码", dataIndex: "code", width: 100 },
@@ -3766,6 +4025,41 @@ function MonthlySnapshotPage(props: PageProps) {
                     width: 100,
                     sorter: (left, right) => left.returnRate - right.returnRate,
                     render: (value: number) => `${value.toFixed(2)}%`
+                  },
+                  {
+                    title: "本月申购",
+                    dataIndex: "contributionAmount",
+                    width: 130,
+                    align: "right",
+                    render: (value: string) => formatMoney(value)
+                  },
+                  {
+                    title: "本月赎回",
+                    dataIndex: "redemptionAmount",
+                    width: 130,
+                    align: "right",
+                    render: (value: string) => formatMoney(value)
+                  },
+                  {
+                    title: "赎回实现收益",
+                    dataIndex: "realizedProfit",
+                    width: 150,
+                    align: "right",
+                    render: (value: string) => formatMoney(value)
+                  },
+                  {
+                    title: "本月收益",
+                    dataIndex: "periodProfit",
+                    width: 130,
+                    align: "right",
+                    render: (value?: string) => value === undefined ? "—" : formatMoney(value)
+                  },
+                  {
+                    title: "月收益率",
+                    dataIndex: "periodReturnRate",
+                    width: 110,
+                    align: "right",
+                    render: (value?: number) => value === undefined ? "—" : `${value.toFixed(2)}%`
                   },
                   { title: "较上月变化", dataIndex: "change", width: 150, align: "right", render: (value?: string) => renderChange(value == null ? null : Number(value)) }
                 ]}
@@ -4855,6 +5149,11 @@ function renderLiabilityType(type: Liability["type"]) {
 
 function renderLiabilityRepaymentSchedule(schedule: Liability["repaymentSchedule"]) {
   return <Tag color={schedule === "monthly" ? "blue" : "default"}>{liabilityRepaymentScheduleLabels[schedule]}</Tag>;
+}
+
+function mortgageCashflowSummary(cashflow: MortgageCashflow): string {
+  const status = cashflow.status === "confirmed" ? "实际" : "预计";
+  return `${status}公积金 ${formatMoney(cashflow.providentFundOffset)} · 银行卡 ${formatMoney(cashflow.selfFundAmount)}`;
 }
 
 function renderLiabilityStatus(status: Liability["status"]) {

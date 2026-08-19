@@ -731,6 +731,10 @@ model InvestmentSnapshot {
   month          String
   investedAmount Decimal           @db.Decimal(18, 2)
   marketValue    Decimal           @db.Decimal(18, 2)
+  contributionAmount Decimal       @default(0) @db.Decimal(18, 2)
+  redemptionAmount   Decimal       @default(0) @db.Decimal(18, 2)
+  redemptionCost     Decimal       @default(0) @db.Decimal(18, 2)
+  realizedProfit     Decimal       @default(0) @db.Decimal(18, 2)
   confirmedAt    DateTime          @default(now())
   family         Family            @relation(fields: [familyId], references: [id])
   holding        InvestmentHolding @relation(fields: [holdingId], references: [id])

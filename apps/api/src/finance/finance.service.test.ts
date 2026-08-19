@@ -181,6 +181,31 @@ describe("FinanceService", () => {
     expect(listHoldingsForMonth).toHaveBeenCalledWith("2026-06");
   });
 
+  it("uses mortgage cash payments instead of counting provident-fund offsets as bank debt", async () => {
+    const repository = createRepository();
+    Object.assign(repository, {
+      listLiabilitiesForMonth: vi.fn(async () => [
+        { id: "mortgage-liability", name: "住房组合贷款", type: "mortgage", ownerName: "雄哥", currentBalance: "2700000.00", monthlyPayment: "11676.98", paymentDay: 20, repaymentSchedule: "monthly", status: "active" },
+        { id: "car-liability", name: "汽车贷款", type: "carLoan", ownerName: "雄哥", currentBalance: "30000.00", monthlyPayment: "2000.00", paymentDay: 10, repaymentSchedule: "monthly", status: "active" }
+      ])
+    });
+    const mortgageService = {
+      mortgageCashflowObligations: vi.fn(async () => [{
+        liabilityId: "mortgage-liability", mortgageId: "mortgage-1", mortgageName: "住房组合贷款", dueDate: "2026-08-20", status: "scheduled" as const,
+        totalAmount: "11676.98", providentFundOffset: "9500.00", selfFundAmount: "2176.98"
+      }])
+    };
+
+    const summary = await new FinanceService(repository, mortgageService).getDashboardSummary("2026-08");
+
+    expect(summary).toMatchObject({
+      monthlyDebtPayment: "13676.98",
+      monthlyProvidentFundOffset: "9500.00",
+      monthlyDebtCashPayment: "4176.98"
+    });
+    expect(summary.mortgageCashflows).toHaveLength(1);
+  });
+
   it("confirms liability and investment snapshots for the selected month", async () => {
     const repository = createRepository();
     const snapshotAllLiabilities = vi.fn(async () => ({ month: "2026-07", count: 2 }));
@@ -191,7 +216,25 @@ describe("FinanceService", () => {
     await expect((service as any).snapshotAllLiabilities("2026-07")).resolves.toEqual({ month: "2026-07", count: 2 });
     await expect((service as any).snapshotAllInvestments("2026-07")).resolves.toEqual({ month: "2026-07", count: 3 });
     expect(snapshotAllLiabilities).toHaveBeenCalledWith("2026-07");
-    expect(snapshotAllInvestments).toHaveBeenCalledWith("2026-07");
+    expect(snapshotAllInvestments).toHaveBeenCalledWith("2026-07", []);
+  });
+
+  it("requires a non-negative monthly contribution total for each redemption", async () => {
+    const repository = createRepository();
+    const snapshotAllInvestments = vi.fn(async () => ({ month: "2026-07", count: 1 }));
+    Object.assign(repository, { snapshotAllInvestments });
+    const service = new FinanceService(repository);
+
+    await expect(service.snapshotAllInvestments("2026-07", [{
+      holdingId: "holding-1",
+      redemptionAmount: "5000.00",
+      contributionAmount: "1000.00"
+    }])).resolves.toEqual({ month: "2026-07", count: 1 });
+    await expect(service.snapshotAllInvestments("2026-07", [{
+      holdingId: "holding-1",
+      redemptionAmount: "5000.00",
+      contributionAmount: "-1.00"
+    }])).rejects.toThrow("本月申购总额必须大于或等于 0");
   });
 
   it("requires a valid monthly payment and payment day for fixed monthly liabilities", async () => {
@@ -533,7 +576,12 @@ function createRepository(): FinanceRepository {
           totalLiabilities: "0.00",
           netAssets: "0.00",
           investmentMarketValue: "0.00",
-          investmentProfit: "0.00"
+          investmentProfit: "0.00",
+          investmentContribution: "0.00",
+          investmentRedemption: "0.00",
+          investmentYearProfit: "0.00",
+          investmentCumulativeProfit: "0.00",
+          investmentCumulativeReturnRate: 0
         },
         assets: [],
         liabilities: [],

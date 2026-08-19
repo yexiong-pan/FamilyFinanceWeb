@@ -108,7 +108,7 @@ export function CalendarEventsPanel({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState<CalendarEventType>();
-  const [status, setStatus] = useState<CalendarEventStatus>();
+  const [status, setStatus] = useState<CalendarEventStatus>("scheduled");
   const [editingEvent, setEditingEvent] = useState<CalendarEvent>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [version, setVersion] = useState(0);

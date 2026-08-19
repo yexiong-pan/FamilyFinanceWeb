@@ -72,6 +72,33 @@ describe("FinancialPlanningService recurring cashflows", () => {
     ]));
   });
 
+  it("reserves only the mortgage bank supplement in financial safety", async () => {
+    const mortgageCashflowObligations = vi.fn(async () => [{
+      liabilityId: "mortgage-liability", mortgageId: "mortgage-1", mortgageName: "住房组合贷款", dueDate: "2026-08-20", status: "scheduled" as const,
+      totalAmount: "11676.98", providentFundOffset: "9500.00", selfFundAmount: "2176.98"
+    }]);
+    const service = new FinancialPlanningService({
+      family: { upsert: vi.fn() },
+      financialSafetySettings: {
+        upsert: vi.fn(),
+        findUniqueOrThrow: vi.fn(async () => ({ liquidAccountIds: [], emergencyReserve: { toString: () => "0" }, plannedMonthlySavings: { toString: () => "0" } }))
+      },
+      recurringCashflow: { findMany: vi.fn(async () => []) },
+      financeTransaction: { findMany: vi.fn(async () => []) }
+    } as never, {
+      listAccountsForMonth: vi.fn(async () => []),
+      listLiabilitiesForMonth: vi.fn(async () => [{ id: "mortgage-liability", status: "active", repaymentSchedule: "monthly", monthlyPayment: "11676.98", paymentDay: 20, ownerName: "雄哥", name: "住房组合贷款" }])
+    } as never, { mortgageCashflowObligations } as never);
+
+    const safety = await service.getFinancialSafety("2026-08");
+
+    expect(safety.summary.debtPayments).toBe("2176.98");
+    expect(safety.summary.mortgageProvidentFundOffset).toBe("9500.00");
+    expect(safety.summary.upcomingObligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "住房组合贷款（公积金月冲 9500.00）", amount: "2176.98" })
+    ]));
+  });
+
   it("derives expense nature from the linked category", async () => {
     const recurringCreate = vi.fn(async ({ data }) => ({
       id: "recurring-1",

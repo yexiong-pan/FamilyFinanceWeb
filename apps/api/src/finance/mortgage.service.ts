@@ -7,6 +7,7 @@ import {
   monthlyOccurrenceDatesBetween,
   mortgageRateAt,
   previewMortgageRateAdjustment,
+  type MortgageCashflow,
   type MortgageMonthlyRepayment,
   type MortgagePlanningData,
   type MortgageLoanPart,
@@ -164,6 +165,55 @@ export class MortgageService {
       .sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.mortgageId.localeCompare(right.mortgageId));
   }
 
+  async monthlyCashflows(month: string): Promise<MortgageCashflow[]> {
+    const [mortgages, repayments] = await Promise.all([this.listMortgages(), this.monthlyRepayments(month)]);
+    const liabilityIdByMortgage = new Map(mortgages.map((mortgage) => [mortgage.id, mortgage.liabilityId]));
+    return repayments.flatMap((repayment) => {
+      const liabilityId = liabilityIdByMortgage.get(repayment.mortgageId);
+      return liabilityId ? [{
+        liabilityId,
+        mortgageId: repayment.mortgageId,
+        mortgageName: repayment.mortgageName,
+        dueDate: repayment.dueDate,
+        status: repayment.status,
+        totalAmount: repayment.totalAmount,
+        providentFundOffset: repayment.providentFundOffset,
+        selfFundAmount: repayment.selfFundAmount
+      }] : [];
+    });
+  }
+
+  async mortgageCashflowObligations(startDate: string, endDate: string): Promise<MortgageCashflow[]> {
+    if (!isValidBusinessDate(startDate) || !isValidBusinessDate(endDate) || startDate > endDate) {
+      throw new BadRequestException("房贷现金流日期范围不正确");
+    }
+    const startMonth = startDate.slice(0, 7);
+    const [mortgages, plan, firstMonthCashflows] = await Promise.all([
+      this.listMortgages(),
+      this.planning(startMonth),
+      this.monthlyCashflows(startMonth)
+    ]);
+    const mortgageById = new Map(mortgages.map((mortgage) => [mortgage.id, mortgage]));
+    const projected = plan.monthlyOffset.flatMap((forecast) => forecast.repaymentEvents.flatMap((event) => {
+      const mortgage = mortgageById.get(event.mortgageId);
+      return mortgage ? [{
+        liabilityId: mortgage.liabilityId,
+        mortgageId: mortgage.id,
+        mortgageName: mortgage.name,
+        dueDate: event.dueDate,
+        status: event.dueDate > shanghaiToday() ? "scheduled" as const : "pending" as const,
+        totalAmount: event.amount,
+        providentFundOffset: event.providentFundOffset,
+        selfFundAmount: event.selfFundAmount
+      }] : [];
+    }));
+    const confirmed = firstMonthCashflows.filter((cashflow) => cashflow.status === "confirmed");
+    const confirmedKeys = new Set(confirmed.map((cashflow) => `${cashflow.mortgageId}:${cashflow.dueDate}`));
+    return [...projected.filter((cashflow) => !confirmedKeys.has(`${cashflow.mortgageId}:${cashflow.dueDate}`)), ...confirmed]
+      .filter((cashflow) => cashflow.dueDate >= startDate && cashflow.dueDate <= endDate)
+      .sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.mortgageId.localeCompare(right.mortgageId));
+  }
+
   async confirmMonthlyRepayment(mortgageId: string, input: ConfirmMortgageMonthlyRepaymentInput): Promise<MortgageMonthlyRepayment> {
     assertMonth(input.month);
     if (!Array.isArray(input.parts) || !input.parts.length) throw new BadRequestException("请填写各贷款分段的实际本金和利息");
@@ -312,18 +362,22 @@ export class MortgageService {
         const amountCents = partSchedules.reduce((total, { installments }) => total + moneyToCents(installments[scheduleIndex]?.amount ?? "0.00"), 0);
         return amountCents > 0 ? [{ mortgage, dueDate: dueDateForMonth(month, mortgage.repaymentDay), amountCents }] : [];
       }).sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.mortgage.id.localeCompare(right.mortgage.id));
-      let dueAmountCents = 0;
-      let providentFundOffsetCents = 0;
-      let selfFundAmountCents = 0;
-      for (const event of events) {
-        const allocation = allocateProjectedOffset(balances, event.mortgage.providentFundParticipants, event.dueDate, event.amountCents);
-        dueAmountCents += event.amountCents;
-        providentFundOffsetCents += allocation.providentFundOffsetCents;
-        selfFundAmountCents += allocation.selfFundAmountCents;
-      }
+      const allocations = events.map((event) => ({
+        event,
+        allocation: allocateProjectedOffset(balances, event.mortgage.providentFundParticipants, event.dueDate, event.amountCents)
+      }));
+      const dueAmountCents = allocations.reduce((total, { event }) => total + event.amountCents, 0);
+      const providentFundOffsetCents = allocations.reduce((total, { allocation }) => total + allocation.providentFundOffsetCents, 0);
+      const selfFundAmountCents = allocations.reduce((total, { allocation }) => total + allocation.selfFundAmountCents, 0);
       return {
         month,
-        repaymentEvents: events.map((event) => ({ mortgageId: event.mortgage.id, dueDate: event.dueDate, amount: centsToMoney(event.amountCents) })),
+        repaymentEvents: allocations.map(({ event, allocation }) => ({
+          mortgageId: event.mortgage.id,
+          dueDate: event.dueDate,
+          amount: centsToMoney(event.amountCents),
+          providentFundOffset: centsToMoney(allocation.providentFundOffsetCents),
+          selfFundAmount: centsToMoney(allocation.selfFundAmountCents)
+        })),
         dueAmount: centsToMoney(dueAmountCents),
         providentFundOffset: centsToMoney(providentFundOffsetCents),
         selfFundAmount: centsToMoney(selfFundAmountCents),

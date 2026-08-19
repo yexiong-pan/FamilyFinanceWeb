@@ -686,6 +686,75 @@ describe("PrismaFinanceRepository investment account balances", () => {
       data: { currentValue: "120.00" }
     });
   });
+
+  it("derives exact redemption cost and realized profit from the redemption-month contribution total", async () => {
+    const snapshotUpsert = vi.fn();
+    const reviewUpsert = vi.fn();
+    const client = {
+      investmentHolding: {
+        findMany: vi.fn(async () => [{
+          id: "holding-1",
+          name: "纳斯达克100",
+          investedAmount: "7000.00",
+          marketValue: "7600.00",
+          profit: "600.00"
+        }])
+      },
+      investmentSnapshot: {
+        findMany: vi.fn(async () => [{ holdingId: "holding-1", investedAmount: "10000.00" }]),
+        upsert: snapshotUpsert
+      },
+      monthlyReview: { upsert: reviewUpsert }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await repository.snapshotAllInvestments("2026-08", [{
+      holdingId: "holding-1",
+      redemptionAmount: "5000.00",
+      contributionAmount: "1000.00"
+    }]);
+
+    expect(snapshotUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        contributionAmount: "1000.00",
+        redemptionAmount: "5000.00",
+        redemptionCost: "4000.00",
+        realizedProfit: "1000.00"
+      })
+    }));
+    expect(reviewUpsert).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a cost decrease when the redemption amount is missing", async () => {
+    const client = {
+      investmentHolding: {
+        findMany: vi.fn(async () => [{
+          id: "holding-1",
+          name: "纳斯达克100",
+          investedAmount: "7000.00",
+          marketValue: "7600.00",
+          profit: "600.00"
+        }])
+      },
+      investmentSnapshot: {
+        findMany: vi.fn(async () => [{ holdingId: "holding-1", investedAmount: "10000.00" }])
+      },
+      monthlyReview: { upsert: vi.fn() }
+    };
+    const repository = new PrismaFinanceRepository({
+      ...client,
+      $transaction: vi.fn(async (run: (tx: typeof client) => Promise<unknown>) => run(client))
+    } as never);
+    repository.ensureBaseData = async () => undefined;
+
+    await expect(repository.snapshotAllInvestments("2026-08")).rejects.toThrow(
+      "请填写本月赎回到账金额"
+    );
+  });
 });
 
 describe("PrismaFinanceRepository transaction confirmation", () => {
@@ -897,6 +966,10 @@ describe("PrismaFinanceRepository snapshot queries", () => {
           holdingId: "h1",
           investedAmount: "400.00",
           marketValue: "500.00",
+          contributionAmount: "80.00",
+          redemptionAmount: "100.00",
+          redemptionCost: "80.00",
+          realizedProfit: "20.00",
           holding: { name: "指数基金", code: "000001", account: { name: "基金账户" } }
         }
       ])
@@ -905,7 +978,33 @@ describe("PrismaFinanceRepository snapshot queries", () => {
           holdingId: "h1",
           investedAmount: "400.00",
           marketValue: "450.00",
+          contributionAmount: "0.00",
+          redemptionAmount: "0.00",
+          redemptionCost: "0.00",
+          realizedProfit: "0.00",
           holding: { name: "指数基金", code: "000001", account: { name: "基金账户" } }
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          month: "2026-06",
+          holdingId: "h1",
+          investedAmount: "400.00",
+          marketValue: "450.00",
+          contributionAmount: "0.00",
+          redemptionAmount: "0.00",
+          redemptionCost: "0.00",
+          realizedProfit: "0.00"
+        },
+        {
+          month: "2026-07",
+          holdingId: "h1",
+          investedAmount: "400.00",
+          marketValue: "500.00",
+          contributionAmount: "80.00",
+          redemptionAmount: "100.00",
+          redemptionCost: "80.00",
+          realizedProfit: "20.00"
         }
       ]);
     const repository = new PrismaFinanceRepository({
@@ -942,6 +1041,14 @@ describe("PrismaFinanceRepository snapshot queries", () => {
         netAssets: "700.00",
         investmentMarketValue: "500.00",
         investmentProfit: "100.00",
+        investmentContribution: "80.00",
+        investmentRedemption: "100.00",
+        investmentPeriodProfit: "70.00",
+        investmentPeriodReturnRate: 15.91,
+        investmentYearProfit: "70.00",
+        investmentYearReturnRate: 15.91,
+        investmentCumulativeProfit: "120.00",
+        investmentCumulativeReturnRate: 25,
         netAssetsChange: "250.00"
       },
       assets: [
@@ -975,6 +1082,12 @@ describe("PrismaFinanceRepository snapshot queries", () => {
           marketValue: "500.00",
           profit: "100.00",
           returnRate: 25,
+          contributionAmount: "80.00",
+          redemptionAmount: "100.00",
+          redemptionCost: "80.00",
+          realizedProfit: "20.00",
+          periodProfit: "70.00",
+          periodReturnRate: 15.91,
           change: "50.00"
         }
       ]

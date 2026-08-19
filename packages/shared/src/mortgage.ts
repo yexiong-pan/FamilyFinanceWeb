@@ -107,7 +107,13 @@ export interface MortgagePlanInstallment extends MortgageInstallment {
 
 export interface MortgageMonthlyOffsetForecast {
   month: string;
-  repaymentEvents: Array<{ mortgageId: string; dueDate: string; amount: MoneyAmount }>;
+  repaymentEvents: Array<{
+    mortgageId: string;
+    dueDate: string;
+    amount: MoneyAmount;
+    providentFundOffset: MoneyAmount;
+    selfFundAmount: MoneyAmount;
+  }>;
   dueAmount: MoneyAmount;
   providentFundOffset: MoneyAmount;
   selfFundAmount: MoneyAmount;
@@ -146,6 +152,17 @@ export interface MortgageMonthlyRepayment {
   providentFundTransactions: ProvidentFundMonthlyTransaction[];
   note?: string;
   confirmedAt?: string;
+}
+
+export interface MortgageCashflow {
+  liabilityId: string;
+  mortgageId: string;
+  mortgageName: string;
+  dueDate: string;
+  status: MortgageMonthlyRepayment["status"];
+  totalAmount: MoneyAmount;
+  providentFundOffset: MoneyAmount;
+  selfFundAmount: MoneyAmount;
 }
 
 export interface MortgageRateReminder {

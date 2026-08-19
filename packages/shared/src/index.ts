@@ -95,6 +95,12 @@ export interface InvestmentHolding {
   updatedAt?: string;
 }
 
+export interface InvestmentRedemptionInput {
+  holdingId: string;
+  redemptionAmount: MoneyAmount;
+  contributionAmount: MoneyAmount;
+}
+
 export interface MonthlyReviewStatus {
   month: string;
   income: boolean;
@@ -190,6 +196,12 @@ export interface MonthlyInvestmentSnapshotItem {
   marketValue: MoneyAmount;
   profit: MoneyAmount;
   returnRate: number;
+  contributionAmount: MoneyAmount;
+  redemptionAmount: MoneyAmount;
+  redemptionCost: MoneyAmount;
+  realizedProfit: MoneyAmount;
+  periodProfit?: MoneyAmount;
+  periodReturnRate?: number;
   change?: MoneyAmount;
 }
 
@@ -202,6 +214,14 @@ export interface MonthlySnapshotData {
     netAssets: MoneyAmount;
     investmentMarketValue: MoneyAmount;
     investmentProfit: MoneyAmount;
+    investmentContribution: MoneyAmount;
+    investmentRedemption: MoneyAmount;
+    investmentPeriodProfit?: MoneyAmount;
+    investmentPeriodReturnRate?: number;
+    investmentYearProfit: MoneyAmount;
+    investmentYearReturnRate?: number;
+    investmentCumulativeProfit: MoneyAmount;
+    investmentCumulativeReturnRate: number;
     netAssetsChange?: MoneyAmount;
   };
   assets: MonthlyAssetSnapshotItem[];
@@ -305,7 +325,23 @@ export interface DashboardSummary {
   monthlyExpense: MoneyAmount;
   monthlyIncome: MoneyAmount;
   monthlyBalance: MoneyAmount;
+  /** 合同全额月供，含预计或实际的公积金冲抵部分。 */
   monthlyDebtPayment: MoneyAmount;
+  /** 扣除房贷公积金月冲后，家庭需要从现金账户支付的月供。 */
+  monthlyDebtCashPayment: MoneyAmount;
+  /** 本月由公积金月冲覆盖的房贷金额。 */
+  monthlyProvidentFundOffset: MoneyAmount;
+  /** 由房贷公积金模块管理的房贷资金来源明细。 */
+  mortgageCashflows: Array<{
+    liabilityId: string;
+    mortgageId: string;
+    mortgageName: string;
+    dueDate: string;
+    status: "scheduled" | "pending" | "confirmed";
+    totalAmount: MoneyAmount;
+    providentFundOffset: MoneyAmount;
+    selfFundAmount: MoneyAmount;
+  }>;
   investmentMarketValue: MoneyAmount;
   investmentCost: MoneyAmount;
   investmentProfit: MoneyAmount;
@@ -370,6 +406,9 @@ export function calculateDashboardSummary(input: DashboardSummaryInput): Dashboa
     monthlyIncome,
     monthlyBalance: fromCents(toCents(monthlyIncome) - toCents(monthlyExpense)),
     monthlyDebtPayment,
+    monthlyDebtCashPayment: monthlyDebtPayment,
+    monthlyProvidentFundOffset: "0.00",
+    mortgageCashflows: [],
     investmentMarketValue,
     investmentCost,
     investmentProfit,

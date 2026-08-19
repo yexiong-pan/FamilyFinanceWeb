@@ -10,6 +10,7 @@ import type {
   FinanceTransaction,
   ImportTransactionsResult,
   InvestmentHolding,
+  InvestmentRedemptionInput,
   Liability,
   LiabilityRepaymentRecord,
   MonthlyReviewStatus,
@@ -17,7 +18,7 @@ import type {
   MoneyAmount,
   YearlyReportData
 } from "@family-finance/shared";
-import { calculateDashboardSummary } from "@family-finance/shared";
+import { calculateDashboardSummary, normalizeMoney } from "@family-finance/shared";
 import type {
   AccountTypeInput,
   Category,
@@ -38,22 +39,32 @@ import {
   FINANCE_REPOSITORY,
   type FinanceRepository
 } from "./finance.repository";
+import { MortgageService } from "./mortgage.service";
 import { buildYearlyReport } from "./yearly-report";
+
+const EMPTY_MORTGAGE_CASHFLOWS = {
+  mortgageCashflowObligations: async () => []
+} satisfies Pick<MortgageService, "mortgageCashflowObligations">;
 
 @Injectable()
 export class FinanceService {
-  constructor(@Inject(FINANCE_REPOSITORY) private readonly repository: FinanceRepository) {}
+  constructor(
+    @Inject(FINANCE_REPOSITORY) private readonly repository: FinanceRepository,
+    @Inject(MortgageService) private readonly mortgageService: Pick<MortgageService, "mortgageCashflowObligations"> = EMPTY_MORTGAGE_CASHFLOWS
+  ) {}
 
   async getDashboardSummary(month: string): Promise<DashboardSummary> {
     await this.repository.ensureBaseData();
-    const [accounts, transactions, budgets, holdings, liabilities] = await Promise.all([
+    const monthEnd = `${month}-${String(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate()).padStart(2, "0")}`;
+    const [accounts, transactions, budgets, holdings, liabilities, mortgageCashflows] = await Promise.all([
       this.repository.listAccountsForMonth(month),
       this.repository.listTransactions({ month }),
       this.repository.listBudgets(month),
       this.repository.listHoldingsForMonth(month),
-      this.repository.listLiabilitiesForMonth(month)
+      this.repository.listLiabilitiesForMonth(month),
+      this.mortgageService.mortgageCashflowObligations(`${month}-01`, monthEnd)
     ]);
-    return calculateDashboardSummary({
+    const summary = calculateDashboardSummary({
       month,
       accounts,
       transactions,
@@ -61,6 +72,20 @@ export class FinanceService {
       holdings,
       liabilities
     });
+    const managedLiabilityIds = new Set(mortgageCashflows.map((cashflow) => cashflow.liabilityId));
+    const otherDebtCents = liabilities
+      .filter((liability) => liability.status === "active" && !managedLiabilityIds.has(liability.id))
+      .reduce((total, liability) => total + Math.round(Number(liability.monthlyPayment ?? "0") * 100), 0);
+    const mortgageDueCents = mortgageCashflows.reduce((total, cashflow) => total + Math.round(Number(cashflow.totalAmount) * 100), 0);
+    const mortgageOffsetCents = mortgageCashflows.reduce((total, cashflow) => total + Math.round(Number(cashflow.providentFundOffset) * 100), 0);
+    const mortgageCashCents = mortgageCashflows.reduce((total, cashflow) => total + Math.round(Number(cashflow.selfFundAmount) * 100), 0);
+    return {
+      ...summary,
+      monthlyDebtPayment: normalizeMoney(((otherDebtCents + mortgageDueCents) / 100).toFixed(2)),
+      monthlyDebtCashPayment: normalizeMoney(((otherDebtCents + mortgageCashCents) / 100).toFixed(2)),
+      monthlyProvidentFundOffset: normalizeMoney((mortgageOffsetCents / 100).toFixed(2)),
+      mortgageCashflows
+    };
   }
 
   async listMembers(): Promise<string[]> {
@@ -235,8 +260,12 @@ export class FinanceService {
     return this.repository.deleteHolding(id);
   }
 
-  async snapshotAllInvestments(month: string): Promise<{ month: string; count: number }> {
-    return this.repository.snapshotAllInvestments(month);
+  async snapshotAllInvestments(
+    month: string,
+    redemptions: InvestmentRedemptionInput[] = []
+  ): Promise<{ month: string; count: number }> {
+    validateInvestmentRedemptions(redemptions);
+    return this.repository.snapshotAllInvestments(month, redemptions);
   }
 
   async listLiabilities(): Promise<Liability[]> {
@@ -323,5 +352,23 @@ function validateLiabilityInput(input: CreateLiabilityInput): void {
   const paymentDay = input.paymentDay;
   if (paymentDay === undefined || !Number.isInteger(paymentDay) || paymentDay < 1 || paymentDay > 31) {
     throw new BadRequestException("固定月还负债必须填写 1 至 31 日的还款日");
+  }
+}
+
+function validateInvestmentRedemptions(redemptions: InvestmentRedemptionInput[]): void {
+  const holdingIds = new Set<string>();
+  for (const redemption of redemptions) {
+    if (holdingIds.has(redemption.holdingId)) {
+      throw new BadRequestException("同一持仓每月只能提交一组赎回汇总");
+    }
+    holdingIds.add(redemption.holdingId);
+    const amount = Number(redemption.redemptionAmount);
+    const contribution = Number(redemption.contributionAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException("赎回到账金额必须大于 0");
+    }
+    if (!Number.isFinite(contribution) || contribution < 0) {
+      throw new BadRequestException("发生赎回时，本月申购总额必须大于或等于 0");
+    }
   }
 }

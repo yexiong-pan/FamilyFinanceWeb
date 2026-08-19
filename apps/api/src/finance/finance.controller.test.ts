@@ -5,6 +5,9 @@ import { FinanceController } from "./finance.controller";
 import { FinanceService } from "./finance.service";
 import { FINANCE_REPOSITORY } from "./finance.repository";
 import type { FinanceRepository } from "./finance.repository";
+import { MortgageService } from "./mortgage.service";
+
+const mortgageService = { mortgageCashflowObligations: async () => [] };
 
 describe("FinanceController", () => {
   it("receives FinanceService through Nest dependency injection", async () => {
@@ -12,6 +15,7 @@ describe("FinanceController", () => {
       controllers: [FinanceController],
       providers: [
         FinanceService,
+        { provide: MortgageService, useValue: mortgageService },
         {
           provide: FINANCE_REPOSITORY,
           useValue: createEmptyRepository()
@@ -32,6 +36,7 @@ describe("FinanceController", () => {
       controllers: [FinanceController],
       providers: [
         FinanceService,
+        { provide: MortgageService, useValue: mortgageService },
         { provide: FINANCE_REPOSITORY, useValue: createEmptyRepository() }
       ]
     }).compile();
@@ -258,7 +263,12 @@ function emptyMonthlySnapshot(month: string) {
       totalLiabilities: "0.00",
       netAssets: "0.00",
       investmentMarketValue: "0.00",
-      investmentProfit: "0.00"
+      investmentProfit: "0.00",
+      investmentContribution: "0.00",
+      investmentRedemption: "0.00",
+      investmentYearProfit: "0.00",
+      investmentCumulativeProfit: "0.00",
+      investmentCumulativeReturnRate: 0
     },
     assets: [],
     liabilities: [],

@@ -35,6 +35,7 @@ import type {
   TransactionPage,
   ImportTransactionItem,
   InvestmentHolding,
+  InvestmentRedemptionInput,
   Liability,
   LiabilityRepaymentRecord,
   MortgageRecord,
@@ -210,6 +211,7 @@ function emptyFinancialSafety(month: string): FinancialSafetyData {
       expectedIncome: "0.00",
       requiredExpenses: "0.00",
       debtPayments: "0.00",
+      mortgageProvidentFundOffset: "0.00",
       plannedSavings: "0.00",
       emergencyReserve: "0.00",
       safeToSpend: "0.00",
@@ -435,8 +437,11 @@ export async function snapshotAllLiabilities(month: string): Promise<{ month: st
   return postJson("/liabilities/snapshots", { month });
 }
 
-export async function snapshotAllInvestments(month: string): Promise<{ month: string; count: number }> {
-  return postJson("/investments/snapshots", { month });
+export async function snapshotAllInvestments(
+  month: string,
+  redemptions: InvestmentRedemptionInput[] = []
+): Promise<{ month: string; count: number }> {
+  return postJson("/investments/snapshots", { month, redemptions });
 }
 
 export async function confirmMonthlySpending(month: string): Promise<MonthlyReviewStatus> {

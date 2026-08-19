@@ -64,4 +64,27 @@ describe("MortgageService safeguards", () => {
     });
     expect(preview.oldAnnualRate).toBe("3.05");
   });
+
+  it("keeps the projected provident-fund offset attached to each mortgage cashflow", async () => {
+    const service = serviceWith();
+    vi.spyOn(service, "listMortgages").mockResolvedValue([{
+      id: "mortgage-1", liabilityId: "liability-1", name: "住房组合贷款", repaymentDay: 20, loanParts: [], providentFundParticipants: []
+    }]);
+    vi.spyOn(service, "planning").mockResolvedValue({
+      monthlyOffset: [{
+        month: "2026-08",
+        repaymentEvents: [{ mortgageId: "mortgage-1", dueDate: "2026-08-20", amount: "11676.98", providentFundOffset: "9500.00", selfFundAmount: "2176.98" }],
+        dueAmount: "11676.98", providentFundOffset: "9500.00", selfFundAmount: "2176.98", participantBalances: []
+      }],
+      monthlyOffsetCoverage: { fullOffsetThrough: "2037-06", endsBecause: "loanPaidOff" }, rateReminders: [], strategies: []
+    });
+    vi.spyOn(service, "monthlyCashflows").mockResolvedValue([]);
+
+    await expect(service.mortgageCashflowObligations("2026-08-01", "2026-08-31")).resolves.toEqual([
+      expect.objectContaining({
+        liabilityId: "liability-1", mortgageId: "mortgage-1", mortgageName: "住房组合贷款", dueDate: "2026-08-20",
+        totalAmount: "11676.98", providentFundOffset: "9500.00", selfFundAmount: "2176.98"
+      })
+    ]);
+  });
 });

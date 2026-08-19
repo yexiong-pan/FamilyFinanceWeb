@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildInvestmentAmountsFromProfit,
+  buildInvestmentRedemptionInputs,
   investmentCostValue,
   investmentReturnRateValue
 } from "./investment";
@@ -35,5 +36,28 @@ describe("investment sorting values", () => {
     expect(investmentCostValue({ marketValue: "9000.00", profit: "-1000.00" })).toBe(10000);
     expect(investmentReturnRateValue({ marketValue: "9000.00", profit: "-1000.00" })).toBe(-0.1);
     expect(investmentReturnRateValue({ marketValue: "0.00", profit: "0.00", investedAmount: "0.00" })).toBe(0);
+  });
+});
+
+describe("buildInvestmentRedemptionInputs", () => {
+  it("ignores holdings without redemption and keeps the redemption-month contribution total", () => {
+    expect(buildInvestmentRedemptionInputs([
+      { holdingId: "h1", redemptionAmount: 0, contributionAmount: 0 },
+      { holdingId: "h2", redemptionAmount: 5000, contributionAmount: 1000 }
+    ])).toEqual([{
+      holdingId: "h2",
+      redemptionAmount: "5000.00",
+      contributionAmount: "1000.00"
+    }]);
+  });
+
+  it("allows a redemption month without new subscriptions", () => {
+    expect(buildInvestmentRedemptionInputs([
+      { holdingId: "h1", redemptionAmount: 5000, contributionAmount: 0 }
+    ])).toEqual([{
+      holdingId: "h1",
+      redemptionAmount: "5000.00",
+      contributionAmount: "0.00"
+    }]);
   });
 });

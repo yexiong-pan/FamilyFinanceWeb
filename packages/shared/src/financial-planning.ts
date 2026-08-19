@@ -44,6 +44,7 @@ export interface FinancialSafetySummary {
   expectedIncome: MoneyAmount;
   requiredExpenses: MoneyAmount;
   debtPayments: MoneyAmount;
+  mortgageProvidentFundOffset: MoneyAmount;
   plannedSavings: MoneyAmount;
   emergencyReserve: MoneyAmount;
   safeToSpend: MoneyAmount;
